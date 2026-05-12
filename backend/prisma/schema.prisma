@@ -1,0 +1,532 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           Int        @id @default(autoincrement())
+  username     String     @unique
+  passwordHash String
+  fullName     String
+  role         String     @default("USER") // Legacy field, keeping for compatibility
+  departmentId Int?
+  department   Department? @relation(fields: [departmentId], references: [id])
+  isActive     Boolean    @default(true)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  roles        UserRole[]
+  managedDepts Department[] @relation("DeptManager")
+}
+
+model Role {
+  id          Int              @id @default(autoincrement())
+  name        String           @unique // e.g., "SUPER_ADMIN", "ADMIN_TS"
+  description String?
+  permissions RolePermission[]
+  users       UserRole[]
+}
+
+model Permission {
+  id          Int              @id @default(autoincrement())
+  action      String           @unique // e.g., "asset.create", "inventory.sync"
+  description String?
+  roles       RolePermission[]
+}
+
+model RolePermission {
+  roleId       Int
+  permissionId Int
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
+
+model UserRole {
+  userId Int
+  roleId Int
+  user   User @relation(fields: [userId], references: [id])
+  role   Role @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+}
+
+model Company {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Department {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  managerId Int?
+  manager   User?    @relation("DeptManager", fields: [managerId], references: [id])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
+}
+
+model Location {
+  id        Int      @id @default(autoincrement())
+  code      String   @unique
+  name      String
+  city      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AssetCategory {
+  id         Int      @id @default(autoincrement())
+  code       String
+  name       String
+  slug       String? 
+  level      Int
+  parentId   Int?
+  isActive   Boolean  @default(true)
+  sortOrder  Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([parentId, code, level])
+}
+
+model Asset {
+  id            Int      @id @default(autoincrement())
+  assetCode     String   @unique
+  assetName           String
+  assetNameShort      String?
+  assetNameShortSource String?  @default("RULE")
+  assetNameShortUpdatedAt DateTime?
+  
+  serialNumber  String?
+  
+  companyCode   String
+  companyName   String
+  
+  projectName   String?
+  
+  level1Code    String
+  level1Name    String
+  level2Code    String
+  level2Name    String
+  level3Code    String
+  level3Name    String
+  level4Code    String
+  level4Name    String
+  
+  runningNo     Int
+  runningNoText String
+
+  status              String   @default("IN_STOCK") // IN_STOCK, ASSIGNED, UNDER_REPAIR, DAMAGED, LOST, PENDING_LIQUIDATION, LIQUIDATED
+  unit                String?  @default("Cái")
+  purchasePriceExVat  Float?   @default(0)
+  usagePurpose        String?
+  supplierName        String?
+  purchaseDate        DateTime?
+  depreciationEndDate DateTime?
+  
+  currentUserName     String? 
+  currentPosition     String?
+  departmentName      String?
+  locationName        String?
+  cityName            String?
+  handoverDate        DateTime?
+  documentNote        String?
+  lastInventoryDate   DateTime?
+  lastInventoryStatus String?
+
+  isDeleted     Boolean  @default(false)
+  isLocked      Boolean  @default(false) // Lock editing after liquidation
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  assignments   AssetAssignment[]
+  damageReports DamageReportItem[]
+  lostReports   LostReport[]
+  liquidations  LiquidationItem[]
+  inventoryItems InventoryItem[]
+  events        AssetEvent[]
+  editLogs      AssetEditLog[]
+  repairTickets AssetRepairTicket[]
+  repairLogs    AssetRepairLog[]
+  lostLogs      LostReportLog[]
+  
+  creationBatchId Int?
+  creationBatch   CreationBatch? @relation(fields: [creationBatchId], references: [id])
+}
+
+model CreationBatch {
+  id                Int      @id @default(autoincrement())
+  batchCode         String   @unique
+  batchDate         DateTime @default(now())
+  companyName       String?
+  supplierName      String?
+  purchaseDate      DateTime?
+  documentNo        String?
+  totalQuantity     Int      @default(0)
+  totalValue        Float?   @default(0)
+  status            String   @default("COMPLETED")
+  note              String?
+  createdAt         DateTime @default(now())
+  assets            Asset[]
+}
+
+model AssetCodeCounter {
+  id            Int      @id @default(autoincrement())
+  companyCode   String
+  level1Code    String
+  level2Code    String
+  level3Code    String
+  level4Code    String
+  lastNumber    Int      @default(0)
+  updatedAt     DateTime @updatedAt
+
+  @@unique([companyCode, level1Code, level2Code, level3Code, level4Code])
+}
+
+model AssetAssignment {
+  id                Int      @id @default(autoincrement())
+  assetId           Int
+  asset             Asset    @relation(fields: [assetId], references: [id])
+  previousUserName  String?
+  newUserName       String
+  newPosition       String?
+  newDepartmentName String?
+  newLocationName   String?
+  newCityName       String?
+  newStatus         String
+  effectiveAt       DateTime
+  note              String?
+  createdAt         DateTime @default(now())
+}
+
+model InventoryCheck {
+  id            Int      @id @default(autoincrement())
+  inventoryCode String   @unique
+  inventoryName String
+  inventoryDate DateTime
+  status        String   @default("OPEN")
+  scopeType     String? 
+  scopeValue    String?
+  createdAt     DateTime @default(now())
+  items         InventoryItem[]
+}
+
+model InventoryItem {
+  id               Int            @id @default(autoincrement())
+  inventoryCheckId Int
+  inventoryCheck   InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+  assetId          Int
+  asset            Asset          @relation(fields: [assetId], references: [id])
+  assetCode        String
+  expectedStatus   String?
+  actualStatus     String?
+  quality          String?
+  note             String?
+  checkStatus      String         @default("PENDING") // PENDING, CHECKED
+  checkedAt        DateTime?
+  checkedBy        String?
+}
+
+model AssetEvent {
+  id          Int      @id @default(autoincrement())
+  assetId     Int
+  asset       Asset    @relation(fields: [assetId], references: [id])
+  eventType   String
+  eventDate   DateTime @default(now())
+  description String?
+  performedBy String?
+  newStatus   String?
+}
+
+model AssetEditLog {
+  id          Int      @id @default(autoincrement())
+  assetId     Int
+  asset       Asset    @relation(fields: [assetId], references: [id])
+  fieldName   String
+  oldValue    String?
+  newValue    String?
+  editedBy    String?
+  createdAt   DateTime @default(now())
+}
+
+model DocumentCounter {
+  id           Int    @id @default(autoincrement())
+  documentType String @unique
+  lastNumber   Int    @default(0)
+}
+
+model HandoverDocument {
+  id                  Int      @id @default(autoincrement())
+  documentNo          String   @unique // handover_code
+  documentDate        DateTime @default(now())
+  type                String   @default("HANDOVER") // HANDOVER, TRANSFER
+  
+  recipientName       String
+  recipientPosition   String?
+  recipientDepartment String?
+  recipientPhone      String?
+  
+  senderName          String?
+  senderDepartment    String?
+  
+  newLocation         String?
+  newCity             String?
+  
+  status              String   @default("DRAFT") // DRAFT, PROCESSING, COMPLETED, CANCELLED
+  reason              String?
+  note                String?
+  attachments         String? // JSON array of file paths
+  
+  createdAt           DateTime @default(now())
+  items               HandoverItem[]
+}
+
+model HandoverItem {
+  id                 Int              @id @default(autoincrement())
+  handoverDocumentId Int
+  handoverDocument   HandoverDocument @relation(fields: [handoverDocumentId], references: [id])
+  assetId            Int
+  assetCode          String
+  assetName          String
+  unit               String?
+  oldStatus          String?
+  newStatus          String?
+}
+
+model DamageReport {
+  id               Int      @id @default(autoincrement())
+  reportCode       String   @unique
+  reportDate       DateTime @default(now())
+  damageLevel      String?  // LOW, MEDIUM, HIGH
+  description      String?
+  solution         String?  // STILL_USING, REPAIRING, DAMAGED, LIQUIDATE, SCRAP
+  
+  repairVendor     String?
+  repairCost       Float?   @default(0)
+  repairStartDate  DateTime?
+  repairEndDate    DateTime?
+  
+  status           String   @default("DRAFT") // DRAFT, REPORTED, REPAIRING, COMPLETED, CANCELLED
+  note             String?
+  attachments      String?
+  createdAt        DateTime @default(now())
+  items            DamageReportItem[]
+}
+
+model DamageReportItem {
+  id             Int          @id @default(autoincrement())
+  damageReportId Int
+  damageReport   DamageReport @relation(fields: [damageReportId], references: [id])
+  assetId        Int
+  asset          Asset        @relation(fields: [assetId], references: [id])
+}
+
+model LostReport {
+  id                   Int      @id @default(autoincrement())
+  lostCode             String   @unique
+  assetId              Int
+  asset                Asset    @relation(fields: [assetId], references: [id])
+  
+  reportedDate         DateTime @default(now())
+  reportedBy           String?
+  
+  lostDetectedDate     DateTime?
+  lastSeenDate         DateTime?
+  
+  responsibleUser      String?
+  responsibleDepartment String?
+  lastKnownLocation    String?
+  incidentDescription  String?
+  
+  remainingValue       Float?   @default(0)
+  compensationNote     String?
+  
+  foundDate            DateTime?
+  foundLocation        String?
+  conditionWhenFound   String?
+  newAssetStatusAfterFound String?
+  
+  status               String   @default("LOST") // LOST, SEARCHING, FOUND, CLOSED, CANCELLED
+  note                 String?
+  attachments          String?  // JSON array of file objects
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  completedAt          DateTime?
+  
+  logs                 LostReportLog[]
+}
+
+model LostReportLog {
+  id               Int                @id @default(autoincrement())
+  lostReportId     Int
+  lostReport       LostReport         @relation(fields: [lostReportId], references: [id])
+  assetId          Int
+  asset            Asset              @relation(fields: [assetId], references: [id])
+  
+  logDate          DateTime           @default(now())
+  action           String             // e.g., "CREATE", "UPDATE_PROGRESS", "FOUND"
+  oldStatus        String?
+  newStatus        String?
+  description      String?
+  
+  performedBy      String
+  createdAt        DateTime           @default(now())
+}
+
+model LiquidationRecord {
+  id               Int      @id @default(autoincrement())
+  liquidationCode  String   @unique
+  liquidationDate  DateTime @default(now())
+  liquidationType  String?  // SELL, DISPOSE, DONATE, RETURN_SUPPLIER, SCRAP
+  reason           String?
+  buyerName        String?
+  documentNo       String?
+  totalValue       Float?   @default(0)
+  
+  status           String   @default("DRAFT") // DRAFT, PROCESSING, COMPLETED, CANCELLED
+  note             String?
+  attachments      String?
+  createdAt        DateTime @default(now())
+  items            LiquidationItem[]
+}
+
+model LiquidationItem {
+  id                  Int               @id @default(autoincrement())
+  liquidationRecordId Int
+  liquidationRecord   LiquidationRecord @relation(fields: [liquidationRecordId], references: [id])
+  assetId             Int
+  asset               Asset             @relation(fields: [assetId], references: [id])
+  assetValue          Float?            @default(0)
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  entityType String   
+  entityId   Int
+  action     String   
+  details    String?  
+  performedBy String
+  createdAt  DateTime @default(now())
+}
+
+model ImportBatch {
+  id          Int           @id @default(autoincrement())
+  fileName    String
+  status      String        @default("PENDING")
+  totalRows   Int           @default(0)
+  successRows Int           @default(0)
+  failedRows  Int           @default(0)
+  createdAt   DateTime      @default(now())
+  errors      ImportError[]
+}
+
+model ImportError {
+  id            Int         @id @default(autoincrement())
+  importBatchId Int
+  importBatch   ImportBatch @relation(fields: [importBatchId], references: [id])
+  rowNumber     Int
+  errorMessage  String
+  rowData       String?
+}
+model AssetRepairTicket {
+  id                   Int      @id @default(autoincrement())
+  repairCode           String   @unique
+  assetId              Int
+  asset                Asset    @relation(fields: [assetId], references: [id])
+  
+  reportedDate         DateTime @default(now())
+  reportedBy           String
+  
+  damageLevel          String?  // LOW, MEDIUM, HIGH, UNUSABLE
+  damageDescription    String
+  cause                String?
+  canContinueUsing     Boolean  @default(true)
+  
+  repairAction         String?  // Ghi nhận, Sửa chữa, Thay thế, Thanh lý, Hủy
+  repairVendor         String?
+  responsiblePerson    String?
+  
+  estimatedCost        Float?   @default(0)
+  actualCost           Float?   @default(0)
+  
+  sentToRepairDate     DateTime?
+  expectedFinishDate   DateTime?
+  actualFinishDate     DateTime?
+  
+  result               String?  // Đã sửa xong, Không sửa được, Chuyển xử lý khác
+  status               String   @default("OPEN") // DRAFT, OPEN, IN_PROGRESS, COMPLETED, CANCELLED, FAILED
+  note                 String?
+  attachments          String?  // JSON array of file objects
+  
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  
+  logs                 AssetRepairLog[]
+}
+
+model AssetRepairLog {
+  id               Int                @id @default(autoincrement())
+  repairTicketId   Int
+  repairTicket     AssetRepairTicket  @relation(fields: [repairTicketId], references: [id])
+  assetId          Int
+  asset            Asset              @relation(fields: [assetId], references: [id])
+  
+  logDate          DateTime           @default(now())
+  action           String             // e.g., "CREATE", "UPDATE_PROGRESS", "COMPLETE"
+  oldStatus        String?
+  newStatus        String?
+  description      String?
+  cost             Float?             @default(0)
+  
+  performedBy      String
+  createdAt        DateTime           @default(now())
+}
+
+model DocumentTemplate {
+  id               Int      @id @default(autoincrement())
+  templateCode     String   @unique // e.g., BM01, BM02
+  templateName     String
+  businessModule   String   // e.g., HANDOVER, REPAIR, LOST, LIQUIDATION
+  description      String?
+  isRequired       Boolean  @default(true)
+  generatePdf      Boolean  @default(true)
+  filePath         String?  // Path to docx/pdf template
+  
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  
+  generatedDocs    GeneratedDocument[]
+}
+
+model GeneratedDocument {
+  id               Int      @id @default(autoincrement())
+  documentNo       String   @unique // e.g., BB-BG-2025-0001
+  templateId       Int
+  template         DocumentTemplate @relation(fields: [templateId], references: [id])
+  
+  entityType       String   // e.g., AssetRepairTicket, LostReport, HandoverDocument
+  entityId         Int
+  
+  fileName         String
+  fileUrl          String
+  fileSize         Int?
+  
+  status           String   @default("COMPLETED") // DRAFT, COMPLETED
+  note             String?
+  
+  createdById      Int?
+  createdBy        String?
+  createdAt        DateTime @default(now())
+}
