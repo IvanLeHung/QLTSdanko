@@ -386,7 +386,7 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
     const asset = await prisma.asset.findUnique({ where: { id: Number(id) } });
     if (!asset) return res.status(404).json({ message: 'Asset not found' });
 
-    const updates = { ...req.body };
+    const { reason, ...updates } = req.body;
     
     // Auto-update short name if name changes
     if (updates.assetName && updates.assetName !== asset.assetName) {
@@ -396,7 +396,7 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
       }
     }
 
-    const updatedAsset = await AssetService.updateAsset(Number(id), updates, performedBy);
+    const updatedAsset = await AssetService.updateAsset(Number(id), updates, performedBy, reason);
     res.json(updatedAsset);
   } catch (error: any) {
     res.status(500).json({ message: error.message });

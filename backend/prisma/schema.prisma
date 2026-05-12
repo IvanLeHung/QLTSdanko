@@ -163,6 +163,9 @@ model Asset {
   
   creationBatchId Int?
   creationBatch   CreationBatch? @relation(fields: [creationBatchId], references: [id])
+
+  attachments     String?  // JSON array of file objects {name, url, type, size}
+  lastLabelPrint  DateTime?
 }
 
 model CreationBatch {

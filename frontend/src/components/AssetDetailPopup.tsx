@@ -24,7 +24,23 @@ import {
   Trash2,
   Clock,
   ExternalLink,
-  MessageSquare
+  MessageSquare,
+  FileText,
+  Upload,
+  Download,
+  Image as ImageIcon,
+  Paperclip,
+  Save,
+  Edit3,
+  Check,
+  FileSearch,
+  FilePlus,
+  FileCheck,
+  Eye,
+  FileUp,
+  FileDown,
+  QrCode as QrCodeIcon,
+  Copy
 } from 'lucide-react';
 import api from '../lib/api';
 import { format } from 'date-fns';
@@ -33,6 +49,9 @@ import { twMerge } from 'tailwind-merge';
 import { RepairTicketForm } from './RepairTicketForm';
 import { CompleteRepairForm } from './CompleteRepairForm';
 import { toast } from 'react-toastify';
+import { AppliedFormsBlock } from './AppliedFormsBlock';
+import { AssetDocumentsTab } from './AssetDocumentsTab';
+import { BMFormDispatcher } from './forms/BMFormDispatcher';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -43,11 +62,12 @@ interface AssetDetailPopupProps {
   isOpen: boolean;
   onClose: () => void;
   onAction: (action: string, assetId: number) => void;
+  initialTab?: TabType;
 }
 
-type TabType = 'info' | 'assignment' | 'inventory' | 'repair' | 'timeline';
+type TabType = 'info' | 'assignment' | 'inventory' | 'repair' | 'timeline' | 'documents';
 
-export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isOpen, onClose, onAction }) => {
+export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isOpen, onClose, onAction, initialTab = 'info' }) => {
   const [asset, setAsset] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('info');
@@ -56,15 +76,37 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [isCompleteRepairOpen, setIsCompleteRepairOpen] = useState(false);
   const [selectedTicket, setSelectedTicket] = useState<any>(null);
   const [isUpdatingProgress, setIsUpdatingProgress] = useState(false);
+  const [mode, setMode] = useState<'view' | 'edit'>('view');
+  const [editForm, setEditForm] = useState<any>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showReasonModal, setShowReasonModal] = useState(false);
+  const [reason, setReason] = useState('');
+  const [pendingUpdates, setPendingUpdates] = useState<any>(null);
+  const [copied, setCopied] = useState(false);
+  const [companies, setCompanies] = useState<any[]>([]);
+  const [selectedForm, setSelectedForm] = useState<{code: string, data?: any} | null>(null);
 
   useEffect(() => {
     if (isOpen && assetId) {
       fetchAssetDetail();
+      fetchCompanies();
+      setActiveTab(initialTab);
+      setMode('view');
     } else {
       setAsset(null);
+      setMode('view');
       setActiveTab('info');
     }
-  }, [isOpen, assetId]);
+  }, [isOpen, assetId, initialTab]);
+
+  const fetchCompanies = async () => {
+    try {
+      const res = await api.get('/assets/filter-options/companies');
+      setCompanies(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -134,6 +176,83 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     }
   };
 
+  const handleCopyCode = () => {
+    navigator.clipboard.writeText(asset.assetCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+    toast.success("Đã sao chép mã tài sản");
+  };
+
+  const enterEditMode = () => {
+    setEditForm({
+      assetName: asset.assetName,
+      serialNumber: asset.serialNumber || '',
+      unit: asset.unit,
+      usagePurpose: asset.usagePurpose || '',
+      purchasePriceExVat: asset.purchasePriceExVat || 0,
+      purchaseDate: asset.purchaseDate ? format(new Date(asset.purchaseDate), 'yyyy-MM-dd') : '',
+      depreciationEndDate: asset.depreciationEndDate ? format(new Date(asset.depreciationEndDate), 'yyyy-MM-dd') : '',
+      supplierName: asset.supplierName || '',
+      companyCode: asset.companyCode,
+      assetCode: asset.assetCode,
+      note: asset.note || ''
+    });
+    setMode('edit');
+  };
+
+  const cancelEdit = () => {
+    setMode('view');
+    setEditForm(null);
+  };
+
+  const handleSave = async () => {
+    const changes: any = {};
+    const sensitiveFields = ['assetCode', 'purchasePriceExVat', 'purchaseDate', 'depreciationEndDate', 'serialNumber', 'companyCode'];
+    let hasSensitiveChanges = false;
+
+    for (const key in editForm) {
+      let oldVal = asset[key];
+      let newVal = editForm[key];
+
+      if (key === 'purchaseDate' || key === 'depreciationEndDate') {
+        oldVal = oldVal ? format(new Date(oldVal), 'yyyy-MM-dd') : '';
+      }
+
+      if (String(oldVal) !== String(newVal)) {
+        changes[key] = newVal;
+        if (sensitiveFields.includes(key)) hasSensitiveChanges = true;
+      }
+    }
+
+    if (Object.keys(changes).length === 0) {
+      cancelEdit();
+      return;
+    }
+
+    if (hasSensitiveChanges) {
+      setPendingUpdates(changes);
+      setShowReasonModal(true);
+    } else {
+      await submitUpdates(changes);
+    }
+  };
+
+  const submitUpdates = async (updates: any, changeReason?: string) => {
+    setIsSaving(true);
+    try {
+      await api.patch(`/assets/${asset.id}`, { ...updates, reason: changeReason });
+      toast.success("Cập nhật tài sản thành công");
+      setMode('view');
+      setShowReasonModal(false);
+      setReason('');
+      fetchAssetDetail();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi cập nhật tài sản");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
       {/* OVERLAY */}
@@ -153,6 +272,17 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
         ) : asset ? (
           <>
             {/* HEADER */}
+            <input 
+              type="file" 
+              id="asset-file-upload" 
+              className="hidden" 
+              onChange={(e) => {
+                if (e.target.files?.[0]) {
+                  toast.success(`Đã chuẩn bị tải lên: ${e.target.files[0].name}`);
+                  // Real upload logic would go here
+                }
+              }} 
+            />
             <div className="px-8 pt-8 pb-6 bg-white flex justify-between items-start">
               <div className="flex items-start space-x-4">
                 <div className="bg-primary-50 p-4 rounded-2xl text-primary-600 border border-primary-100 shadow-sm">
@@ -171,12 +301,32 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                   <h3 className="text-[28px] font-black text-slate-800 tracking-tight leading-tight">{asset.assetName}</h3>
                 </div>
               </div>
-              <button 
-                onClick={onClose}
-                className="p-3 hover:bg-slate-50 rounded-2xl transition-all group border border-transparent hover:border-slate-100"
-              >
-                <X className="h-6 w-6 text-slate-300 group-hover:text-slate-600" />
-              </button>
+              <div className="flex items-center space-x-2">
+                {mode === 'view' && (
+                  <>
+                    <button 
+                      onClick={enterEditMode}
+                      className="flex items-center px-4 py-2.5 bg-slate-50 text-slate-600 hover:bg-primary-50 hover:text-primary-600 rounded-xl font-black text-[10px] uppercase tracking-widest border border-slate-100 hover:border-primary-100 transition-all"
+                    >
+                      <Edit3 className="h-3.5 w-3.5 mr-2" /> Sửa thông tin
+                    </button>
+                    <button 
+                      onClick={() => onAction('print_label', asset.id)}
+                      className="flex items-center px-4 py-2.5 bg-white border border-slate-200 text-slate-500 hover:text-primary-600 hover:border-primary-100 rounded-xl transition-all shadow-sm group"
+                      title="In tem tài sản"
+                    >
+                      <Printer className="h-4 w-4 mr-2 group-hover:scale-110 transition-transform" />
+                      <span className="font-black text-[10px] uppercase tracking-widest">In tem</span>
+                    </button>
+                  </>
+                )}
+                <button 
+                  onClick={onClose}
+                  className="p-3 hover:bg-slate-50 rounded-2xl transition-all group border border-transparent hover:border-slate-100"
+                >
+                  <X className="h-6 w-6 text-slate-300 group-hover:text-slate-600" />
+                </button>
+              </div>
             </div>
 
             {/* QUICK SUMMARY */}
@@ -211,30 +361,192 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
             <div className="flex-1 overflow-y-auto p-10 bg-white custom-scrollbar">
               {activeTab === 'info' && (
                 <div className="grid grid-cols-2 gap-x-12 gap-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                  {[
-                    { label: 'Serial Number', value: asset.serialNumber || 'N/A', icon: Tag },
-                    { label: 'Đơn vị tính', value: asset.unit, icon: ClipboardCheck },
-                    { label: 'Mục đích sử dụng', value: asset.usagePurpose || 'N/A', icon: Info },
-                    { label: 'Giá mua (ex VAT)', value: asset.purchasePriceExVat?.toLocaleString() + ' ₫', icon: DollarSign },
-                    { label: 'Ngày mua', value: asset.purchaseDate ? format(new Date(asset.purchaseDate), 'dd/MM/yyyy') : 'N/A', icon: Calendar },
-                    { label: 'Hết khấu hao', value: asset.depreciationEndDate ? format(new Date(asset.depreciationEndDate), 'dd/MM/yyyy') : 'N/A', icon: Clock },
-                    { label: 'Nhà cung cấp', value: asset.supplierName || 'N/A', icon: Building2 },
-                    { label: 'Công ty chủ quản', value: asset.companyName, icon: Building2 },
-                  ].map((item) => (
-                    <div key={item.label} className="space-y-1">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
-                        <item.icon className="mr-2 h-3 w-3" />
-                        {item.label}
-                      </p>
-                      <p className="text-[15px] font-bold text-slate-800">{item.value}</p>
+                  <div className="col-span-2 flex items-center justify-between mb-2">
+                    <div className="flex items-center space-x-4">
+                      <div className="bg-slate-100 p-2.5 rounded-xl text-slate-400">
+                         <QrCodeIcon className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã định danh (QR/Barcode)</p>
+                        <p className="text-xs font-bold text-slate-600 font-mono flex items-center mt-0.5">
+                           {asset.assetCode} 
+                           <button onClick={handleCopyCode} className="ml-2 hover:text-primary-600">
+                             {copied ? <Check className="h-3 w-3 text-emerald-500" /> : <Copy className="h-3 w-3" />}
+                           </button>
+                        </p>
+                      </div>
                     </div>
-                  ))}
-                  {asset.note && (
-                    <div className="col-span-2 p-5 bg-slate-50 rounded-2xl space-y-1.5 border border-slate-100">
-                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ghi chú</p>
-                      <p className="text-sm text-slate-600 font-medium leading-relaxed">{asset.note}</p>
-                    </div>
-                  )}
+                    {asset.lastLabelPrint && (
+                      <div className="text-emerald-500 text-[10px] font-black uppercase tracking-widest flex items-center bg-emerald-50 px-3 py-1 rounded-lg border border-emerald-100">
+                        <CheckCircle2 className="h-3 w-3 mr-1.5" /> Đã in tem: {format(new Date(asset.lastLabelPrint), 'dd/MM/yyyy')}
+                      </div>
+                    )}
+                    {mode === 'edit' && (
+                      <div className="text-rose-500 text-[10px] font-black uppercase tracking-widest flex items-center bg-rose-50 px-3 py-1 rounded-lg border border-rose-100">
+                        <AlertCircle className="h-3 w-3 mr-1.5" /> Đang ở chế độ chỉnh sửa
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <Tag className="mr-2 h-3 w-3" /> Tên tài sản
+                    </p>
+                    {mode === 'edit' ? (
+                      <input 
+                        type="text" 
+                        value={editForm.assetName} 
+                        onChange={e => setEditForm({...editForm, assetName: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      />
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.assetName}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <Tag className="mr-2 h-3 w-3" /> Serial Number
+                    </p>
+                    {mode === 'edit' ? (
+                      <input 
+                        type="text" 
+                        value={editForm.serialNumber} 
+                        onChange={e => setEditForm({...editForm, serialNumber: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      />
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.serialNumber || 'N/A'}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <ClipboardCheck className="mr-2 h-3 w-3" /> Đơn vị tính
+                    </p>
+                    {mode === 'edit' ? (
+                      <select 
+                        value={editForm.unit} 
+                        onChange={e => setEditForm({...editForm, unit: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      >
+                        {['Cái', 'Bộ', 'Chiếc', 'Mét', 'Kg', 'Lô'].map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.unit}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <Info className="mr-2 h-3 w-3" /> Mục đích sử dụng
+                    </p>
+                    {mode === 'edit' ? (
+                      <select 
+                        value={editForm.usagePurpose} 
+                        onChange={e => setEditForm({...editForm, usagePurpose: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      >
+                        {['Cá nhân', 'Dùng chung', 'Dự phòng', 'Khác'].map(u => <option key={u} value={u}>{u}</option>)}
+                      </select>
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.usagePurpose || 'N/A'}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <DollarSign className="mr-2 h-3 w-3" /> Giá mua (ex VAT)
+                    </p>
+                    {mode === 'edit' ? (
+                      <input 
+                        type="number" 
+                        value={editForm.purchasePriceExVat} 
+                        onChange={e => setEditForm({...editForm, purchasePriceExVat: Number(e.target.value)})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      />
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.purchasePriceExVat?.toLocaleString()} ₫</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <Calendar className="mr-2 h-3 w-3" /> Ngày mua
+                    </p>
+                    {mode === 'edit' ? (
+                      <input 
+                        type="date" 
+                        value={editForm.purchaseDate} 
+                        onChange={e => setEditForm({...editForm, purchaseDate: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      />
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.purchaseDate ? format(new Date(asset.purchaseDate), 'dd/MM/yyyy') : 'N/A'}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <Clock className="mr-2 h-3 w-3" /> Hết khấu hao
+                    </p>
+                    {mode === 'edit' ? (
+                      <input 
+                        type="date" 
+                        value={editForm.depreciationEndDate} 
+                        onChange={e => setEditForm({...editForm, depreciationEndDate: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      />
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.depreciationEndDate ? format(new Date(asset.depreciationEndDate), 'dd/MM/yyyy') : 'N/A'}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <Building2 className="mr-2 h-3 w-3" /> Nhà cung cấp
+                    </p>
+                    {mode === 'edit' ? (
+                      <input 
+                        type="text" 
+                        value={editForm.supplierName} 
+                        onChange={e => setEditForm({...editForm, supplierName: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      />
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.supplierName || 'N/A'}</p>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <Building2 className="mr-2 h-3 w-3" /> Công ty chủ quản
+                    </p>
+                    {mode === 'edit' ? (
+                      <select 
+                        value={editForm.companyCode} 
+                        onChange={e => setEditForm({...editForm, companyCode: e.target.value})}
+                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                      >
+                        {companies.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                      </select>
+                    ) : (
+                      <p className="text-[15px] font-bold text-slate-800">{asset.companyName}</p>
+                    )}
+                  </div>
+
+                  <div className="col-span-2 p-5 bg-slate-50 rounded-2xl space-y-1.5 border border-slate-100">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ghi chú</p>
+                    {mode === 'edit' ? (
+                      <textarea 
+                        value={editForm.note} 
+                        onChange={e => setEditForm({...editForm, note: e.target.value})}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 focus:ring-2 focus:ring-primary-500 h-24 resize-none"
+                      />
+                    ) : (
+                      <p className="text-sm text-slate-600 font-medium leading-relaxed">{asset.note || 'Không có ghi chú.'}</p>
+                    )}
+                  </div>
                 </div>
               )}
 
@@ -456,6 +768,36 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                               log.action === 'ASSIGN' ? 'bàn giao' : log.action.toLowerCase()
                             }</span> tài sản
                           </p>
+                          {log.details && (
+                            <div className="mt-3 p-3 bg-slate-50 rounded-xl border border-slate-100 space-y-2">
+                               {(() => {
+                                  try {
+                                    const details = JSON.parse(log.details);
+                                    if (!details) return null;
+                                    const changes = details.changes || details;
+                                    return (
+                                      <>
+                                        {Object.entries(changes).map(([field, val]: any) => (
+                                          <div key={field} className="text-[11px] font-bold">
+                                            <span className="text-slate-400 uppercase mr-2">{field}:</span>
+                                            <span className="text-rose-500 line-through mr-2">{String(val.old)}</span>
+                                            <ArrowRightLeft className="h-2 w-2 inline mx-1 text-slate-300" />
+                                            <span className="text-emerald-600 ml-2">{String(val.new)}</span>
+                                          </div>
+                                        ))}
+                                        {details.reason && (
+                                          <div className="mt-2 pt-2 border-t border-slate-200 text-[11px] text-slate-500 italic">
+                                            Lý do: {details.reason}
+                                          </div>
+                                        )}
+                                      </>
+                                    );
+                                  } catch (e) {
+                                    return <p className="text-[10px] text-slate-400 italic">Chi tiết: {log.details}</p>;
+                                  }
+                               })()}
+                            </div>
+                          )}
                         </div>
                       </div>
                     ))}
@@ -466,77 +808,141 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                 </div>
               )}
               
-              {/* DOCUMENTS TAB CONTENT */}
               {activeTab === 'documents' && (
-                  <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
-                    <AppliedFormsBlock 
-                      action="CREATION" 
-                      entityId={asset.id} 
-                      entityType="Asset"
-                    />
-                    <div className="mt-8 pt-8 border-t border-slate-100">
-                        <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 px-2 flex items-center">
-                          <History className="mr-2 h-3.5 w-3.5" /> Lịch sử hồ sơ phát sinh
-                        </h4>
-                        <div className="grid grid-cols-1 gap-3">
-                          <p className="text-xs text-slate-400 italic px-2">Hệ thống đang tổng hợp hồ sơ từ các nghiệp vụ sửa chữa, điều chuyển và kiểm kê...</p>
-                        </div>
-                    </div>
-                  </div>
+                <AssetDocumentsTab 
+                  asset={asset} 
+                  onRefresh={fetchAssetDetail}
+                  onSelectForm={(formCode, data) => setSelectedForm({ code: formCode, data })}
+                />
               )}
             </div>
 
             {/* FOOTER ACTIONS */}
             <div className="px-8 py-8 border-t border-slate-100 bg-slate-50/50 flex space-x-3 items-center">
-              <button 
-                onClick={() => onAction('handover', asset.id)}
-                className="flex-1 bg-primary-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center justify-center"
-              >
-                <ArrowRightLeft className="mr-2 h-4 w-4" /> Bàn giao / Điều chuyển
-              </button>
-              <button 
-                onClick={() => onAction('inventory', asset.id)}
-                className="flex-1 bg-white border border-slate-200 text-slate-700 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center shadow-sm"
-              >
-                <ClipboardCheck className="mr-2 h-4 w-4 text-emerald-500" /> Thực hiện kiểm kê
-              </button>
-              
-              <div className="relative">
-                <button 
-                  onClick={() => setShowMoreActions(!showMoreActions)}
-                  className="bg-white border border-slate-200 text-slate-400 h-14 w-14 rounded-2xl flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm"
-                >
-                  <ChevronDown className={cn("h-4 w-4 transition-transform", showMoreActions && "rotate-180")} />
-                </button>
-                
-                {showMoreActions && (
-                  <div className="absolute bottom-full right-0 mb-4 w-56 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-20 animate-in zoom-in slide-in-from-bottom-4 duration-200">
-                    <div className="p-2 space-y-1">
-                      {[
-                        { id: 'recover', label: 'Thu hồi tài sản', icon: RotateCcw, color: 'text-slate-600' },
-                        { id: 'damage', label: 'Báo hỏng / Sửa chữa', icon: Wrench, color: 'text-amber-600' },
-                        { id: 'lost', label: 'Báo mất tài sản', icon: ShieldAlert, color: 'text-slate-900' },
-                        { id: 'liquidate', label: 'Thanh lý tài sản', icon: Trash2, color: 'text-rose-600' },
-                        { id: 'print', label: 'In tem / Biên bản', icon: Printer, color: 'text-primary-600' },
-                        { id: 'timeline', label: 'Xem nhật ký tài sản', icon: History, color: 'text-slate-500' },
-                      ].map((act) => (
-                        <button
-                          key={act.id}
-                          onClick={() => { 
-                             if(act.id === 'timeline') setActiveTab('timeline');
-                             else onAction(act.id, asset.id); 
-                             setShowMoreActions(false); 
-                          }}
-                          className="w-full flex items-center px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-2xl transition-all"
-                        >
-                          <act.icon className={cn("mr-3 h-4 w-4", act.color)} />
-                          {act.label}
-                        </button>
-                      ))}
-                    </div>
+              {mode === 'edit' ? (
+                <>
+                  <button 
+                    onClick={cancelEdit}
+                    className="flex-1 bg-white border border-slate-200 text-slate-400 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:text-slate-600 transition-all shadow-sm"
+                  >
+                    Hủy chỉnh sửa
+                  </button>
+                  <button 
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="flex-[2] bg-primary-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center justify-center disabled:opacity-50"
+                  >
+                    {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <><Save className="mr-2 h-4 w-4" /> Lưu thay đổi</>}
+                  </button>
+                </>
+              ) : activeTab === 'documents' ? (
+                <>
+                   <button 
+                    onClick={onClose}
+                    className="flex-1 bg-white border border-slate-200 text-slate-400 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:text-slate-600 transition-all shadow-sm"
+                  >
+                    Đóng
+                  </button>
+                  <button 
+                    onClick={() => document.getElementById('asset-file-upload')?.click()}
+                    className="flex-1 bg-slate-100 text-slate-600 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-200 transition-all flex items-center justify-center shadow-sm"
+                  >
+                    <Upload className="mr-2 h-4 w-4" /> Tải file lên
+                  </button>
+                  <div className="relative flex-[1.5]">
+                    <button 
+                      onClick={() => setShowMoreActions(!showMoreActions)}
+                      className="w-full bg-primary-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center justify-center"
+                    >
+                      <FilePlus className="mr-2 h-4 w-4" /> Tạo hồ sơ mới <ChevronDown className={cn("ml-2 h-4 w-4 transition-transform", showMoreActions && "rotate-180")} />
+                    </button>
+                    
+                    {showMoreActions && (
+                      <div className="absolute bottom-full right-0 mb-4 w-64 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-20 animate-in zoom-in slide-in-from-bottom-4 duration-200">
+                        <div className="p-2 space-y-1">
+                          {[
+                            { code: 'BM01', label: 'Biên bản bàn giao mới' },
+                            { code: 'BM02', label: 'Biên bản bàn giao/thu hồi' },
+                            { code: 'BM06', label: 'Biên bản điều chuyển' },
+                            { code: 'BM09', label: 'Kiểm tra hiện trạng' },
+                            { code: 'BM03', label: 'Biên bản tài sản hỏng' },
+                            { code: 'BM10', label: 'Biên bản sửa chữa' },
+                            { code: 'BM12', label: 'Biên bản kiểm kê' },
+                            { code: 'BM04', label: 'Biên bản thanh lý' },
+                            { code: 'BM13', label: 'Ghi nhận mất tài sản' },
+                          ].map((form) => (
+                            <button
+                              key={form.code}
+                              onClick={() => { 
+                                 setSelectedForm({ code: form.code });
+                                 setShowMoreActions(false); 
+                              }}
+                              className="w-full flex items-center px-4 py-3 text-[10px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 hover:text-primary-600 rounded-2xl transition-all"
+                            >
+                              <FileText className="mr-3 h-4 w-4 text-slate-400" />
+                              {form.code} - {form.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                </>
+              ) : (
+                <>
+                  <button 
+                    onClick={() => onAction('handover', asset.id)}
+                    className="flex-1 bg-primary-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center justify-center"
+                  >
+                    <ArrowRightLeft className="mr-2 h-4 w-4" /> Bàn giao / Điều chuyển
+                  </button>
+                  <button 
+                    onClick={() => onAction('inventory', asset.id)}
+                    className="flex-1 bg-white border border-slate-200 text-slate-700 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center shadow-sm"
+                  >
+                    <ClipboardCheck className="mr-2 h-4 w-4 text-emerald-500" /> Thực hiện kiểm kê
+                  </button>
+                  
+                  <div className="relative">
+                    <button 
+                      onClick={() => setShowMoreActions(!showMoreActions)}
+                      className="bg-white border border-slate-200 text-slate-400 h-14 w-14 rounded-2xl flex items-center justify-center hover:bg-slate-50 transition-all shadow-sm"
+                    >
+                      <ChevronDown className={cn("h-4 w-4 transition-transform", showMoreActions && "rotate-180")} />
+                    </button>
+                    
+                    {showMoreActions && (
+                      <div className="absolute bottom-full right-0 mb-4 w-56 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-20 animate-in zoom-in slide-in-from-bottom-4 duration-200">
+                        <div className="p-2 space-y-1">
+                          {[
+                            { id: 'edit', label: 'Sửa thông tin', icon: Edit3, color: 'text-slate-600', onClick: enterEditMode },
+                            { id: 'recover', label: 'Thu hồi tài sản', icon: RotateCcw, color: 'text-slate-600', onClick: () => setSelectedForm({ code: 'BM02' }) },
+                            { id: 'transfer', label: 'Điều chuyển tài sản', icon: ArrowRightLeft, color: 'text-primary-600', onClick: () => setSelectedForm({ code: 'BM06' }) },
+                            { id: 'damage', label: 'Báo hỏng / Sửa chữa', icon: Wrench, color: 'text-amber-600', onClick: () => setSelectedForm({ code: 'BM03' }) },
+                            { id: 'lost', label: 'Báo mất tài sản', icon: ShieldAlert, color: 'text-slate-900', onClick: () => setSelectedForm({ code: 'BM13' }) },
+                            { id: 'liquidate', label: 'Thanh lý tài sản', icon: Trash2, color: 'text-rose-600', onClick: () => setSelectedForm({ code: 'BM04' }) },
+                            { id: 'print', label: 'In tem tài sản', icon: Printer, color: 'text-primary-600', onClick: () => onAction('print_label', asset.id) },
+                            { id: 'timeline', label: 'Xem nhật ký tài sản', icon: History, color: 'text-slate-500', onClick: () => setActiveTab('timeline') },
+                          ].map((act) => (
+                            <button
+                              key={act.id}
+                              onClick={() => { 
+                                 if (act.onClick) act.onClick();
+                                 else onAction(act.id, asset.id); 
+                                 setShowMoreActions(false); 
+                              }}
+                              className="w-full flex items-center px-4 py-3 text-[11px] font-black uppercase tracking-widest text-slate-600 hover:bg-slate-50 hover:text-slate-900 rounded-2xl transition-all"
+                            >
+                              <act.icon className={cn("mr-3 h-4 w-4", act.color)} />
+                              {act.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </>
         ) : (
@@ -560,6 +966,58 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
           onSuccess={() => { setIsCompleteRepairOpen(false); setSelectedTicket(null); fetchAssetDetail(); }}
         />
       )}
+
+      {/* REASON MODAL */}
+      {showReasonModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4">
+           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowReasonModal(false)} />
+           <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200">
+              <div className="flex items-center space-x-3 text-rose-600 mb-6">
+                 <AlertCircle className="h-6 w-6" />
+                 <h4 className="text-lg font-black uppercase tracking-tight">Xác nhận thay đổi quan trọng</h4>
+              </div>
+              <p className="text-sm text-slate-600 font-medium mb-6">
+                 Bạn đang thay đổi các thông tin quan trọng của tài sản (Mã, Giá, Ngày, Serial). Vui lòng nhập lý do cập nhật:
+              </p>
+              <textarea 
+                value={reason}
+                onChange={e => setReason(e.target.value)}
+                placeholder="Ví dụ: Cập nhật đúng tên theo thực tế kiểm tra..."
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-4 text-sm font-medium text-slate-700 h-32 focus:ring-2 focus:ring-primary-500 mb-6"
+              />
+              <div className="flex space-x-3">
+                 <button onClick={() => setShowReasonModal(false)} className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-400 font-black text-[10px] uppercase tracking-widest hover:bg-slate-50 transition-all">Hủy</button>
+                 <button 
+                   disabled={!reason.trim() || isSaving}
+                   onClick={() => submitUpdates(pendingUpdates, reason)}
+                   className="flex-[2] px-4 py-3 bg-primary-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest shadow-lg shadow-primary-100 hover:bg-primary-700 transition-all disabled:opacity-50"
+                 >
+                   Xác nhận lưu
+                 </button>
+              </div>
+           </div>
+        </div>
+      )}
+      <BMFormDispatcher 
+        isOpen={!!selectedForm}
+        formCode={selectedForm?.code || ''}
+        data={{ asset, ...selectedForm?.data }}
+        onClose={() => setSelectedForm(null)}
+        onSubmit={async (data) => {
+          console.log("Form submitted:", data);
+          toast.success("Hồ sơ đã được lưu thành công");
+          setSelectedForm(null);
+          fetchAssetDetail();
+          
+          // Log audit
+          await api.post('/operational/log-print', {
+            assetIds: [asset.id],
+            template: selectedForm?.code,
+            copies: 1,
+            config: { action: 'GENERATE_DOCUMENT' }
+          });
+        }}
+      />
     </div>
   );
 };

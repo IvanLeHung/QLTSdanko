@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, FileText, Printer, Eye, Save, Loader2 } from 'lucide-react';
+import { X, FileText, Printer, Eye, Save, Loader2, FileUp, Download } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 
@@ -24,6 +24,10 @@ interface BaseFormModalProps {
   confirmLabel?: string;
   children: React.ReactNode;
   summary?: React.ReactNode;
+  isCompleted?: boolean;
+  onPrint?: () => void;
+  onDownload?: () => void;
+  onUploadSigned?: () => void;
 }
 
 export const BaseFormModal: React.FC<BaseFormModalProps> = ({
@@ -42,7 +46,11 @@ export const BaseFormModal: React.FC<BaseFormModalProps> = ({
   onConfirm,
   confirmLabel = 'Xác nhận & Hoàn tất',
   children,
-  summary
+  summary,
+  isCompleted = false,
+  onPrint,
+  onDownload,
+  onUploadSigned
 }) => {
   if (!isOpen) return null;
 
@@ -121,45 +129,87 @@ export const BaseFormModal: React.FC<BaseFormModalProps> = ({
 
         {/* FOOTER */}
         <div className="px-8 py-6 border-t border-slate-100 bg-slate-50/50 flex justify-between items-center sticky bottom-0 z-10">
-          <div className="flex space-x-3">
-            <button 
-              onClick={onClose}
-              className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-slate-500 hover:bg-slate-100 transition-all border border-slate-200"
-            >
-              Hủy bỏ
-            </button>
-            {onSaveDraft && (
-              <button 
-                onClick={onSaveDraft}
-                className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-primary-600 bg-white border border-primary-200 hover:bg-primary-50 transition-all flex items-center"
-              >
-                <Save className="mr-2 h-4 w-4" /> Lưu nháp
-              </button>
-            )}
-          </div>
-          
-          <div className="flex space-x-3">
-            {onPreviewPdf && (
-              <button 
-                onClick={onPreviewPdf}
-                className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-all flex items-center shadow-sm"
-              >
-                <Eye className="mr-2 h-4 w-4" /> Xem trước PDF
-              </button>
-            )}
-            <button 
-              onClick={onConfirm}
-              disabled={submitting}
-              className="h-12 px-8 bg-primary-600 text-white rounded-xl font-black text-[11px] uppercase tracking-widest shadow-lg shadow-primary-200 hover:bg-primary-700 transition-all flex items-center disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : (
-                <>
-                  {confirmLabel}
-                  <Printer className="ml-2 h-4 w-4 opacity-50" />
-                </>
-              )}
-            </button>
-          </div>
+          {!isCompleted ? (
+            <>
+              <div className="flex space-x-3">
+                <button 
+                  onClick={onClose}
+                  className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-slate-500 hover:bg-slate-100 transition-all border border-slate-200"
+                >
+                  Hủy bỏ
+                </button>
+                {onSaveDraft && (
+                  <button 
+                    onClick={onSaveDraft}
+                    className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-primary-600 bg-white border border-primary-200 hover:bg-primary-50 transition-all flex items-center"
+                  >
+                    <Save className="mr-2 h-4 w-4" /> Lưu nháp
+                  </button>
+                )}
+              </div>
+              
+              <div className="flex space-x-3">
+                {onPreviewPdf && (
+                  <button 
+                    onClick={onPreviewPdf}
+                    className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-all flex items-center shadow-sm"
+                  >
+                    <Eye className="mr-2 h-4 w-4" /> Xem trước PDF
+                  </button>
+                )}
+                <button 
+                  onClick={onConfirm}
+                  disabled={submitting}
+                  className="h-12 px-8 bg-primary-600 text-white rounded-xl font-black text-[11px] uppercase tracking-widest shadow-lg shadow-primary-200 hover:bg-primary-700 transition-all flex items-center disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="h-5 w-5 animate-spin" /> : (
+                    <>
+                      {confirmLabel}
+                      <Printer className="ml-2 h-4 w-4 opacity-50" />
+                    </>
+                  )}
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex space-x-3">
+                <button 
+                  onClick={onClose}
+                  className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-slate-500 hover:bg-slate-100 transition-all border border-slate-200"
+                >
+                  Đóng
+                </button>
+                <button 
+                  onClick={onUploadSigned}
+                  className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-emerald-600 bg-white border border-emerald-200 hover:bg-emerald-50 transition-all flex items-center"
+                >
+                  <FileUp className="mr-2 h-4 w-4" /> Upload bản ký
+                </button>
+              </div>
+              
+              <div className="flex space-x-3">
+                <button 
+                  onClick={onPreviewPdf}
+                  className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-all flex items-center shadow-sm"
+                >
+                  <Eye className="mr-2 h-4 w-4" /> Xem PDF
+                </button>
+                <button 
+                  onClick={onDownload}
+                  className="h-12 px-6 rounded-xl font-black text-[11px] uppercase tracking-widest text-slate-600 bg-white border border-slate-200 hover:bg-slate-50 transition-all flex items-center shadow-sm"
+                >
+                  <Download className="mr-2 h-4 w-4" /> Tải PDF
+                </button>
+                <button 
+                  onClick={onPrint}
+                  className="h-12 px-8 bg-slate-800 text-white rounded-xl font-black text-[11px] uppercase tracking-widest shadow-lg shadow-slate-200 hover:bg-slate-900 transition-all flex items-center"
+                >
+                  <Printer className="mr-2 h-4 w-4" /> In hồ sơ
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
     </div>

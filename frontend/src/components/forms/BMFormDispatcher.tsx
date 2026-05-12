@@ -2,6 +2,9 @@ import React from 'react';
 import { BM01HandoverModal } from './BM01HandoverModal';
 import { BM02HandoverModal } from './BM02HandoverModal';
 import { BM03DamagedModal } from './BM03DamagedModal';
+import { BM04LiquidationModal } from './BM04LiquidationModal';
+import { BM05DisposalModal } from './BM05DisposalModal';
+import { BM06TransferModal } from './BM06TransferModal';
 import { BM13LostModal } from './BM13LostModal';
 import { BM09InspectionModal, BM10MaintenanceModal, BM12InventoryModal } from './OtherBMModals';
 
@@ -21,19 +24,25 @@ export const BMFormDispatcher: React.FC<BMFormDispatcherProps> = ({
   data
 }) => {
   switch (formCode) {
-    case 'BM01/QLTS':
+    case 'BM01':
       return <BM01HandoverModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} />;
-    case 'BM02/QLTS':
+    case 'BM02':
       return <BM02HandoverModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} initialAsset={data?.asset} />;
-    case 'BM03/QLTS':
+    case 'BM03':
       return <BM03DamagedModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} asset={data?.asset} />;
-    case 'BM09/QLTS':
+    case 'BM04':
+      return <BM04LiquidationModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} asset={data?.asset} />;
+    case 'BM05':
+      return <BM05DisposalModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} asset={data?.asset} />;
+    case 'BM06':
+      return <BM06TransferModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} asset={data?.asset} />;
+    case 'BM09':
       return <BM09InspectionModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} asset={data?.asset} businessType={data?.businessType} />;
-    case 'BM10/QLTS':
+    case 'BM10':
       return <BM10MaintenanceModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} ticket={data?.ticket} asset={data?.asset} />;
-    case 'BM12/QLTS':
+    case 'BM12':
       return <BM12InventoryModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} period={data?.period} />;
-    case 'BM13/QLTS':
+    case 'BM13':
       return <BM13LostModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} asset={data?.asset} />;
     default:
       return null;

@@ -169,7 +169,7 @@ export class AssetService {
     }, { timeout: 30000 });
   }
 
-  static async updateAsset(id: number, updates: any, performedBy: string) {
+  static async updateAsset(id: number, updates: any, performedBy: string, reason?: string) {
     return await prisma.$transaction(async (tx) => {
       const oldAsset = await tx.asset.findUnique({ where: { id } });
       if (!oldAsset) throw new Error('Asset not found');
@@ -179,7 +179,7 @@ export class AssetService {
         data: updates
       });
 
-      await AuditService.logAssetChange(id, oldAsset, updatedAsset, performedBy, tx);
+      await AuditService.logAssetChange(id, oldAsset, updatedAsset, performedBy, tx, reason);
 
       return updatedAsset;
     }, { timeout: 30000 });

@@ -11,7 +11,7 @@ export class AuditService {
   }: {
     entityType: string;
     entityId: number;
-    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'ASSIGN' | 'REPAIR' | 'REQUEST' | 'COMPLETE' | 'DAMAGE' | 'LOST' | 'LIQUIDATE';
+    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'ASSIGN' | 'REPAIR' | 'REQUEST' | 'COMPLETE' | 'DAMAGE' | 'LOST' | 'LIQUIDATE' | 'PRINT';
     details?: any;
     performedBy: string;
     tx?: any;
@@ -32,16 +32,21 @@ export class AuditService {
     }
   }
 
-  static async logAssetChange(assetId: number, oldData: any, newData: any, performedBy: string, tx?: any) {
+  static async logAssetChange(assetId: number, oldData: any, newData: any, performedBy: string, tx?: any, reason?: string) {
     const changes: Record<string, { old: any; new: any }> = {};
     const fieldsToTrack = [
       'status', 'currentUserName', 'departmentName', 'locationName', 
-      'cityName', 'assetName', 'serialNumber', 'purchasePriceExVat'
+      'cityName', 'assetName', 'serialNumber', 'purchasePriceExVat',
+      'unit', 'usagePurpose', 'purchaseDate', 'depreciationEndDate',
+      'supplierName', 'companyCode', 'assetCode', 'note'
     ];
 
     for (const field of fieldsToTrack) {
-      if (oldData[field] !== newData[field]) {
-        changes[field] = { old: oldData[field], new: newData[field] };
+      const oldVal = oldData[field] instanceof Date ? oldData[field].toISOString() : oldData[field];
+      const newVal = newData[field] instanceof Date ? newData[field].toISOString() : newData[field];
+      
+      if (oldVal !== newVal) {
+        changes[field] = { old: oldVal, new: newVal };
       }
     }
 
@@ -50,7 +55,10 @@ export class AuditService {
         entityType: 'ASSET',
         entityId: assetId,
         action: 'UPDATE',
-        details: changes,
+        details: {
+          changes,
+          reason: reason || null
+        },
         performedBy,
         tx
       });

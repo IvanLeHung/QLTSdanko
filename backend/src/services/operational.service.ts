@@ -148,4 +148,32 @@ export class OperationalService {
       return record;
     }, { timeout: 60000 });
   }
+
+  // --- PRINT LOG ---
+  static async logPrintAction(data: {
+    assetIds: number[];
+    template: string;
+    copies: number;
+    config?: any;
+  }, performedBy: string) {
+    for (const assetId of data.assetIds) {
+      await prisma.asset.update({
+        where: { id: assetId },
+        data: { lastLabelPrint: new Date() }
+      });
+      
+      await AuditService.log({
+        entityType: 'ASSET',
+        entityId: assetId,
+        action: 'PRINT',
+        details: {
+          template: data.template,
+          copies: data.copies,
+          config: data.config
+        },
+        performedBy
+      });
+    }
+    return { success: true, count: data.assetIds.length };
+  }
 }

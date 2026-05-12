@@ -34,4 +34,15 @@ router.post('/liquidation', authenticateToken, async (req: any, res) => {
   }
 });
 
+
+// --- PRINT LOG ---
+router.post('/print-log', authenticateToken, async (req: any, res) => {
+  try {
+    const result = await OperationalService.logPrintAction(req.body, req.user.username);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 export default router;

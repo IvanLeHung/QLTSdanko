@@ -48,6 +48,7 @@ export const BM13LostModal: React.FC<BM13ModalProps> = ({ isOpen, onClose, onSub
       onConfirm={handleSubmit}
       submitting={loading}
       confirmLabel="Xác nhận ghi nhận mất"
+      isCompleted={formData.status === 'COMPLETED'}
     >
       {/* ASSET INFO */}
       <FormSection title="Thông tin tài sản mất" icon={Search}>

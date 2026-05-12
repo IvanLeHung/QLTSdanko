@@ -44,7 +44,8 @@ export const BM03DamagedModal: React.FC<BM03ModalProps> = ({ isOpen, onClose, on
       date={formData.date}
       onConfirm={handleSubmit}
       submitting={loading}
-      confirmLabel="Ghi nhận hỏng"
+      confirmLabel="Xác nhận báo hỏng"
+      isCompleted={formData.status === 'COMPLETED'}
     >
       {/* ASSET INFO */}
       <FormSection title="Thông tin tài sản" icon={Search}>

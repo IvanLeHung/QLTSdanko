@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { BaseFormModal, FormSection, FormField, FormInput, FormSelect, FormTextArea } from './BaseFormModal';
 import { AssetItemsTable, AttachmentUploader, SignatureBlock } from './FormComponents';
 import { Building2, User, Package, ClipboardCheck, FilePlus } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 interface BM01ModalProps {
   isOpen: boolean;
@@ -34,6 +35,10 @@ export const BM01HandoverModal: React.FC<BM01ModalProps> = ({ isOpen, onClose, o
   });
 
   const handleSubmit = () => {
+    if (formData.items.length === 0) {
+      toast.error("Chưa có tài sản nào được chọn. Vui lòng bấm '+ Thêm tài sản' trước khi tạo.");
+      return;
+    }
     setLoading(true);
     // Simulate API call
     setTimeout(() => {
@@ -76,6 +81,7 @@ export const BM01HandoverModal: React.FC<BM01ModalProps> = ({ isOpen, onClose, o
       submitting={loading}
       summary={summary}
       confirmLabel="Tạo tài sản từ biên bản"
+      isCompleted={formData.status === 'COMPLETED'}
     >
       {/* SECTION 1: RECEIVE INFO */}
       <FormSection title="Thông tin tiếp nhận" icon={ClipboardCheck}>

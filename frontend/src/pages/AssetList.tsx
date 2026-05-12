@@ -1,47 +1,43 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import api from '../lib/api';
 import { 
   Search, 
   Download, 
-  Edit2, 
-  History,
+  ChevronLeft, 
+  ChevronRight, 
+  MoreVertical, 
+  Plus, 
+  X, 
+  FileUp, 
+  AlertCircle, 
+  Eye, 
+  UserPlus, 
+  ArrowRightLeft, 
+  Wrench, 
+  Trash2, 
+  Box, 
+  CheckCircle2, 
+  RotateCcw, 
+  ClipboardCheck, 
+  MapPin, 
+  Tag, 
+  Printer, 
+  ArrowUpDown, 
+  ShieldAlert,
   CheckSquare,
   Square,
-  ChevronLeft,
-  ChevronRight,
-  MoreVertical,
-  Plus,
-  X,
-  FileUp,
-  AlertCircle,
-  Eye,
-  UserPlus,
-  ArrowRightLeft,
-  Wrench,
-  Trash2,
-  Calendar,
-  Box,
-  CheckCircle2,
-  Clock,
-  ExternalLink,
-  RotateCcw,
-  ClipboardCheck,
-  FileText,
   Activity,
-  Building2,
-  MapPin,
-  Tag,
-  Printer,
-  Filter,
-  ArrowUpDown,
-  ShieldAlert
+  ChevronDown,
+  Trash,
+  Loader2
 } from 'lucide-react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
-import { format } from 'date-fns';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { AutocompleteInput, MultiSelect, PopoverFilter, FilterChip } from '../components/FilterComponents';
 import { Can } from '../components/Can';
 import { AssetDetailPopup } from '../components/AssetDetailPopup';
+import { AssetLabelPrintModal } from '../components/AssetLabelPrintModal';
+import { BMFormDispatcher } from '../components/forms/BMFormDispatcher';
 
 export const AssetList: React.FC = () => {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -79,9 +75,17 @@ export const AssetList: React.FC = () => {
   };
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [isPopupOpen, setIsPopupOpen] = useState(false);
+  const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
+  const [detailTab, setDetailTab] = useState<any>('info');
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
+  
+  // Print Modal State
+  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
+  const [assetsToPrint, setAssetsToPrint] = useState<any[]>([]);
+
+  // BM Modal State
+  const [activeBM, setActiveBM] = useState<{code: string, data?: any} | null>(null);
 
   const updateParam = (key: string, value: string | null) => {
     const newParams = new URLSearchParams(searchParams);
@@ -90,7 +94,6 @@ export const AssetList: React.FC = () => {
     } else {
       newParams.set(key, value);
     }
-    // Always reset to page 1 on filter change
     if (key !== 'page') newParams.set('page', '1');
     setSearchParams(newParams);
   };
@@ -148,46 +151,80 @@ export const AssetList: React.FC = () => {
     }
   };
 
-  const activeFilterCount = Object.values(filters).filter(v => v !== '').length;
+  const openAssetDetail = (assetId: number, tab: string = 'info') => {
+    const asset = assets.find(a => a.id === assetId);
+    if (!asset) return;
 
-  const handleRowClick = (assetId: number) => {
+    let targetTab = tab;
+    if (tab === 'status_auto') {
+      switch (asset.status) {
+        case 'UNDER_REPAIR':
+        case 'DAMAGED':
+          targetTab = 'repair';
+          break;
+        case 'LOST':
+          targetTab = 'timeline';
+          break;
+        case 'IN_STOCK':
+          targetTab = 'info';
+          break;
+        default:
+          targetTab = 'info';
+      }
+    }
+
     setSelectedAssetId(assetId);
-    setIsPopupOpen(true);
+    setDetailTab(targetTab);
+    setIsDetailOpen(true);
   };
 
-  const handlePopupAction = (action: string, assetId: number) => {
+  const handleAssetAction = (action: string, asset: any) => {
+    setActiveMenuId(null);
     switch (action) {
+      case 'view':
+        openAssetDetail(asset.id, 'info');
+        break;
       case 'handover':
-        navigate('/assets/assign', { state: { selectedIds: [assetId] } });
+        setActiveBM({ code: 'BM02/QLTS', data: { asset } });
+        break;
+      case 'revoke':
+        setActiveBM({ code: 'BM01/QLTS', data: { asset } });
         break;
       case 'inventory':
-        toast.info("Tính năng kiểm kê đang được triển khai");
+        setActiveBM({ code: 'BM09/QLTS', data: { asset, businessType: 'Kiểm tra đột xuất' } });
         break;
-      case 'recover':
-        toast.info("Tính năng thu hồi đang được triển khai");
+      case 'repair':
+        setActiveBM({ code: 'BM03/QLTS', data: { asset } });
         break;
-      case 'damage':
-        navigate('/operational/damage', { state: { assetId } });
+      case 'liquidation':
+        toast.info("Đang mở hồ sơ thanh lý cho " + asset.assetCode);
         break;
-      case 'lost':
-        navigate('/operational/lost', { state: { assetId } });
+      case 'print_label':
+        setAssetsToPrint([asset]);
+        setIsPrintModalOpen(true);
         break;
-      case 'liquidate':
-        navigate('/operational/liquidation', { state: { assetIds: [assetId] } });
-        break;
-      case 'print':
-        toast.info("Đang chuẩn bị in biên bản...");
+      case 'history':
+        openAssetDetail(asset.id, 'timeline');
         break;
       default:
         break;
     }
   };
 
+  const handleBulkPrint = () => {
+    const selectedAssets = assets.filter(a => selectedIds.includes(a.id));
+    if (selectedAssets.length === 0) return;
+    setAssetsToPrint(selectedAssets);
+    setIsPrintModalOpen(true);
+  };
+
+  const selectedAssets = useMemo(() => assets.filter(a => selectedIds.includes(a.id)), [assets, selectedIds]);
+
   return (
     <div className="space-y-6 relative min-h-screen pb-20 bg-[#f8fafc]">
       {/* PAGE HEADER */}
       <div className="flex items-center justify-between px-2">
-        <h1 className="text-[24px] font-[700] text-[#0F172A]">Assets</h1>
+        <h1 className="text-[24px] font-[700] text-[#0F172A]">Asset Ledger</h1>
         <div className="flex items-center space-x-2 text-[12px] font-[600] text-[#64748B] uppercase tracking-wider">
            Hệ thống quản lý tài sản v2.0
         </div>
@@ -206,7 +243,6 @@ export const AssetList: React.FC = () => {
 
       {/* TOOLBAR & FILTERS */}
       <div className="bg-white p-4 rounded-2xl shadow-sm border border-[#E2E8F0] space-y-3">
-        {/* ROW 1: SEARCH & ACTIONS */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#94A3B8]" />
@@ -218,16 +254,10 @@ export const AssetList: React.FC = () => {
               onChange={(e) => updateParam('search', e.target.value)}
             />
           </div>
-          
           <div className="flex items-center space-x-2">
             <Can permission="asset.export">
               <button className="btn-secondary h-[38px] px-4 flex items-center text-[13px] font-[600]">
                 <Download className="mr-2 h-4 w-4" /> Export
-              </button>
-            </Can>
-            <Can permission="asset.import">
-              <button onClick={() => navigate('/import/assets')} className="btn-secondary h-[38px] px-4 flex items-center text-[13px] font-[600]">
-                <FileUp className="mr-2 h-4 w-4" /> Import
               </button>
             </Can>
             <Can permission="asset.create">
@@ -240,7 +270,6 @@ export const AssetList: React.FC = () => {
 
         <div className="h-px bg-slate-100 mx-[-1rem]"></div>
 
-        {/* ROW 2: QUICK FILTERS */}
         <div className="flex flex-wrap items-center gap-2">
           <MultiSelect 
             label="Trạng thái" 
@@ -256,134 +285,17 @@ export const AssetList: React.FC = () => {
               {label: 'Hỏng', value: 'DAMAGED'},
             ]}
           />
-
-          <AutocompleteInput 
-            placeholder="Mã công ty" 
-            value={filters.companyCode} 
-            onChange={(v) => updateParam('companyCode', v)} 
-            endpoint="/assets/filter-options/companies"
-          />
-
-          <AutocompleteInput 
-            placeholder="Nhóm LV4" 
-            value={filters.level4Code} 
-            onChange={(v) => updateParam('level4Code', v)} 
-            endpoint="/assets/filter-options/lv4"
-            icon={<Tag className="h-4 w-4" />}
-          />
-
-          <AutocompleteInput 
-            placeholder="Người sử dụng" 
-            value={filters.currentUserName} 
-            onChange={(v) => updateParam('currentUserName', v)} 
-            endpoint="/assets/filter-options/users"
-            icon={<Search className="h-4 w-4" />}
-          />
-
-          <AutocompleteInput 
-            placeholder="Bộ phận" 
-            value={filters.departmentName} 
-            onChange={(v) => updateParam('departmentName', v)} 
-            endpoint="/assets/filter-options/departments"
-            icon={<Search className="h-4 w-4" />}
-          />
-
-          <AutocompleteInput 
-            placeholder="Vị trí" 
-            value={filters.locationQuery} 
-            onChange={(v) => updateParam('locationQuery', v)} 
-            endpoint="/assets/filter-options/locations"
-            icon={<MapPin className="h-4 w-4" />}
-          />
-
-          <PopoverFilter label="Giá" isActive={!!filters.priceMin || !!filters.priceMax}>
-             <div className="space-y-4">
-               <p className="text-[12px] font-[800] text-slate-400 uppercase tracking-widest">Lọc theo giá mua (VNĐ)</p>
-               <div className="flex items-center space-x-3">
-                 <div className="flex-1">
-                   <label className="block text-[10px] font-bold text-slate-400 mb-1">GIÁ TỪ</label>
-                   <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-primary-500 focus:border-primary-500" value={filters.priceMin} onChange={(e) => updateParam('priceMin', e.target.value)} placeholder="0" />
-                 </div>
-                 <div className="flex-1">
-                   <label className="block text-[10px] font-bold text-slate-400 mb-1">ĐẾN</label>
-                   <input type="number" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold focus:ring-primary-500 focus:border-primary-500" value={filters.priceMax} onChange={(e) => updateParam('priceMax', e.target.value)} placeholder="999,999,999" />
-                 </div>
-               </div>
-             </div>
-          </PopoverFilter>
-
-          <PopoverFilter label="Thêm lọc" icon={<Plus className="h-4 w-4" />} isActive={false}>
-            <div className="grid grid-cols-1 gap-6 w-80">
-               <div>
-                  <p className="text-[11px] font-[800] text-slate-400 uppercase tracking-widest mb-3">Thông tin bổ sung</p>
-                  <div className="space-y-3">
-                    <AutocompleteInput placeholder="Nhà cung cấp" value={filters.supplierName} onChange={(v) => updateParam('supplierName', v)} endpoint="/assets/filter-options/suppliers" />
-                    <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-[13px] font-[600] text-slate-700" value={filters.hasSerial} onChange={(e) => updateParam('hasSerial', e.target.value)}>
-                      <option value="">Tất cả Serial</option>
-                      <option value="true">Có Serial</option>
-                      <option value="false">Không có Serial</option>
-                    </select>
-                    <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-[13px] font-[600] text-slate-700" value={filters.hasDocuments} onChange={(e) => updateParam('hasDocuments', e.target.value)}>
-                      <option value="">Tất cả Giấy tờ</option>
-                      <option value="true">Có Giấy tờ / Ghi chú</option>
-                      <option value="false">Không có Giấy tờ</option>
-                    </select>
-                  </div>
-               </div>
-               <div>
-                  <p className="text-[11px] font-[800] text-slate-400 uppercase tracking-widest mb-3">Ngày tháng</p>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Mua từ</label>
-                      <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] font-bold" value={filters.purchaseDateFrom} onChange={(e) => updateParam('purchaseDateFrom', e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="block text-[10px] font-bold text-slate-400 mb-1 uppercase">đến</label>
-                      <input type="date" className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-[12px] font-bold" value={filters.purchaseDateTo} onChange={(e) => updateParam('purchaseDateTo', e.target.value)} />
-                    </div>
-                  </div>
-               </div>
-            </div>
-          </PopoverFilter>
-
-          <button 
-            onClick={() => setSearchParams({})}
-            className="flex items-center px-2 py-1 text-[12px] font-[700] text-slate-400 hover:text-red-500 transition-colors ml-auto"
-          >
+          <AutocompleteInput placeholder="Công ty" value={filters.companyCode} onChange={(v) => updateParam('companyCode', v)} endpoint="/assets/filter-options/companies" />
+          <AutocompleteInput placeholder="Bộ phận" value={filters.departmentName} onChange={(v) => updateParam('departmentName', v)} endpoint="/assets/filter-options/departments" icon={<Search className="h-4 w-4" />} />
+          <AutocompleteInput placeholder="Vị trí" value={filters.locationQuery} onChange={(v) => updateParam('locationQuery', v)} endpoint="/assets/filter-options/locations" icon={<MapPin className="h-4 w-4" />} />
+          
+          <button onClick={() => setSearchParams({})} className="flex items-center px-2 py-1 text-[12px] font-[700] text-slate-400 hover:text-red-500 transition-colors ml-auto">
             <RotateCcw className="h-3.5 w-3.5 mr-1" /> Xóa lọc
           </button>
         </div>
-
-        {/* ROW 3: FILTER CHIPS */}
-        {activeFilterCount > 0 && (
-          <div className="pt-2 flex flex-wrap items-center gap-2">
-            <span className="text-[11px] font-[800] text-slate-400 uppercase tracking-wider mr-2">
-              Đang lọc ({activeFilterCount}):
-            </span>
-            {filters.status && filters.status.split(',').map((s: string) => (
-              <FilterChip key={s} label="Trạng thái" value={getStatusLabel(s).label} onRemove={() => {
-                const newVals = filters.status.split(',').filter((v: string) => v !== s);
-                updateParam('status', newVals.join(','));
-              }} />
-            ))}
-            {filters.companyCode && <FilterChip label="Công ty" value={filters.companyCode} onRemove={() => updateParam('companyCode', null)} />}
-            {filters.level4Code && <FilterChip label="Nhóm LV4" value={filters.level4Code} onRemove={() => updateParam('level4Code', null)} />}
-            {filters.currentUserName && <FilterChip label="Người dùng" value={filters.currentUserName} onRemove={() => updateParam('currentUserName', null)} />}
-            {filters.departmentName && <FilterChip label="Bộ phận" value={filters.departmentName} onRemove={() => updateParam('departmentName', null)} />}
-            {filters.locationQuery && <FilterChip label="Vị trí" value={filters.locationQuery} onRemove={() => updateParam('locationQuery', null)} />}
-            {(filters.priceMin || filters.priceMax) && (
-               <FilterChip label="Giá" value={`${filters.priceMin || 0} - ${filters.priceMax || 'Max'}`} onRemove={() => { updateParam('priceMin', null); updateParam('priceMax', null); }} />
-            )}
-            {filters.supplierName && <FilterChip label="NCC" value={filters.supplierName} onRemove={() => updateParam('supplierName', null)} />}
-            
-            <button onClick={() => setSearchParams({})} className="text-[12px] font-[800] text-primary-600 hover:underline px-2 transition-all">
-               Xóa tất cả
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* BULK ACTIONS */}
+      {/* BULK ACTION BAR */}
       {selectedIds.length > 0 && (
         <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-10">
           <div className="bg-[#0F172A] text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center space-x-6 border border-[#1E293B]">
@@ -394,22 +306,37 @@ export const AssetList: React.FC = () => {
               <span className="text-sm font-bold tracking-tight">tài sản đang chọn</span>
             </div>
             <div className="h-6 w-px bg-[#334155]"></div>
-            <div className="flex items-center space-x-4">
-              <Can permission="asset.handover">
-                <button onClick={() => navigate('/assets/assign', { state: { selectedIds } })} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors">
-                  <UserPlus className="mr-2 h-4 w-4" /> Cấp phát / Điều chuyển
-                </button>
-              </Can>
-              <Can permission="asset.delete">
-                <button className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-[#FCA5A5]">
-                  <Trash2 className="mr-2 h-4 w-4" /> Xóa
-                </button>
-              </Can>
-              <button onClick={() => setSelectedIds([])} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400">
-                <X className="mr-2 h-4 w-4" /> Bỏ chọn
+            <div className="flex items-center space-x-2">
+              <button onClick={() => setSelectedIds([])} className="px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400">Bỏ chọn</button>
+              <button onClick={() => setActiveBM({ code: 'BM02/QLTS', data: { asset: selectedAssets[0], assets: selectedAssets } })} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors">
+                <UserPlus className="mr-2 h-4 w-4" /> Bàn giao / Điều chuyển
               </button>
+              <button onClick={() => setActiveBM({ code: 'BM12/QLTS', data: { assets: selectedAssets } })} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors">
+                <ClipboardCheck className="mr-2 h-4 w-4" /> Kiểm kê
+              </button>
+              <button onClick={handleBulkPrint} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-primary-400">
+                <Printer className="mr-2 h-4 w-4" /> In tem tài sản
+              </button>
+              <div className="relative group/more">
+                <button className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors">
+                  Thêm thao tác <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+                </button>
+                <div className="absolute bottom-full right-0 mb-4 hidden group-hover/more:block w-48 bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden shadow-2xl">
+                   <button onClick={() => setActiveBM({ code: 'BM01/QLTS', data: { assets: selectedAssets } })} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center">
+                     <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
+                   </button>
+                   <button onClick={() => setActiveBM({ code: 'BM10/QLTS', data: { assets: selectedAssets } })} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center">
+                     <Wrench className="mr-3 h-4 w-4 text-amber-500" /> Sửa chữa / Bảo trì
+                   </button>
+                   <button className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400">
+                     <Trash2 className="mr-3 h-4 w-4" /> Thanh lý
+                   </button>
+                   <button className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-emerald-400">
+                     <Download className="mr-3 h-4 w-4" /> Xuất Excel
+                   </button>
+                </div>
+              </div>
             </div>
-            <div className="h-6 w-px bg-[#334155]"></div>
             <button onClick={() => setSelectedIds([])} className="p-1.5 hover:bg-[#1E293B] rounded-full transition-colors">
               <X className="h-5 w-5 text-[#94A3B8]" />
             </button>
@@ -431,38 +358,17 @@ export const AssetList: React.FC = () => {
                     }
                   </button>
                 </th>
-                <th className="p-4">
-                  <button onClick={() => updateParam('sortBy', 'assetCode')} className="flex items-center text-[12px] font-[600] text-[#64748B] uppercase tracking-[0.05em] hover:text-primary-600 transition-colors">
-                    Mã tài sản <ArrowUpDown className="ml-1 h-3 w-3" />
-                  </button>
-                </th>
-                <th className="p-4">
-                  <button onClick={() => updateParam('sortBy', 'assetName')} className="flex items-center text-[12px] font-[600] text-[#64748B] uppercase tracking-[0.05em] hover:text-primary-600 transition-colors">
-                    Tên tài sản <ArrowUpDown className="ml-1 h-3 w-3" />
-                  </button>
-                </th>
-                <th className="p-4 text-[12px] font-[600] text-[#64748B] uppercase tracking-[0.05em]">Người sử dụng / Chức vụ</th>
-                <th className="p-4 text-[12px] font-[600] text-[#64748B] uppercase tracking-[0.05em]">Thành phố / Dự án / Vị trí</th>
-                <th className="p-4 text-[12px] font-[600] text-[#64748B] uppercase tracking-[0.05em]">Trạng thái</th>
-                <th className="p-4 text-[12px] font-[600] text-[#64748B] uppercase tracking-[0.05em] text-right">Tác vụ</th>
+                <th className="p-4 min-w-[140px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Mã tài sản</th>
+                <th className="p-4 min-w-[280px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Tên tài sản</th>
+                <th className="p-4 min-w-[220px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Người sử dụng / Chức vụ</th>
+                <th className="p-4 min-w-[220px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Thành phố / Dự án / Vị trí</th>
+                <th className="p-4 min-w-[150px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Trạng thái</th>
+                <th className="p-4 text-right uppercase text-[11px] font-black text-slate-400 tracking-widest">Tác vụ</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
               {loading ? (
-                <tr><td colSpan={7} className="p-20 text-center">
-                   <div className="flex flex-col items-center justify-center space-y-4">
-                      <div className="w-10 h-10 border-4 border-primary-100 border-t-primary-600 rounded-full animate-spin"></div>
-                      <p className="text-[14px] font-[600] text-[#64748B] uppercase tracking-widest">Đang tải dữ liệu...</p>
-                   </div>
-                </td></tr>
-              ) : assets.length === 0 ? (
-                <tr><td colSpan={7} className="p-32 text-center">
-                   <div className="max-w-xs mx-auto space-y-4">
-                      <div className="bg-[#F8FAFC] w-24 h-24 rounded-full flex items-center justify-center mx-auto text-[#CBD5E1]"><Box className="h-12 w-12" /></div>
-                      <h3 className="text-[18px] font-[700] text-[#0F172A]">Không tìm thấy tài sản nào</h3>
-                      <p className="text-[14px] text-[#64748B]">Thử điều chỉnh bộ lọc hoặc từ khóa tìm kiếm của bạn.</p>
-                   </div>
-                </td></tr>
+                <tr><td colSpan={7} className="p-20 text-center"><Loader2 className="h-8 w-8 animate-spin text-primary-500 mx-auto" /></td></tr>
               ) : assets.map((asset) => {
                 const status = getStatusLabel(asset.status);
                 return (
@@ -470,10 +376,10 @@ export const AssetList: React.FC = () => {
                     key={asset.id} 
                     className={cn(
                       "hover:bg-[#F8FAFC]/80 transition-all group cursor-pointer border-l-4",
-                      selectedAssetId === asset.id && isPopupOpen ? "bg-primary-50 border-l-primary-500" : "border-l-transparent",
+                      selectedAssetId === asset.id && isDetailOpen ? "bg-primary-50 border-l-primary-500" : "border-l-transparent",
                       selectedIds.includes(asset.id) ? "bg-primary-50/30" : ""
                     )}
-                    onClick={() => handleRowClick(asset.id)}
+                    onClick={() => openAssetDetail(asset.id, 'info')}
                   >
                     <td className="p-4 sticky left-0 bg-white group-hover:bg-[#F8FAFC] z-10" onClick={(e) => e.stopPropagation()}>
                       <button onClick={(e) => { e.stopPropagation(); setSelectedIds(prev => prev.includes(asset.id) ? prev.filter(i => i !== asset.id) : [...prev, asset.id]); }} className="flex items-center justify-center w-5 h-5">
@@ -483,46 +389,23 @@ export const AssetList: React.FC = () => {
                         }
                       </button>
                     </td>
-                    <td className="p-4 text-[14px] font-[600] text-primary-700 font-mono whitespace-nowrap">
+                    <td className="p-4 text-[13px] font-black text-primary-700 font-mono" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
                       {asset.assetCode}
                     </td>
-                    <td className="p-4 max-w-sm">
-                      <div className="group/name relative">
-                        <div className="text-[15px] font-[600] text-[#0F172A] leading-[1.4] line-clamp-2 group-hover:text-primary-700 transition-colors">
-                          {asset.assetNameShort || asset.assetName}
-                        </div>
-                        <div className="absolute left-0 bottom-full mb-2 hidden group-hover/name:block z-50 bg-[#0F172A] text-white p-3 rounded-xl text-xs w-64 shadow-2xl border border-white/10 animate-in fade-in zoom-in duration-100">
-                           <p className="font-bold border-b border-white/10 pb-1.5 mb-1.5 uppercase tracking-widest text-[9px] text-[#94A3B8]">Tên đầy đủ</p>
-                           {asset.assetName}
-                        </div>
-                      </div>
-                      <div className="mt-1.5 flex items-center text-[13px] font-[500] text-[#475569]">
-                        Serial: <span className="ml-1 text-[#0F172A] font-[600] tracking-tight">{asset.serialNumber || 'N/A'}</span>
-                      </div>
+                    <td className="p-4" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
+                      <p className="text-[14px] font-black text-slate-800 leading-tight">{asset.assetNameShort || asset.assetName}</p>
+                      <p className="text-[11px] font-bold text-slate-400 mt-1">Serial: <span className="text-slate-600">{asset.serialNumber || '-'}</span></p>
                     </td>
-                    <td className="p-4">
-                      <div className="flex flex-col">
-                        <div className="text-[15px] font-[600] text-[#0F172A]">
-                          {asset.currentUserName || <span className="text-[#CBD5E1] font-[400] italic">Chưa cấp phát</span>}
-                        </div>
-                        {asset.currentPosition && asset.currentPosition !== '0' && (
-                          <div className="text-[12px] font-[500] text-[#64748B] mt-0.5 italic">
-                            {asset.currentPosition}
-                          </div>
-                        )}
-                      </div>
+                    <td className="p-4" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
+                      <p className="text-[14px] font-black text-slate-800">{asset.currentUserName || <span className="text-slate-300 font-bold italic">Chưa cấp phát</span>}</p>
+                      <p className="text-[11px] font-bold text-slate-400">{asset.currentPosition || '-'}</p>
                     </td>
-                    <td className="p-4">
-                      <div className="text-[13px] font-[600] text-[#475569] flex items-center">
-                         <MapPin className="h-3.5 w-3.5 mr-1.5 text-[#94A3B8]" />
-                         {asset.cityName} {asset.projectName ? ` / ${asset.projectName}` : ''}
-                      </div>
-                      <div className="text-[13px] text-[#94A3B8] mt-1 font-[500] ml-5">
-                         {asset.locationName}
-                      </div>
+                    <td className="p-4" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
+                      <p className="text-[13px] font-black text-slate-700 flex items-center"><MapPin className="h-3 w-3 mr-1.5 text-slate-400" />{asset.cityName}</p>
+                      <p className="text-[11px] font-bold text-slate-400 ml-4.5">{asset.locationName}</p>
                     </td>
-                    <td className="p-4">
-                      <span className={cn("px-3 py-1 rounded-full text-[12px] font-[700] uppercase border-2", status.color)}>
+                    <td className="p-4" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'status_auto'); }}>
+                      <span className={cn("px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border", status.color)}>
                         {status.label}
                       </span>
                     </td>
@@ -536,18 +419,18 @@ export const AssetList: React.FC = () => {
                           </button>
                           {activeMenuId === asset.id && (
                             <>
-                              <div className="fixed inset-0 z-30" onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); }}></div>
-                              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-[#E2E8F0] z-40 p-2 animate-in fade-in zoom-in duration-150">
-                                 <ActionItem label="Xem chi tiết" icon={<Eye className="h-4 w-4" />} onClick={() => { handleRowClick(asset.id); setActiveMenuId(null); }} />
-                                 <ActionItem label="Cấp phát / Điều chuyển" icon={<UserPlus className="h-4 w-4" />} onClick={() => { navigate('/assets/assign', { state: { selectedIds: [asset.id] } }); setActiveMenuId(null); }} />
-                                 <ActionItem label="Thu hồi" icon={<RotateCcw className="h-4 w-4" />} onClick={() => setActiveMenuId(null)} />
+                              <div className="fixed inset-0 z-30" onClick={() => setActiveMenuId(null)}></div>
+                              <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-[#E2E8F0] z-40 p-2 animate-in fade-in zoom-in duration-150 text-left">
+                                 <ActionItem label="Xem chi tiết" icon={<Eye className="h-4 w-4" />} onClick={() => handleAssetAction('view', asset)} />
+                                 <ActionItem label="Cấp phát / Điều chuyển" icon={<UserPlus className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} />
+                                 <ActionItem label="Thu hồi" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} />
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
-                                 <ActionItem label="Kiểm kê" icon={<ClipboardCheck className="h-4 w-4" />} onClick={() => setActiveMenuId(null)} />
-                                 <ActionItem label="Sửa chữa / Bảo trì" icon={<Wrench className="h-4 w-4" />} onClick={() => setActiveMenuId(null)} />
-                                 <ActionItem label="Thanh lý" icon={<Trash2 className="h-4 w-4" />} onClick={() => setActiveMenuId(null)} />
+                                 <ActionItem label="Kiểm kê" icon={<ClipboardCheck className="h-4 w-4" />} onClick={() => handleAssetAction('inventory', asset)} />
+                                 <ActionItem label="Sửa chữa / Bảo trì" icon={<Wrench className="h-4 w-4" />} onClick={() => handleAssetAction('repair', asset)} />
+                                 <ActionItem label="Thanh lý" icon={<Trash className="h-4 w-4" />} onClick={() => handleAssetAction('liquidation', asset)} />
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
-                                 <ActionItem label="In / Xuất biên bản" icon={<Printer className="h-4 w-4" />} onClick={() => setActiveMenuId(null)} />
-                                 <ActionItem label="Nhật ký tài sản" icon={<Activity className="h-4 w-4" />} onClick={() => { handleRowClick(asset.id); setActiveMenuId(null); }} />
+                                 <ActionItem label="In tem tài sản" icon={<Printer className="h-4 w-4" />} onClick={() => handleAssetAction('print_label', asset)} />
+                                 <ActionItem label="Nhật ký tài sản" icon={<Activity className="h-4 w-4" />} onClick={() => handleAssetAction('history', asset)} />
                               </div>
                             </>
                           )}
@@ -559,55 +442,47 @@ export const AssetList: React.FC = () => {
             </tbody>
           </table>
         </div>
-
+        
         {/* PAGINATION */}
-        <div className="p-5 bg-[#F8FAFC]/50 border-t border-[#E2E8F0] flex flex-col sm:flex-row items-center justify-between gap-4">
-           <div className="flex items-center text-[12px] font-[700] text-[#64748B] uppercase tracking-[0.1em]">
-             HIỂN THỊ <span className="text-[#0F172A] mx-1">{assets.length}</span> / <span className="text-[#0F172A] mx-1">{total}</span> TÀI SẢN
-             <div className="h-4 w-px bg-[#E2E8F0] mx-4"></div>
-             DÒNG: 
-             <select 
-               className="ml-2 bg-transparent text-[#0F172A] focus:outline-none cursor-pointer"
-               value={limit}
-               onChange={(e) => updateParam('limit', e.target.value)}
-             >
-               <option value={10}>10</option>
-               <option value={25}>25</option>
-               <option value={50}>50</option>
-               <option value={100}>100</option>
-             </select>
-           </div>
-           
-           <div className="flex items-center space-x-2">
-             <button disabled={page === 1} onClick={() => updateParam('page', String(page - 1))} className="p-2.5 rounded-xl bg-white border border-[#E2E8F0] hover:bg-slate-50 disabled:opacity-30 shadow-sm transition-all">
-               <ChevronLeft className="h-5 w-5 text-[#475569]" />
-             </button>
-             <div className="flex items-center space-x-1 bg-white p-1 rounded-xl border border-[#E2E8F0] shadow-sm">
-               {[...Array(Math.min(5, Math.ceil(total/limit)))].map((_, i) => (
-                 <button key={i+1} onClick={() => updateParam('page', String(i+1))} className={cn("w-9 h-9 rounded-lg text-sm font-[700] transition-all", page === i+1 ? "bg-primary-600 text-white shadow-lg shadow-primary-200" : "hover:bg-slate-50 text-[#64748B]")}>
-                   {i+1}
-                 </button>
-               ))}
-             </div>
-             <button disabled={page * limit >= total} onClick={() => updateParam('page', String(page + 1))} className="p-2.5 rounded-xl bg-white border border-[#E2E8F0] hover:bg-slate-50 disabled:opacity-30 shadow-sm transition-all">
-               <ChevronRight className="h-5 w-5 text-[#475569]" />
-             </button>
+        <div className="p-5 border-t border-[#E2E8F0] flex justify-between items-center bg-slate-50/50">
+           <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Trang {page} / {Math.ceil(total/limit)} ({total} tài sản)</p>
+           <div className="flex space-x-2">
+             <button disabled={page === 1} onClick={() => updateParam('page', String(page - 1))} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+             <button disabled={page * limit >= total} onClick={() => updateParam('page', String(page + 1))} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
            </div>
         </div>
       </div>
 
-      {/* DETAIL POPUP */}
+      {/* POPUPS & MODALS */}
       <AssetDetailPopup 
         assetId={selectedAssetId}
-        isOpen={isPopupOpen}
-        onClose={() => setIsPopupOpen(false)}
-        onAction={handlePopupAction}
+        isOpen={isDetailOpen}
+        initialTab={detailTab}
+        onClose={() => setIsDetailOpen(false)}
+        onAction={(action, id) => {
+          setIsDetailOpen(false);
+          const asset = assets.find(a => a.id === id);
+          if (asset) handleAssetAction(action, asset);
+        }}
+      />
+
+      <AssetLabelPrintModal 
+        isOpen={isPrintModalOpen}
+        onClose={() => setIsPrintModalOpen(false)}
+        assets={assetsToPrint}
+      />
+
+      <BMFormDispatcher 
+        isOpen={!!activeBM}
+        formCode={activeBM?.code || ''}
+        data={activeBM?.data}
+        onClose={() => setActiveBM(null)}
+        onSubmit={() => { setActiveBM(null); fetchAssets(); }}
       />
     </div>
   );
 };
 
-// HELPER COMPONENTS
 const StatCard = ({ label, value, icon, color }: any) => {
   const colors: any = {
     primary: 'text-primary-600 bg-primary-50/30 border-primary-100',
@@ -616,78 +491,24 @@ const StatCard = ({ label, value, icon, color }: any) => {
     amber: 'text-amber-600 bg-amber-50/30 border-amber-100',
     rose: 'text-rose-600 bg-rose-50/30 border-rose-100',
   };
-
   return (
     <div className={cn("p-6 rounded-3xl border-2 bg-white flex items-center space-x-5 shadow-sm hover:shadow-xl transition-all group", colors[color])}>
       <div className={cn("p-3.5 rounded-2xl bg-white shadow-sm transition-all group-hover:scale-110 group-hover:rotate-6")}>{icon}</div>
       <div>
-        <p className="text-[12px] font-[600] uppercase text-[#64748B] tracking-[0.05em] leading-none mb-2">{label}</p>
-        <p className="text-[28px] font-[700] text-[#0F172A] tracking-tight leading-none">{value?.toLocaleString() || 0}</p>
+        <p className="text-[10px] font-black uppercase text-[#64748B] tracking-widest mb-1">{label}</p>
+        <p className="text-[28px] font-black text-[#0F172A] tracking-tighter">{value?.toLocaleString() || 0}</p>
       </div>
     </div>
   );
 };
 
-const DetailQuickCard = ({ label, value, color }: any) => (
-  <div className={cn(
-    "flex-1 p-5 rounded-2xl border-2 flex flex-col items-center justify-center text-center bg-white shadow-sm transition-all hover:border-primary-200",
-    color === 'blue' ? "border-blue-100 bg-blue-50/30" : 
-    color === 'emerald' ? "border-emerald-100 bg-emerald-50/30" : "border-[#E2E8F0] bg-white"
-  )}>
-     <p className="text-[10px] font-[600] text-[#64748B] uppercase tracking-[0.15em] mb-2">{label}</p>
-     <p className={cn("text-[15px] font-[700] truncate w-full px-2 leading-none", color === 'blue' ? "text-blue-700" : color === 'emerald' ? "text-emerald-700" : "text-[#0F172A]")}>{value}</p>
-  </div>
-);
-
 const ActionItem = ({ label, icon, onClick }: any) => (
-  <button 
-    onClick={onClick}
-    className="w-full flex items-center px-4 py-3.5 text-[14px] font-[600] text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC] rounded-xl transition-all group/action"
-  >
-    <span className="mr-3 text-[#94A3B8] group-hover/action:text-primary-600 transition-colors">{icon}</span>
-    {label}
+  <button onClick={onClick} className="w-full flex items-center px-4 py-3 text-[12px] font-black text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC] rounded-xl transition-all uppercase tracking-tight">
+    <span className="mr-3 text-[#94A3B8]">{icon}</span> {label}
   </button>
-);
-
-const TabButton = ({ label, id, active, onClick, icon }: any) => (
-  <button 
-    onClick={() => onClick(id)}
-    className={cn(
-      "flex items-center space-x-2 px-6 py-5 text-[12px] font-[800] uppercase tracking-[0.1em] border-b-4 transition-all",
-      active === id ? "border-primary-600 text-primary-600 bg-primary-50/10" : "border-transparent text-[#94A3B8] hover:text-[#64748B] hover:bg-[#F8FAFC]"
-    )}
-  >
-    {icon}
-    <span>{label}</span>
-  </button>
-);
-
-const DetailField = ({ label, value, bold }: any) => (
-  <div className="space-y-2">
-    <p className="text-[12px] font-[600] text-[#64748B] uppercase tracking-[0.1em]">{label}</p>
-    <div className={cn("text-[16px] text-[#0F172A] leading-relaxed", bold ? "font-[800] tracking-tight" : "font-[600]")}>
-      {value || '-'}
-    </div>
-  </div>
-);
-
-const AuditItem = ({ date, action, user, description }: any) => (
-  <div className="relative">
-     <div className="absolute -left-[57px] top-0.5 w-10 h-10 bg-white border-4 border-[#F1F5F9] rounded-2xl z-10 flex items-center justify-center shadow-sm">
-        <div className="w-2.5 h-2.5 bg-[#CBD5E1] rounded-full"></div>
-     </div>
-     <div className="animate-in slide-in-from-left-4 duration-500">
-        <p className="text-[11px] font-[800] text-[#94A3B8] mb-1.5 tracking-wider">{format(new Date(date), 'dd/MM/yyyy HH:mm')}</p>
-        <p className="text-[16px] font-[800] text-[#0F172A] mb-1.5 tracking-tight">{action}</p>
-        <p className="text-[14px] font-[500] text-[#475569] leading-relaxed max-w-2xl">{description}</p>
-        <div className="mt-4 flex items-center text-[11px] font-[800] text-primary-600 uppercase tracking-widest">
-           <div className="w-6 h-6 bg-primary-50 rounded-lg flex items-center justify-center mr-2.5"><UserPlus className="h-3.5 w-3.5" /></div>
-           Thực hiện bởi: {user}
-        </div>
-     </div>
-  </div>
 );
 
 function cn(...inputs: any[]) {
   return inputs.filter(Boolean).join(' ');
 }
+

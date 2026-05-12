@@ -26,6 +26,7 @@ export const BM09InspectionModal: React.FC<any> = ({ isOpen, onClose, onSubmit, 
     <BaseFormModal
       isOpen={isOpen} onClose={onClose} formCode="BM09/QLTS" title="Biên bản kiểm tra hiện trạng"
       documentNo={formData.documentNo} date={formData.date} onConfirm={() => onSubmit(formData)}
+      isCompleted={formData.status === 'COMPLETED'}
     >
       <FormSection title="Thông tin tài sản" icon={Search}>
         <div className="col-span-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between">
@@ -76,6 +77,7 @@ export const BM10MaintenanceModal: React.FC<any> = ({ isOpen, onClose, onSubmit,
     <BaseFormModal
       isOpen={isOpen} onClose={onClose} formCode="BM10/QLTS" title="Biên bản bảo dưỡng và sửa chữa"
       documentNo={ticket?.repairCode} date={new Date().toLocaleDateString('vi-VN')} onConfirm={() => onSubmit({})}
+      isCompleted={ticket?.status === 'COMPLETED'}
     >
       <FormSection title="Thông tin sửa chữa" icon={Wrench}>
         <FormField label="Mã phiếu">
@@ -127,6 +129,7 @@ export const BM12InventoryModal: React.FC<any> = ({ isOpen, onClose, onSubmit, p
     <BaseFormModal
       isOpen={isOpen} onClose={onClose} formCode="BM12/QLTS" title="Biên bản kiểm kê tài sản"
       documentNo={period?.code || 'INV-2025'} maxWidth="max-w-[1050px]" onConfirm={() => onSubmit({})}
+      isCompleted={period?.status === 'COMPLETED'}
     >
       <FormSection title="Thông tin kỳ kiểm kê" icon={Clock}>
         <FormField label="Tên kỳ kiểm kê">

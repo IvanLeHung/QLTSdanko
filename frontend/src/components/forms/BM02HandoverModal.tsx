@@ -53,6 +53,7 @@ export const BM02HandoverModal: React.FC<BM02ModalProps> = ({ isOpen, onClose, o
       onConfirm={handleSubmit}
       submitting={loading}
       confirmLabel="Xác nhận bàn giao"
+      isCompleted={(initialAsset as any)?.status === 'COMPLETED'}
     >
       {/* SENDER INFO */}
       <FormSection title="Thông tin bên giao" icon={User}>
