@@ -63,6 +63,8 @@ export const AssetList: React.FC = () => {
     companyCode: searchParams.get('companyCode') || '',
     currentUserName: searchParams.get('currentUserName') || '',
     departmentName: searchParams.get('departmentName') || '',
+    cityName: searchParams.get('cityName') || '',
+    projectName: searchParams.get('projectName') || '',
     locationQuery: searchParams.get('locationQuery') || '',
     priceMin: searchParams.get('priceMin') || '',
     priceMax: searchParams.get('priceMax') || '',
@@ -81,6 +83,7 @@ export const AssetList: React.FC = () => {
   const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
   const [detailTab, setDetailTab] = useState<any>('info');
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
+  const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   
   // Print Modal State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
@@ -88,6 +91,25 @@ export const AssetList: React.FC = () => {
 
   // BM Modal State
   const [activeBM, setActiveBM] = useState<{code: string, data?: any} | null>(null);
+
+  // Compact Header State
+  const [isCompact, setIsCompact] = useState(false);
+  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
+
+  const handleScroll = useCallback(() => {
+    if (scrollContainerRef.current) {
+      const scrollTop = scrollContainerRef.current.scrollTop;
+      setIsCompact(scrollTop > 40);
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (el) {
+      el.addEventListener('scroll', handleScroll, { passive: true });
+      return () => el.removeEventListener('scroll', handleScroll);
+    }
+  }, [handleScroll]);
 
   const updateParam = (key: string, value: string | null) => {
     const newParams = new URLSearchParams(searchParams);
@@ -229,82 +251,121 @@ export const AssetList: React.FC = () => {
     setIsPrintModalOpen(true);
   };
 
+  const handleSort = (columnKey: string) => {
+    const newOrder = (sortBy === columnKey && sortOrder === 'asc') ? 'desc' : 'asc';
+    const newParams = new URLSearchParams(searchParams);
+    newParams.set('sortBy', columnKey);
+    newParams.set('sortOrder', newOrder);
+    setSearchParams(newParams);
+  };
+
+  const sortableColumns = [
+    { key: "assetCode", label: "Mã tài sản" },
+    { key: "assetName", label: "Tên tài sản" },
+    { key: "currentUserName", label: "Người sử dụng / Chức vụ" },
+    { key: "cityName", label: "Thành phố / Dự án / Vị trí" },
+    { key: "status", label: "Trạng thái" },
+  ];
+
   const selectedAssets = useMemo(() => assets.filter(a => selectedIds.includes(a.id)), [assets, selectedIds]);
 
   return (
-    <div className="space-y-6 relative min-h-screen pb-20 bg-[#f8fafc]">
-      {/* PAGE HEADER */}
-      <div className="flex items-center justify-between px-2">
-        <h1 className="text-[24px] font-[700] text-[#0F172A]">Asset Ledger</h1>
-        <div className="flex items-center space-x-2 text-[12px] font-[600] text-[#64748B] uppercase tracking-wider">
-           Hệ thống quản lý tài sản v2.0
-        </div>
-      </div>
-
-      {/* SUMMARY CARDS */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-          <StatCard label="TỔNG TÀI SẢN" value={stats.total} icon={<Box className="h-5 w-5" />} color="primary" />
-          <StatCard label="ĐANG SỬ DỤNG" value={stats.assigned} icon={<CheckCircle2 className="h-5 w-5" />} color="blue" />
-          <StatCard label="TRONG KHO" value={stats.inStock} icon={<Box className="h-5 w-5" />} color="emerald" />
-          <StatCard label="BÁO HỎNG" value={stats.damaged} icon={<AlertCircle className="h-5 w-5" />} color="amber" />
-          <StatCard label="MẤT / THẤT THOÁT" value={stats.lost} icon={<ShieldAlert className="h-5 w-5" />} color="rose" />
-        </div>
-      )}
-
-      {/* TOOLBAR & FILTERS */}
-      <div className="bg-white p-4 rounded-2xl shadow-sm border border-[#E2E8F0] space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
-          <div className="relative flex-1">
-            <Search className="absolute left-3.5 top-2.5 h-4 w-4 text-[#94A3B8]" />
-            <input 
-              type="text" 
-              placeholder="Tìm theo mã, tên, serial, người dùng, bộ phận, vị trí..." 
-              className="w-full pl-10 pr-4 py-2 bg-white border border-[#E2E8F0] rounded-xl focus:outline-none focus:ring-4 focus:ring-primary-50/50 focus:border-primary-500 transition-all text-[14px] font-[400] text-[#0F172A] placeholder:text-[#94A3B8] shadow-sm h-[38px]"
-              value={search}
-              onChange={(e) => updateParam('search', e.target.value)}
-            />
+    <div className="h-screen flex flex-col overflow-hidden bg-[#f8fafc]">
+      {/* COLLAPSIBLE HEADER */}
+      <header className={cn(
+        "shrink-0 z-40 bg-white/90 backdrop-blur-md border-b transition-all duration-500 ease-in-out",
+        isCompact ? "py-1 shadow-md" : "py-3"
+      )}>
+        <div className="px-4">
+          {/* Title Section — Animates away */}
+          <div className={cn(
+            "transition-all duration-500 ease-in-out overflow-hidden",
+            isCompact ? "max-h-0 opacity-0 -translate-y-10 mb-0" : "max-h-40 opacity-100 translate-y-0 mb-3"
+          )}>
+            <div className="flex items-end justify-between border-b border-slate-100 pb-3">
+              <div>
+                <div className="text-[10px] font-bold uppercase text-slate-400 tracking-widest leading-none">Sổ tài sản</div>
+                <h1 className="text-2xl font-black text-slate-950 tracking-tighter mt-1.5 leading-none">DANH MỤC TÀI SẢN</h1>
+              </div>
+              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                 Hệ thống quản lý tài sản v2.0
+              </div>
+            </div>
           </div>
-          <div className="flex items-center space-x-2">
-            <Can permission="asset.export">
-              <button className="btn-secondary h-[38px] px-4 flex items-center text-[13px] font-[600]">
-                <Download className="mr-2 h-4 w-4" /> Export
+
+          {/* Stats Section — Animates away */}
+          <div className={cn(
+            "transition-all duration-500 ease-in-out overflow-hidden",
+            isCompact ? "max-h-0 opacity-0 -translate-y-10" : "max-h-64 opacity-100 translate-y-0"
+          )}>
+            {stats && (
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-1 pb-4">
+                <StatCard label="TỔNG TÀI SẢN" value={stats.total} icon={<Box className="h-4 w-4" />} color="primary" />
+                <StatCard label="ĐANG SỬ DỤNG" value={stats.assigned} icon={<CheckCircle2 className="h-4 w-4" />} color="blue" />
+                <StatCard label="TRONG KHO" value={stats.inStock} icon={<Box className="h-4 w-4" />} color="emerald" />
+                <StatCard label="BÁO HỎNG" value={stats.damaged} icon={<AlertCircle className="h-4 w-4" />} color="amber" />
+                <StatCard label="MẤT / THẤT THOÁT" value={stats.lost} icon={<ShieldAlert className="h-4 w-4" />} color="rose" />
+              </div>
+            )}
+          </div>
+
+          {/* Toolbar Section — Always visible */}
+          <div className={cn(
+            "flex items-center gap-2 transition-all duration-500 flex-wrap",
+            isCompact ? "mt-1 py-1" : "mt-3"
+          )}>
+              <div className="relative flex-1 min-w-[240px]">
+                <Search className="absolute left-3 top-2 h-3.5 w-3.5 text-slate-400" />
+                <input 
+                  type="text" 
+                  placeholder="Tìm theo mã, tên, serial..." 
+                  className="w-full pl-9 pr-3 py-1 bg-slate-50 border border-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 transition-all text-xs text-slate-900 placeholder:text-slate-400 h-[32px]"
+                  value={search}
+                  onChange={(e) => updateParam('search', e.target.value)}
+                />
+              </div>
+              
+              <div className="flex flex-wrap items-center gap-2">
+                <MultiSelect 
+                  label="Trạng thái" 
+                  selected={filters.status ? filters.status.split(',') : []}
+                  onChange={(vals) => updateParam('status', vals.join(','))}
+                  options={[
+                    {label: 'Trong kho', value: 'IN_STOCK'},
+                    {label: 'Đang sử dụng', value: 'ASSIGNED'},
+                    {label: 'Đang sửa chữa', value: 'UNDER_REPAIR'},
+                    {label: 'Chờ thanh lý', value: 'PENDING_DISPOSAL'},
+                    {label: 'Đã thanh lý', value: 'DISPOSED'},
+                    {label: 'Mất', value: 'LOST'},
+                    {label: 'Hỏng', value: 'DAMAGED'},
+                  ]}
+                />
+                <AutocompleteInput placeholder="Phòng ban" value={filters.departmentName} onChange={(v) => updateParam('departmentName', v)} endpoint="/assets/filter-options/departments" icon={<Search className="h-3 w-3" />} />
+                <AutocompleteInput placeholder="Thành phố" value={filters.cityName} onChange={(v) => updateParam('cityName', v)} endpoint="/assets/filter-options/cities" icon={<MapPin className="h-3 w-3" />} />
+                <AutocompleteInput placeholder="Dự án" value={filters.projectName} onChange={(v) => updateParam('projectName', v)} endpoint="/assets/filter-options/projects" icon={<Box className="h-3 w-3" />} />
+                <AutocompleteInput placeholder="Vị trí" value={filters.locationQuery} onChange={(v) => updateParam('locationQuery', v)} endpoint="/assets/filter-options/locations" icon={<MapPin className="h-3 w-3" />} />
+              </div>
+
+              <button onClick={() => setSearchParams({})} className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors" title="Làm mới">
+                <RotateCcw className="h-3.5 w-3.5" />
               </button>
-            </Can>
-            <Can permission="asset.create">
-              <button onClick={() => navigate('/assets/new')} className="btn-primary h-[38px] px-5 flex items-center shadow-lg shadow-primary-200 text-[13px] font-[700]">
-                <Plus className="mr-2 h-4 w-4" /> Thêm mới
-              </button>
-            </Can>
+              
+              <div className="h-5 w-px bg-slate-100 mx-1"></div>
+              
+              <Can permission="asset.export">
+                <button className="h-[32px] px-3 flex items-center text-[11px] font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap">
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> Export
+                </button>
+              </Can>
+              
+              <Can permission="asset.create">
+                <button onClick={() => navigate('/assets/new')} className="h-[32px] px-3 flex items-center text-[11px] font-black bg-primary-600 text-white rounded-lg shadow-sm hover:bg-primary-700 transition-all whitespace-nowrap">
+                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Thêm mới
+                </button>
+              </Can>
           </div>
         </div>
-
-        <div className="h-px bg-slate-100 mx-[-1rem]"></div>
-
-        <div className="flex flex-wrap items-center gap-2">
-          <MultiSelect 
-            label="Trạng thái" 
-            selected={filters.status ? filters.status.split(',') : []}
-            onChange={(vals) => updateParam('status', vals.join(','))}
-            options={[
-              {label: 'Trong kho', value: 'IN_STOCK'},
-              {label: 'Đang sử dụng', value: 'ASSIGNED'},
-              {label: 'Đang sửa chữa', value: 'UNDER_REPAIR'},
-              {label: 'Chờ thanh lý', value: 'PENDING_DISPOSAL'},
-              {label: 'Đã thanh lý', value: 'DISPOSED'},
-              {label: 'Mất', value: 'LOST'},
-              {label: 'Hỏng', value: 'DAMAGED'},
-            ]}
-          />
-          <AutocompleteInput placeholder="Công ty" value={filters.companyCode} onChange={(v) => updateParam('companyCode', v)} endpoint="/assets/filter-options/companies" />
-          <AutocompleteInput placeholder="Bộ phận" value={filters.departmentName} onChange={(v) => updateParam('departmentName', v)} endpoint="/assets/filter-options/departments" icon={<Search className="h-4 w-4" />} />
-          <AutocompleteInput placeholder="Vị trí" value={filters.locationQuery} onChange={(v) => updateParam('locationQuery', v)} endpoint="/assets/filter-options/locations" icon={<MapPin className="h-4 w-4" />} />
-          
-          <button onClick={() => setSearchParams({})} className="flex items-center px-2 py-1 text-[12px] font-[700] text-slate-400 hover:text-red-500 transition-colors ml-auto">
-            <RotateCcw className="h-3.5 w-3.5 mr-1" /> Xóa lọc
-          </button>
-        </div>
-      </div>
+      </header>
 
       {/* BULK ACTION BAR */}
       {selectedIds.length > 0 && (
@@ -328,24 +389,36 @@ export const AssetList: React.FC = () => {
               <button onClick={handleBulkPrint} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-primary-400">
                 <Printer className="mr-2 h-4 w-4" /> In tem tài sản
               </button>
-              <div className="relative group/more">
-                <button className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors">
-                  Thêm thao tác <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
+              <div className="relative">
+                <button 
+                  onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
+                  className={cn(
+                    "flex items-center px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    isMoreMenuOpen ? "bg-primary-600 text-white" : "hover:bg-[#1E293B] text-white"
+                  )}
+                >
+                  Thêm thao tác <ChevronDown className={cn("ml-1.5 h-3.5 w-3.5 transition-transform", isMoreMenuOpen && "rotate-180")} />
                 </button>
-                <div className="absolute bottom-full right-0 mb-4 hidden group-hover/more:block w-48 bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden shadow-2xl">
-                   <button onClick={() => setActiveBM({ code: 'BM02/QLTS', data: { assets: selectedAssets, type: 'Thu hồi' } })} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center">
-                     <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
-                   </button>
-                   <button onClick={() => setActiveBM({ code: 'BM10/QLTS', data: { assets: selectedAssets } })} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center">
-                     <Wrench className="mr-3 h-4 w-4 text-amber-500" /> Sửa chữa / Bảo trì
-                   </button>
-                   <button className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400">
-                     <Trash2 className="mr-3 h-4 w-4" /> Thanh lý
-                   </button>
-                   <button className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-emerald-400">
-                     <Download className="mr-3 h-4 w-4" /> Xuất Excel
-                   </button>
-                </div>
+                
+                {isMoreMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)}></div>
+                    <div className="absolute bottom-full right-0 mb-4 w-48 bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden shadow-2xl z-50 animate-in slide-in-from-bottom-2">
+                       <button onClick={() => { setIsMoreMenuOpen(false); setActiveBM({ code: 'BM02/QLTS', data: { assets: selectedAssets, type: 'Thu hồi' } }); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white">
+                         <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
+                       </button>
+                       <button onClick={() => { setIsMoreMenuOpen(false); setActiveBM({ code: 'BM10/QLTS', data: { assets: selectedAssets } }); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white">
+                         <Wrench className="mr-3 h-4 w-4 text-amber-500" /> Sửa chữa / Bảo trì
+                       </button>
+                       <button onClick={() => setIsMoreMenuOpen(false)} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400">
+                         <Trash2 className="mr-3 h-4 w-4" /> Thanh lý
+                       </button>
+                       <button onClick={() => setIsMoreMenuOpen(false)} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-emerald-400">
+                         <Download className="mr-3 h-4 w-4" /> Xuất Excel
+                       </button>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             <button onClick={() => setSelectedIds([])} className="p-1.5 hover:bg-[#1E293B] rounded-full transition-colors">
@@ -355,72 +428,87 @@ export const AssetList: React.FC = () => {
         </div>
       )}
 
-      {/* ASSET TABLE */}
-      <div className="bg-white rounded-2xl shadow-sm border border-[#E2E8F0] overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-[#F8FAFC]/80 border-b border-[#E2E8F0]">
-                <th className="p-4 w-12 sticky left-0 bg-[#F8FAFC]/80 z-10">
-                  <button onClick={toggleSelectAll} className="flex items-center justify-center w-5 h-5">
-                    {selectedIds.length === assets.length && assets.length > 0 
-                      ? <CheckSquare className="h-5 w-5 text-primary-600" /> 
-                      : <Square className="h-5 w-5 text-[#CBD5E1]" />
-                    }
-                  </button>
-                </th>
-                <th className="p-4 min-w-[140px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Mã tài sản</th>
-                <th className="p-4 min-w-[280px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Tên tài sản</th>
-                <th className="p-4 min-w-[220px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Người sử dụng / Chức vụ</th>
-                <th className="p-4 min-w-[220px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Thành phố / Dự án / Vị trí</th>
-                <th className="p-4 min-w-[150px] uppercase text-[11px] font-black text-slate-400 tracking-widest">Trạng thái</th>
-                <th className="p-4 text-right uppercase text-[11px] font-black text-slate-400 tracking-widest">Tác vụ</th>
-              </tr>
-            </thead>
+      {/* ASSET TABLE — fills remaining space */}
+      <main className="flex-1 min-h-0 p-3">
+        <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
+          <div 
+            ref={scrollContainerRef}
+            className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth"
+          >
+            <table className="w-full text-left border-collapse table-fixed">
+              <thead className="sticky top-0 z-10 bg-[#F8FAFC] border-b border-[#E2E8F0]">
+                <tr className="h-9">
+                  <th className="px-3 w-10 sticky left-0 bg-[#F8FAFC] z-10">
+                    <button onClick={toggleSelectAll} className="flex items-center justify-center w-4 h-4">
+                      {selectedIds.length === assets.length && assets.length > 0 
+                        ? <CheckSquare className="h-4 w-4 text-primary-600" /> 
+                        : <Square className="h-4 w-4 text-[#CBD5E1]" />
+                      }
+                    </button>
+                  </th>
+                  {sortableColumns.map(col => (
+                    <th key={col.key} className="px-3 uppercase text-[10px] font-black text-slate-400 tracking-widest overflow-hidden">
+                      <button 
+                        onClick={() => handleSort(col.key)}
+                        className="group inline-flex items-center gap-1.5 hover:text-slate-700 transition-colors whitespace-nowrap"
+                      >
+                        {col.label}
+                        <span className={cn(
+                          "transition-colors",
+                          sortBy === col.key ? "text-primary-600" : "text-slate-300 group-hover:text-slate-400"
+                        )}>
+                          {sortBy === col.key ? (sortOrder === 'desc' ? '▴' : '▾') : '▾'}
+                        </span>
+                      </button>
+                    </th>
+                  ))}
+                  <th className="px-3 w-14 text-right uppercase text-[10px] font-black text-slate-400 tracking-widest">Tác vụ</th>
+                </tr>
+              </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
               {loading ? (
-                <tr><td colSpan={7} className="p-20 text-center"><Loader2 className="h-8 w-8 animate-spin text-primary-500 mx-auto" /></td></tr>
+                <tr><td colSpan={7} className="p-12 text-center"><Loader2 className="h-6 w-6 animate-spin text-primary-500 mx-auto" /></td></tr>
               ) : assets.map((asset) => {
                 const status = getStatusLabel(asset.status);
                 return (
                   <tr 
                     key={asset.id} 
                     className={cn(
-                      "hover:bg-[#F8FAFC]/80 transition-all group cursor-pointer border-l-4",
+                      "h-12 hover:bg-[#F8FAFC]/80 transition-all group cursor-pointer border-l-3",
                       selectedAssetId === asset.id && isDetailOpen ? "bg-primary-50 border-l-primary-500" : "border-l-transparent",
                       selectedIds.includes(asset.id) ? "bg-primary-50/30" : ""
                     )}
                     onClick={() => openAssetDetail(asset.id, 'info')}
                   >
-                    <td className="p-4 sticky left-0 bg-white group-hover:bg-[#F8FAFC] z-10" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={(e) => { e.stopPropagation(); setSelectedIds(prev => prev.includes(asset.id) ? prev.filter(i => i !== asset.id) : [...prev, asset.id]); }} className="flex items-center justify-center w-5 h-5">
+                    <td className="px-3 sticky left-0 bg-white group-hover:bg-[#F8FAFC] z-10" onClick={(e) => e.stopPropagation()}>
+                      <button onClick={(e) => { e.stopPropagation(); setSelectedIds(prev => prev.includes(asset.id) ? prev.filter(i => i !== asset.id) : [...prev, asset.id]); }} className="flex items-center justify-center w-4 h-4">
                         {selectedIds.includes(asset.id) 
-                          ? <CheckSquare className="h-5 w-5 text-primary-600" /> 
-                          : <Square className="h-5 w-5 text-[#CBD5E1] group-hover:text-[#94A3B8]" />
+                          ? <CheckSquare className="h-4 w-4 text-primary-600" /> 
+                          : <Square className="h-4 w-4 text-[#CBD5E1] group-hover:text-[#94A3B8]" />
                         }
                       </button>
                     </td>
-                    <td className="p-4 text-[13px] font-black text-primary-700 font-mono" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
+                    <td className="px-3 text-[12px] font-bold text-primary-700 font-mono" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
                       {asset.assetCode}
                     </td>
-                    <td className="p-4" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
-                      <p className="text-[14px] font-black text-slate-800 leading-tight">{asset.assetNameShort || asset.assetName}</p>
-                      <p className="text-[11px] font-bold text-slate-400 mt-1">Serial: <span className="text-slate-600">{asset.serialNumber || '-'}</span></p>
+                    <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
+                      <p className="text-[13px] font-bold text-slate-800 leading-tight">{asset.assetNameShort || asset.assetName}</p>
+                      <p className="text-[10px] font-medium text-slate-400 leading-tight">Serial: <span className="text-slate-500">{asset.serialNumber || '-'}</span></p>
                     </td>
-                    <td className="p-4" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
-                      <p className="text-[14px] font-black text-slate-800">{asset.currentUserName || <span className="text-slate-300 font-bold italic">Chưa cấp phát</span>}</p>
-                      <p className="text-[11px] font-bold text-slate-400">{asset.currentPosition || '-'}</p>
+                    <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
+                      <p className="text-[13px] font-semibold text-slate-800 leading-tight">{asset.currentUserName || <span className="text-slate-300 font-medium italic">Chưa cấp phát</span>}</p>
+                      <p className="text-[10px] font-medium text-slate-400 leading-tight">{asset.currentPosition || '-'}</p>
                     </td>
-                    <td className="p-4" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
-                      <p className="text-[13px] font-black text-slate-700 flex items-center"><MapPin className="h-3 w-3 mr-1.5 text-slate-400" />{asset.cityName}</p>
-                      <p className="text-[11px] font-bold text-slate-400 ml-4.5">{asset.locationName}</p>
+                    <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
+                      <p className="text-[12px] font-semibold text-slate-700 flex items-center"><MapPin className="h-2.5 w-2.5 mr-1 text-slate-400" />{asset.cityName}</p>
+                      <p className="text-[10px] font-medium text-slate-400 ml-3.5">{asset.locationName}</p>
                     </td>
-                    <td className="p-4" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'status_auto'); }}>
-                      <span className={cn("px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border", status.color)}>
+                    <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'status_auto'); }}>
+                      <span className={cn("px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border", status.color)}>
                         {status.label}
                       </span>
                     </td>
-                    <td className="p-4 text-right" onClick={(e) => e.stopPropagation()}>
+                    <td className="px-3 text-right" onClick={(e) => e.stopPropagation()}>
                        <div className="relative inline-block">
                           <button 
                             onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === asset.id ? null : asset.id); }}
@@ -448,7 +536,6 @@ export const AssetList: React.FC = () => {
                                  <ActionItem label="Sửa chữa / Bảo trì" icon={<Wrench className="h-4 w-4" />} onClick={() => handleAssetAction('repair', asset)} />
                                  <ActionItem label="Thanh lý" icon={<Trash className="h-4 w-4" />} onClick={() => handleAssetAction('liquidation', asset)} />
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
-                                 <ActionItem label="In tem tài sản" icon={<Printer className="h-4 w-4" />} onClick={() => handleAssetAction('print_label', asset)} />
                                  <ActionItem label="Nhật ký tài sản" icon={<Activity className="h-4 w-4" />} onClick={() => handleAssetAction('history', asset)} />
                               </div>
                             </>
@@ -462,15 +549,30 @@ export const AssetList: React.FC = () => {
           </table>
         </div>
         
-        {/* PAGINATION */}
-        <div className="p-5 border-t border-[#E2E8F0] flex justify-between items-center bg-slate-50/50">
-           <p className="text-[11px] font-black text-slate-400 uppercase tracking-widest">Trang {page} / {Math.ceil(total/limit)} ({total} tài sản)</p>
-           <div className="flex space-x-2">
-             <button disabled={page === 1} onClick={() => updateParam('page', String(page - 1))} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-             <button disabled={page * limit >= total} onClick={() => updateParam('page', String(page + 1))} className="p-2 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+        {/* PAGINATION — fixed at bottom */}
+        <div className="h-11 shrink-0 px-4 border-t border-[#E2E8F0] flex justify-between items-center bg-white">
+           <div className="flex items-center gap-4">
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Trang {page} / {Math.ceil(total/limit)} ({total} tài sản)</p>
+              <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
+                <span>Hiển thị</span>
+                <select 
+                  value={limit}
+                  onChange={(e) => updateParam('limit', e.target.value)}
+                  className="h-7 rounded-lg border border-slate-200 px-1.5 text-[11px] font-bold outline-none focus:ring-2 focus:ring-primary-50"
+                >
+                  {[20, 50, 100, 200].map(sz => (
+                    <option key={sz} value={sz}>{sz} dòng / trang</option>
+                  ))}
+                </select>
+              </div>
+           </div>
+           <div className="flex space-x-1.5">
+             <button disabled={page === 1} onClick={() => updateParam('page', String(page - 1))} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+             <button disabled={page * limit >= total} onClick={() => updateParam('page', String(page + 1))} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
            </div>
         </div>
       </div>
+    </main>
 
       {/* POPUPS & MODALS */}
       <AssetDetailPopup 
@@ -508,18 +610,18 @@ export const AssetList: React.FC = () => {
 
 const StatCard = ({ label, value, icon, color }: any) => {
   const colors: any = {
-    primary: 'text-primary-600 bg-primary-50/30 border-primary-100',
-    blue: 'text-blue-600 bg-blue-50/30 border-blue-100',
-    emerald: 'text-emerald-600 bg-emerald-50/30 border-emerald-100',
-    amber: 'text-amber-600 bg-amber-50/30 border-amber-100',
-    rose: 'text-rose-600 bg-rose-50/30 border-rose-100',
+    primary: 'text-primary-600 bg-primary-50/20 border-primary-100',
+    blue: 'text-blue-600 bg-blue-50/20 border-blue-100',
+    emerald: 'text-emerald-600 bg-emerald-50/20 border-emerald-100',
+    amber: 'text-amber-600 bg-amber-50/20 border-amber-100',
+    rose: 'text-rose-600 bg-rose-50/20 border-rose-100',
   };
   return (
-    <div className={cn("p-6 rounded-3xl border-2 bg-white flex items-center space-x-5 shadow-sm hover:shadow-xl transition-all group", colors[color])}>
-      <div className={cn("p-3.5 rounded-2xl bg-white shadow-sm transition-all group-hover:scale-110 group-hover:rotate-6")}>{icon}</div>
-      <div>
-        <p className="text-[10px] font-black uppercase text-[#64748B] tracking-widest mb-1">{label}</p>
-        <p className="text-[28px] font-black text-[#0F172A] tracking-tighter">{value?.toLocaleString() || 0}</p>
+    <div className={cn("h-[60px] px-4 rounded-xl border bg-white flex items-center gap-3 shadow-sm hover:shadow-md transition-all group", colors[color])}>
+      <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">{icon}</div>
+      <div className="min-w-0">
+        <p className="text-[9px] font-bold uppercase text-[#94A3B8] tracking-wider leading-none">{label}</p>
+        <p className="text-xl font-[900] text-[#0F172A] tracking-tighter leading-tight mt-0.5">{value?.toLocaleString() || 0}</p>
       </div>
     </div>
   );
@@ -531,7 +633,10 @@ const ActionItem = ({ label, icon, onClick }: any) => (
   </button>
 );
 
-function cn(...inputs: any[]) {
-  return inputs.filter(Boolean).join(' ');
+import { clsx, type ClassValue } from 'clsx';
+import { twMerge } from 'tailwind-merge';
+
+function cn(...inputs: ClassValue[]) {
+  return twMerge(clsx(inputs));
 }
 

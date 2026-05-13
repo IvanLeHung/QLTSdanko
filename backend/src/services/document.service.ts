@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { createDocumentWithRetry } from '../utils/document';
 
 const prisma = new PrismaClient();
 
@@ -44,19 +45,14 @@ export class DocumentService {
 
     if (!template) throw new Error("Biểu mẫu không tồn tại.");
 
-    const count = await prisma.generatedDocument.count();
-    const documentNo = `${template.templateCode}-${new Date().getFullYear()}${(count + 1).toString().padStart(5, '0')}`;
-
-    return await prisma.generatedDocument.create({
-      data: {
-        documentNo,
-        templateId: template.id,
-        entityType: data.entityType,
-        entityId: data.entityId,
-        fileName: data.fileName,
-        fileUrl: data.fileUrl,
-        createdBy: data.performedBy
-      }
+    return await createDocumentWithRetry({
+      templateCode: data.templateCode,
+      documentType: 'GENERAL',
+      entityType: data.entityType,
+      entityId: data.entityId,
+      fileName: data.fileName,
+      fileUrl: data.fileUrl,
+      createdBy: data.performedBy
     });
   }
 

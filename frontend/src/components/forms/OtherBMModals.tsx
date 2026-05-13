@@ -124,7 +124,7 @@ export const BM10MaintenanceModal: React.FC<any> = ({ isOpen, onClose, onSubmit,
 };
 
 // --- BM12: Biên bản kiểm kê tài sản ---
-export const BM12InventoryModal: React.FC<any> = ({ isOpen, onClose, onSubmit, period }) => {
+export const BM12InventoryModal: React.FC<any> = ({ isOpen, onClose, onSubmit, period, assets = [] }) => {
   return (
     <BaseFormModal
       isOpen={isOpen} onClose={onClose} formCode="BM12/QLTS" title="Biên bản kiểm kê tài sản"
@@ -141,7 +141,7 @@ export const BM12InventoryModal: React.FC<any> = ({ isOpen, onClose, onSubmit, p
       </FormSection>
       
       <FormSection title="Danh sách tài sản kiểm kê" icon={Package} className="md:grid-cols-1">
-        <AssetItemsTable items={[]} columns={['Mã TS', 'Tên TS', 'Sổ sách', 'Thực tế', 'Chênh lệch']} />
+        <AssetItemsTable items={assets} columns={['Mã TS', 'Tên TS', 'Sổ sách', 'Thực tế', 'Chênh lệch']} />
       </FormSection>
       
       <FormSection title="Kết quả tổng hợp" icon={ClipboardCheck}>

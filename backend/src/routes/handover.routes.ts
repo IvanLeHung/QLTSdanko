@@ -7,7 +7,16 @@ const router = Router();
 
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    const list = await HandoverService.getHandoverList();
+    const { type, status, search, fromDate, toDate, page, limit } = req.query;
+    const list = await HandoverService.getHandoverList({
+      type: type as string,
+      status: status as string,
+      search: search as string,
+      fromDate: fromDate as string,
+      toDate: toDate as string,
+      page: page ? Number(page) : undefined,
+      limit: limit ? Number(limit) : undefined
+    });
     res.json(list);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
@@ -38,6 +47,16 @@ router.post('/:id/complete', authenticateToken, async (req: AuthRequest, res) =>
   const performedBy = req.user?.username || 'system';
   try {
     const document = await HandoverService.completeHandover(Number(req.params.id), performedBy);
+    res.json(document);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/:id/cancel', authenticateToken, async (req: AuthRequest, res) => {
+  const performedBy = req.user?.username || 'system';
+  try {
+    const document = await HandoverService.cancelHandover(Number(req.params.id), performedBy);
     res.json(document);
   } catch (error: any) {
     res.status(400).json({ message: error.message });

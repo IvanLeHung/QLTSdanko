@@ -19,25 +19,22 @@ interface BM02ModalProps {
 export const BM02HandoverModal: React.FC<BM02ModalProps> = ({ isOpen, onClose, onSubmit, initialAsset, initialAssets, initialType }) => {
   const [loading, setLoading] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
-  
-  // Determine if this is a Revoke (Thu hồi) operation
-  const isRevoke = formData.type === 'Thu hồi' || initialType === 'Thu hồi' || initialAsset?.type === 'Thu hồi' || (initialAssets && (initialAssets as any).type === 'Thu hồi');
   const [isSuccess, setIsSuccess] = useState(false);
   const [createdDoc, setCreatedDoc] = useState<any>(null);
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
-
+  
   const [formData, setFormData] = useState({
     documentNo: `---`,
     date: new Date().toISOString().split('T')[0],
-    sender: isRevoke ? (initialAsset?.currentUserName || 'Người sử dụng') : 'Nhân viên QLTS',
-    senderDept: isRevoke ? (initialAsset?.departmentName || '-') : 'HCNS',
-    receiver: isRevoke ? 'Nhân viên QLTS' : '',
-    receiverDept: isRevoke ? 'HCNS' : '',
+    sender: 'Nhân viên QLTS',
+    senderDept: 'HCNS',
+    receiver: '',
+    receiverDept: '',
     receiverPosition: '',
     receiverPhone: '',
-    type: isRevoke ? 'Thu hồi' : 'Cấp phát',
-    city: isRevoke ? 'Kho QLTS' : '',
-    location: isRevoke ? 'Kho trung tâm' : '',
+    type: initialType || 'Cấp phát',
+    city: '',
+    location: '',
     reason: '',
     items: initialAssets ? initialAssets : (initialAsset ? [initialAsset] : []),
     confirmCheckboxes: {
@@ -46,6 +43,8 @@ export const BM02HandoverModal: React.FC<BM02ModalProps> = ({ isOpen, onClose, o
       systemUpdate: true
     }
   });
+
+  const isRevoke = formData.type === 'Thu hồi' || initialType === 'Thu hồi';
 
   // Re-sync if assets change or type changes
   useEffect(() => {
@@ -107,9 +106,11 @@ export const BM02HandoverModal: React.FC<BM02ModalProps> = ({ isOpen, onClose, o
 
       toast.success(isRevoke ? 'Đã thu hồi tài sản và cập nhật sổ tài sản thành công!' : 'Đã thực hiện bàn giao và cập nhật sổ tài sản thành công!');
       
-      setCreatedDoc(res.data);
+      const createdDocument = res.data;
+      setCreatedDoc(createdDocument);
+      setFormData(prev => ({ ...prev, documentNo: createdDocument.documentNo }));
       setIsSuccess(true);
-      onSubmit(res.data);
+      onSubmit(createdDocument);
     } catch (err: any) {
       console.error(err);
       toast.error(err.response?.data?.message || 'Lỗi khi xử lý bàn giao');

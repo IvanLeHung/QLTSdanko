@@ -915,16 +915,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       <div className="absolute bottom-full right-0 mb-4 w-56 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-20 animate-in zoom-in slide-in-from-bottom-4 duration-200">
                         <div className="p-2 space-y-1">
                           {[
-                            { id: 'edit', label: 'Sửa thông tin', icon: Edit3, color: 'text-slate-600', onClick: enterEditMode },
-                            ...(asset.status === 'ASSIGNED' ? [
-                              { id: 'recover', label: 'Thu hồi tài sản', icon: RotateCcw, color: 'text-slate-600', onClick: () => setSelectedForm({ code: 'BM02', data: { type: 'Thu hồi' } }) },
-                              { id: 'transfer', label: 'Điều chuyển tài sản', icon: ArrowRightLeft, color: 'text-primary-600', onClick: () => setSelectedForm({ code: 'BM06' }) }
-                            ] : []),
-                            { id: 'damage', label: 'Báo hỏng / Sửa chữa', icon: Wrench, color: 'text-amber-600', onClick: () => setSelectedForm({ code: 'BM03' }) },
                             { id: 'lost', label: 'Báo mất tài sản', icon: ShieldAlert, color: 'text-slate-900', onClick: () => setSelectedForm({ code: 'BM13' }) },
                             { id: 'liquidate', label: 'Thanh lý tài sản', icon: Trash2, color: 'text-rose-600', onClick: () => setSelectedForm({ code: 'BM04' }) },
-                            { id: 'print', label: 'In tem tài sản', icon: Printer, color: 'text-primary-600', onClick: (e: any) => { e.stopPropagation(); onAction('print_label', asset.id); } },
-                            { id: 'timeline', label: 'Xem nhật ký tài sản', icon: History, color: 'text-slate-500', onClick: () => setActiveTab('timeline') },
                           ].map((act) => (
                             <button
                               key={act.id}

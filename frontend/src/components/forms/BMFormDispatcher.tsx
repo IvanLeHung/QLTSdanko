@@ -42,7 +42,7 @@ export const BMFormDispatcher: React.FC<BMFormDispatcherProps> = ({
     case 'BM10':
       return <BM10MaintenanceModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} ticket={data?.ticket} asset={data?.asset} />;
     case 'BM12':
-      return <BM12InventoryModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} period={data?.period} />;
+      return <BM12InventoryModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} period={data?.period} assets={data?.assets} />;
     case 'BM13':
       return <BM13LostModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} asset={data?.asset} />;
     default:

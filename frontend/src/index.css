@@ -24,10 +24,17 @@
   color: #0f172a;
 }
 
-body {
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
   margin: 0;
+  overflow: hidden;
+}
+
+body {
   min-width: 320px;
-  min-height: 100vh;
 }
 
 /* Typography Hierarchy */
@@ -80,4 +87,23 @@ body {
 
 .input-field-rich {
   @apply w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-primary-50/50 focus:border-primary-500 transition-all font-medium text-slate-900 placeholder:text-slate-400 shadow-sm hover:border-slate-300;
+}
+
+/* ======================================================
+   PRINT — The .print-area div is positioned off-screen.
+   We use position:fixed instead of display:none because
+   QR/Barcode React components need to render SVGs in the DOM.
+   Actual printing uses a dedicated popup window with
+   self-contained @page and label CSS (see AssetLabelPrintModal).
+   ====================================================== */
+
+.print-area {
+  position: fixed !important;
+  left: -9999px !important;
+  top: -9999px !important;
+  width: 1px !important;
+  height: 1px !important;
+  overflow: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
 }

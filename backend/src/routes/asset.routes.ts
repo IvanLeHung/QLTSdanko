@@ -73,26 +73,42 @@ router.get('/filter-options/locations', authenticateToken, async (req, res) => {
   const { q = '' } = req.query;
   const locs = await prisma.asset.findMany({
     where: {
-      OR: [
-        { locationName: { contains: String(q) } },
-        { cityName: { contains: String(q) } },
-        { projectName: { contains: String(q) } },
-      ],
+      locationName: { contains: String(q) },
       isDeleted: false
     },
-    select: { locationName: true, cityName: true, projectName: true },
-    distinct: ['locationName', 'cityName', 'projectName'],
-    take: 20
+    select: { locationName: true },
+    distinct: ['locationName'],
+    take: 10
   });
-  
-  const results = new Set<string>();
-  locs.forEach(l => {
-    if (l.locationName) results.add(l.locationName);
-    if (l.cityName) results.add(l.cityName);
-    if (l.projectName) results.add(l.projectName);
+  res.json(locs.map(l => l.locationName).filter(Boolean));
+});
+
+router.get('/filter-options/cities', authenticateToken, async (req, res) => {
+  const { q = '' } = req.query;
+  const cities = await prisma.asset.findMany({
+    where: { 
+      cityName: { contains: String(q) },
+      isDeleted: false 
+    },
+    select: { cityName: true },
+    distinct: ['cityName'],
+    take: 10
   });
-  
-  res.json(Array.from(results).filter(s => s.toLowerCase().includes(String(q).toLowerCase())).slice(0, 10));
+  res.json(cities.map(c => c.cityName).filter(Boolean));
+});
+
+router.get('/filter-options/projects', authenticateToken, async (req, res) => {
+  const { q = '' } = req.query;
+  const projects = await prisma.asset.findMany({
+    where: { 
+      projectName: { contains: String(q) },
+      isDeleted: false 
+    },
+    select: { projectName: true },
+    distinct: ['projectName'],
+    take: 10
+  });
+  res.json(projects.map(p => p.projectName).filter(Boolean));
 });
 
 router.get('/filter-options/companies', authenticateToken, async (req, res) => {
@@ -133,6 +149,8 @@ router.get('/', authenticateToken, async (req, res) => {
     currentUserName,
     departmentName,
     locationQuery,
+    cityName,
+    projectName,
     level4Code,
     
     // Price Range
@@ -184,6 +202,8 @@ router.get('/', authenticateToken, async (req, res) => {
   if (departmentName) where.departmentName = { contains: String(departmentName) };
   if (level4Code) where.level4Code = String(level4Code);
   
+  if (cityName) where.cityName = { contains: String(cityName) };
+  if (projectName) where.projectName = { contains: String(projectName) };
   if (locationQuery) {
     where.OR = where.OR || [];
     where.OR.push(

@@ -11,7 +11,7 @@ export class AuditService {
   }: {
     entityType: string;
     entityId: number;
-    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'ASSIGN' | 'REPAIR' | 'REQUEST' | 'COMPLETE' | 'DAMAGE' | 'LOST' | 'LIQUIDATE' | 'PRINT' | 'CREATE_AND_COMPLETE' | 'IMPORT';
+    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'ASSIGN' | 'REPAIR' | 'REQUEST' | 'COMPLETE' | 'DAMAGE' | 'LOST' | 'LIQUIDATE' | 'PRINT' | 'CREATE_AND_COMPLETE' | 'IMPORT' | 'CANCEL';
     details?: any;
     performedBy: string;
     tx?: any;

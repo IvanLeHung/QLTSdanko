@@ -258,24 +258,36 @@ model DocumentCounter {
 }
 
 model HandoverDocument {
-  id                  Int            @id @default(autoincrement())
-  documentNo          String         @unique
-  documentDate        DateTime       @default(now())
-  type                String         @default("HANDOVER")
-  recipientName       String
-  recipientPosition   String?
-  recipientDepartment String?
-  recipientPhone      String?
-  senderName          String?
-  senderDepartment    String?
-  newLocation         String?
-  newCity             String?
-  status              String         @default("DRAFT")
-  reason              String?
-  note                String?
-  attachments         String?
-  createdAt           DateTime       @default(now())
-  items               HandoverItem[]
+  id                   Int            @id @default(autoincrement())
+  documentNo           String         @unique
+  documentDate         DateTime       @default(now())
+  type                 String         @default("HANDOVER") // HANDOVER, TRANSFER, RECALL
+  status               String         @default("DRAFT")    // DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED
+  
+  recipientName        String
+  recipientPosition    String?
+  recipientDepartment  String?
+  recipientPhone       String?
+  receiverId           Int?
+  receiverDepartmentId Int?
+  
+  senderName           String?
+  senderDepartment     String?
+  senderId             Int?
+  
+  newLocation          String?
+  newCity              String?
+  targetLocationId     Int?
+  
+  reason               String?
+  note                 String?
+  attachments          String?
+  
+  createdAt            DateTime       @default(now())
+  confirmedAt          DateTime?
+  cancelledAt          DateTime?
+  
+  items                HandoverItem[]
 }
 
 model HandoverItem {
@@ -473,18 +485,20 @@ model DocumentTemplate {
 }
 
 model GeneratedDocument {
-  id          Int              @id @default(autoincrement())
-  documentNo  String           @unique
-  templateId  Int
-  entityType  String
-  entityId    Int
-  fileName    String
-  fileUrl     String
-  fileSize    Int?
-  status      String           @default("COMPLETED")
-  note        String?
-  createdById Int?
-  createdBy   String?
-  createdAt   DateTime         @default(now())
-  template    DocumentTemplate @relation(fields: [templateId], references: [id])
+  id           String            @id @default(cuid())
+  documentNo   String            @unique
+  templateCode String?
+  documentType String            @default("GENERAL")
+  entityType   String?
+  entityId     Int?
+  fileName     String?
+  fileUrl      String?
+  fileSize     Int?
+  status       String            @default("DRAFT")
+  note         String?
+  createdById  Int?
+  createdBy    String?
+  createdAt    DateTime          @default(now())
+  template     DocumentTemplate? @relation(fields: [templateId], references: [id])
+  templateId   Int?
 }

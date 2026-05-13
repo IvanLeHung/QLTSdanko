@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useCallback } from 'react';
 import { 
   X, 
   Tag, 
@@ -72,6 +72,230 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
   const [isPreviewOpen, setIsPreviewOpen] = useState(false);
   const [previewMode, setPreviewMode] = useState<'SINGLE' | 'A4'>('SINGLE');
   const [isPrinting, setIsPrinting] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [labelOverrides, setLabelOverrides] = useState<Record<string, any>>({});
+  const printAreaRef = useRef<HTMLDivElement>(null);
+
+  // Map config.size to physical dimensions for @page
+  const getLabelDimensions = useCallback((size: string) => {
+    switch (size) {
+      case '60x40mm': return { w: '60mm', h: '40mm', pw: 60, ph: 40 };
+      case '40x25mm': return { w: '40mm', h: '25mm', pw: 40, ph: 25 };
+      case '30x20mm': return { w: '30mm', h: '20mm', pw: 30, ph: 20 };
+      case 'A4':      return { w: '210mm', h: '297mm', pw: 210, ph: 297 };
+      default:        return { w: '50mm', h: '30mm', pw: 50, ph: 30 };
+    }
+  }, []);
+
+  // Opens a dedicated print window containing ONLY the label content
+  // with proper @page sizing so the browser print dialog shows the correct label dimensions.
+  const handlePrint = useCallback(() => {
+    if (assets.length === 0) {
+      toast.error("Không có tài sản nào được chọn để in.");
+      return;
+    }
+    const printableAssets = assets.filter(a => {
+      const code = String(a?.asset_code || a?.assetCode || a?.code || '');
+      return code.trim().length > 0;
+    });
+    if (printableAssets.length === 0) {
+      toast.error("Tất cả tài sản đã chọn đều thiếu mã tài sản. Không thể in tem.");
+      return;
+    }
+
+    // Wait for React to render #print-area, then grab its rendered HTML (includes SVG QR/Barcodes)
+    requestAnimationFrame(() => {
+      const printArea = printAreaRef.current;
+      if (!printArea) {
+        toast.error("Không tìm thấy vùng in. Vui lòng thử lại.");
+        return;
+      }
+
+      const dims = getLabelDimensions(config.size);
+      const isA4 = config.size === 'A4';
+      const labelHTML = printArea.innerHTML;
+
+      const printWindow = window.open('', '_blank', 'width=600,height=400');
+      if (!printWindow) {
+        toast.error("Trình duyệt đã chặn cửa sổ popup. Vui lòng cho phép popup và thử lại.");
+        return;
+      }
+
+      printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>In tem tài sản</title>
+  <style>
+    @page {
+      size: ${dims.w} ${dims.h};
+      margin: 0;
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+    html, body {
+      width: ${dims.w};
+      margin: 0;
+      padding: 0;
+      font-family: 'Inter', Arial, Helvetica, sans-serif;
+      background: #fff;
+      color: #000;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    /* ---- Single label layout ---- */
+    .asset-label {
+      width: ${isA4 ? 'auto' : dims.w};
+      height: ${isA4 ? 'auto' : dims.h};
+      padding: ${isA4 ? '2mm' : '2.5mm 3mm'};
+      background: #fff;
+      color: #000;
+      overflow: hidden;
+      page-break-after: always;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    .asset-label:last-child {
+      page-break-after: auto;
+    }
+    /* ---- A4 grid layout ---- */
+    .a4-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2mm;
+      padding: 8mm;
+      width: 210mm;
+    }
+    .a4-grid .asset-label {
+      height: auto;
+      width: auto;
+      border: 0.3mm solid #ddd;
+      page-break-after: auto;
+    }
+    /* ---- Label internals ---- */
+    .label-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+    }
+    .label-top.qr-left {
+      flex-direction: row-reverse;
+    }
+    .label-info {
+      flex: 1;
+      padding-right: 2mm;
+      min-width: 0;
+    }
+    .company-name {
+      font-size: 6pt;
+      font-weight: 900;
+      color: #0284c7;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      line-height: 1;
+      margin-bottom: 0.5mm;
+    }
+    .asset-code-text {
+      font-size: 5.5pt;
+      font-weight: 900;
+      color: #1e293b;
+      font-family: 'Courier New', monospace;
+      letter-spacing: -0.3px;
+      line-height: 1.2;
+    }
+    .asset-name-text {
+      font-size: 7pt;
+      font-weight: 900;
+      color: #0f172a;
+      text-transform: uppercase;
+      line-height: 1.2;
+      margin-top: 0.5mm;
+      overflow: hidden;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+    }
+    .qr-box {
+      flex-shrink: 0;
+      width: ${isA4 ? '12mm' : '14mm'};
+      height: ${isA4 ? '12mm' : '14mm'};
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+    }
+    .qr-box svg {
+      width: 100% !important;
+      height: 100% !important;
+      display: block;
+    }
+    .barcode-box {
+      flex-shrink: 0;
+      max-width: 18mm;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    .barcode-box svg {
+      width: 100% !important;
+      height: ${isA4 ? '8mm' : '10mm'} !important;
+      display: block;
+    }
+    .barcode-text {
+      font-size: 4.5pt;
+      font-family: 'Courier New', monospace;
+      font-weight: 900;
+      color: #334155;
+      margin-top: 0.3mm;
+      letter-spacing: -0.3px;
+    }
+    /* ---- Bottom info section ---- */
+    .label-bottom {
+      border-top: 0.3mm solid #e2e8f0;
+      padding-top: 1mm;
+      margin-top: 1mm;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1mm 2mm;
+    }
+    .info-item {}
+    .info-label {
+      font-size: 4pt;
+      font-weight: 900;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      line-height: 1;
+    }
+    .info-value {
+      font-size: 5.5pt;
+      font-weight: 700;
+      color: #1e293b;
+      line-height: 1.3;
+    }
+  </style>
+</head>
+<body>
+  ${labelHTML}
+  <script>
+    window.onload = function() {
+      setTimeout(function() {
+        window.print();
+        window.onafterprint = function() { window.close(); };
+      }, 300);
+    };
+  </script>
+</body>
+</html>`);
+      printWindow.document.close();
+    });
+  }, [assets, config, getLabelDimensions]);
 
   if (!isOpen) return null;
 
@@ -94,66 +318,23 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
       return;
     }
 
-    setIsPrinting(true);
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.-]/g, '');
-      const fileName = assets.length === 1 
-        ? `TEM_TS_${assets[0].assetCode}_${timestamp}.pdf`
-        : `TEM_TS_BATCH_${assets.length}_ITEMS_${timestamp}.pdf`;
-
-      // Simulating PDF generation and logging
-      await api.post('/operational/print-log', {
-        assetIds: assets.map(a => a.id),
-        action: type,
-        config: config,
-        fileName
-      });
-
-      // Update asset attachments with the generated label record
-      for (const asset of assets) {
-         let attachments = [];
-         try {
-           attachments = typeof asset.attachments === 'string' ? JSON.parse(asset.attachments) : (asset.attachments || []);
-         } catch(e) { attachments = []; }
-         
-         attachments.push({
-            id: `LBL-${Date.now()}`,
-            name: fileName,
-            type: 'application/pdf',
-            group: 'Tem tài sản',
-            createdAt: new Date().toISOString(),
-            url: '#' // Mock URL
-         });
-
-         await api.patch(`/assets/${asset.id}`, {
-            attachments: JSON.stringify(attachments)
-         });
-      }
-
-      toast.success(type === 'PRINT' ? `Đã gửi lệnh in cho ${assets.length} tem tài sản!` : `Đã tải xuống file tem tài sản.`);
-      
-      if (type === 'PRINT') {
-         setTimeout(() => {
-           setIsPrinting(false);
-           onClose();
-         }, 1500);
-      } else {
-         setIsPrinting(false);
-      }
-    } catch (err) {
-      toast.error("Lỗi khi thực hiện thao tác in tem");
-      setIsPrinting(false);
+    if (type === 'DOWNLOAD') {
+      toast.info("Chức năng tải PDF đang được phát triển.");
+      return;
     }
   };
 
     const renderLabel = (asset: any) => {
-      // Standardize asset code mapping as requested
-      const codeValue = String(asset?.asset_code || asset?.assetCode || asset?.code || '');
+      // Standardize asset code mapping
+      const overridden = labelOverrides[asset.id] || {};
+      const displayAsset = { ...asset, ...overridden };
+      
+      const codeValue = String(displayAsset?.asset_code || displayAsset?.assetCode || displayAsset?.code || '');
       const hasValidCode = codeValue.trim().length > 0;
 
       return (
         <div className={cn(
-          "bg-white shadow-lg border border-slate-200 p-4 rounded-lg space-y-3 relative overflow-hidden transition-all hover:shadow-xl",
+          "bg-white shadow-lg border border-slate-200 p-4 rounded-lg space-y-3 relative overflow-hidden transition-all hover:shadow-xl mx-auto",
           config.size === '30x20mm' ? "w-[160px]" : "w-[240px]"
         )}>
           <div className={cn(
@@ -167,7 +348,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
                   {hasValidCode ? codeValue : 'CHƯA CÓ MÃ'}
                 </p>
               )}
-              {config.fields.assetName && <p className="text-[12px] font-black text-slate-900 leading-tight line-clamp-2 uppercase">{asset?.assetName || 'Tài sản mẫu'}</p>}
+              {config.fields.assetName && <p className="text-[12px] font-black text-slate-900 leading-tight line-clamp-2 uppercase">{displayAsset?.assetName || 'Tài sản mẫu'}</p>}
             </div>
             <div className="bg-white p-1 rounded-lg flex items-center justify-center border border-slate-100 shadow-sm shrink-0 min-w-[72px] min-h-[72px]">
               {hasValidCode ? (
@@ -206,19 +387,19 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
             {config.fields.serial && (
               <div className="space-y-0.5">
                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Serial Number</p>
-                <p className="text-[9px] font-bold text-slate-800">{asset?.serialNumber || '-'}</p>
+                <p className="text-[9px] font-bold text-slate-800">{displayAsset?.serialNumber || displayAsset?.serial || '-'}</p>
               </div>
             )}
             {config.fields.location && (
               <div className="space-y-0.5">
                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Vị trí</p>
-                <p className="text-[9px] font-bold text-slate-800">{asset?.locationName || '-'}</p>
+                <p className="text-[9px] font-bold text-slate-800">{displayAsset?.locationName || displayAsset?.location || '-'}</p>
               </div>
             )}
             {config.fields.purchaseDate && (
               <div className="space-y-0.5">
                 <p className="text-[7px] font-black text-slate-400 uppercase tracking-widest">Ngày mua</p>
-                <p className="text-[9px] font-bold text-slate-800">{asset?.purchaseDate ? new Date(asset.purchaseDate).toLocaleDateString('vi-VN') : '-'}</p>
+                <p className="text-[9px] font-bold text-slate-800">{displayAsset?.purchaseDate ? new Date(displayAsset.purchaseDate).toLocaleDateString('vi-VN') : '-'}</p>
               </div>
             )}
           </div>
@@ -421,7 +602,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
                 </div>
               </div>
 
-              <div className="flex-1 flex items-center justify-center p-12 bg-slate-50 border-4 border-dashed border-slate-100 rounded-[40px] overflow-hidden">
+               <div className="flex-1 flex flex-col items-center justify-center p-6 bg-slate-50 border-4 border-dashed border-slate-100 rounded-[40px] overflow-hidden space-y-8">
                 {assets.length === 0 ? (
                   <div className="text-center space-y-4">
                     <div className="bg-white p-6 rounded-3xl shadow-xl inline-block border border-slate-100">
@@ -430,7 +611,74 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
                     <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Không có tài sản để xem trước</p>
                   </div>
                 ) : previewMode === 'SINGLE' ? (
-                   renderLabel(assets[0])
+                   <>
+                     <div className="flex items-center space-x-6">
+                        <button 
+                          disabled={previewIndex === 0}
+                          onClick={() => setPreviewIndex(prev => Math.max(0, prev - 1))}
+                          className="w-12 h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-primary-600 hover:border-primary-200 disabled:opacity-20 transition-all shadow-sm"
+                        >
+                          <ChevronDown className="h-6 w-6 rotate-90" />
+                        </button>
+                        
+                        <div className="animate-in fade-in zoom-in duration-300">
+                          {renderLabel(assets[previewIndex])}
+                        </div>
+
+                        <button 
+                          disabled={previewIndex >= assets.length - 1}
+                          onClick={() => setPreviewIndex(prev => Math.min(assets.length - 1, prev + 1))}
+                          className="w-12 h-12 rounded-full bg-white border border-slate-200 flex items-center justify-center text-slate-400 hover:text-primary-600 hover:border-primary-200 disabled:opacity-20 transition-all shadow-sm"
+                        >
+                          <ChevronDown className="h-6 w-6 -rotate-90" />
+                        </button>
+                     </div>
+                     <div className="px-6 py-2 bg-white border border-slate-100 rounded-full text-[10px] font-black text-slate-400 uppercase tracking-widest shadow-sm">
+                       Tem {previewIndex + 1} / {assets.length}
+                     </div>
+
+                     {/* INLINE EDIT FORM */}
+                     <div className="w-full max-w-md bg-white p-6 rounded-3xl border border-slate-100 shadow-sm space-y-4">
+                        <div className="flex items-center space-x-2 text-primary-600 mb-2">
+                           <Type className="h-4 w-4" />
+                           <span className="text-[10px] font-black uppercase tracking-widest">Sửa nội dung hiển thị (Chỉ in)</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-3">
+                           <div className="space-y-1">
+                              <label className="text-[8px] font-bold text-slate-400 uppercase ml-1">Tên tài sản</label>
+                              <input 
+                                className="w-full px-3 py-2 bg-slate-50 border border-transparent rounded-xl text-xs font-bold focus:bg-white focus:border-primary-200 outline-none transition-all"
+                                value={(labelOverrides[assets[previewIndex].id]?.assetName) ?? assets[previewIndex].assetName}
+                                onChange={e => setLabelOverrides({...labelOverrides, [assets[previewIndex].id]: { ...labelOverrides[assets[previewIndex].id], assetName: e.target.value }})}
+                              />
+                           </div>
+                           <div className="space-y-1">
+                              <label className="text-[8px] font-bold text-slate-400 uppercase ml-1">Mã tài sản</label>
+                              <input 
+                                className="w-full px-3 py-2 bg-slate-50 border border-transparent rounded-xl text-xs font-bold focus:bg-white focus:border-primary-200 outline-none transition-all"
+                                value={(labelOverrides[assets[previewIndex].id]?.assetCode) ?? (assets[previewIndex].asset_code || assets[previewIndex].assetCode || assets[previewIndex].code)}
+                                onChange={e => setLabelOverrides({...labelOverrides, [assets[previewIndex].id]: { ...labelOverrides[assets[previewIndex].id], assetCode: e.target.value }})}
+                              />
+                           </div>
+                           <div className="space-y-1">
+                              <label className="text-[8px] font-bold text-slate-400 uppercase ml-1">Serial</label>
+                              <input 
+                                className="w-full px-3 py-2 bg-slate-50 border border-transparent rounded-xl text-xs font-bold focus:bg-white focus:border-primary-200 outline-none transition-all"
+                                value={(labelOverrides[assets[previewIndex].id]?.serial) ?? (assets[previewIndex].serialNumber || assets[previewIndex].serial)}
+                                onChange={e => setLabelOverrides({...labelOverrides, [assets[previewIndex].id]: { ...labelOverrides[assets[previewIndex].id], serial: e.target.value }})}
+                              />
+                           </div>
+                           <div className="space-y-1">
+                              <label className="text-[8px] font-bold text-slate-400 uppercase ml-1">Vị trí</label>
+                              <input 
+                                className="w-full px-3 py-2 bg-slate-50 border border-transparent rounded-xl text-xs font-bold focus:bg-white focus:border-primary-200 outline-none transition-all"
+                                value={(labelOverrides[assets[previewIndex].id]?.location) ?? (assets[previewIndex].locationName || assets[previewIndex].location)}
+                                onChange={e => setLabelOverrides({...labelOverrides, [assets[previewIndex].id]: { ...labelOverrides[assets[previewIndex].id], location: e.target.value }})}
+                              />
+                           </div>
+                        </div>
+                     </div>
+                   </>
                 ) : (
                   <div className="bg-white shadow-2xl border border-slate-200 w-full max-w-[340px] aspect-[1/1.41] p-6 grid grid-cols-3 gap-2 overflow-hidden relative">
                     {[...Array(15)].map((_, i) => (
@@ -445,6 +693,128 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
                     ))}
                     <div className="absolute inset-0 bg-gradient-to-t from-white via-transparent to-transparent pointer-events-none" />
                   </div>
+                )}
+              </div>
+
+              {/* ===== HIDDEN PRINT-ONLY AREA ===== */}
+              {/* This div is invisible on screen; its innerHTML is extracted and sent to a dedicated print window */}
+              <div id="print-area" ref={printAreaRef} className="print-area">
+                {config.size === 'A4' ? (
+                  <div className="a4-grid">
+                    {assets
+                      .filter(a => {
+                        const overridden = labelOverrides[a.id] || {};
+                        const codeValue = String(overridden.assetCode || a?.asset_code || a?.assetCode || a?.code || '');
+                        return codeValue.trim().length > 0;
+                      })
+                      .flatMap(a => Array.from({ length: config.copies }, (_, i) => ({ ...a, _copyIdx: i })))
+                      .map((asset: any, idx: number) => {
+                        const overridden = labelOverrides[asset.id] || {};
+                        const displayAsset = { ...asset, ...overridden };
+                        const cv = String(displayAsset?.assetCode || displayAsset?.asset_code || displayAsset?.code || '');
+                        
+                        return (
+                          <div key={`pl-${idx}`} className="asset-label">
+                            <div className={`label-top${config.advanced.qrPosition === 'LEFT' ? ' qr-left' : ''}`}>
+                              <div className="label-info">
+                                {config.fields.company && <div className="company-name">DANKO GROUP</div>}
+                                {config.fields.assetCode && <div className="asset-code-text">{cv}</div>}
+                                {config.fields.assetName && <div className="asset-name-text">{displayAsset?.assetName || ''}</div>}
+                              </div>
+                              <div className={config.codeType === 'QR' ? 'qr-box' : 'barcode-box'}>
+                                {config.codeType === 'QR' ? (
+                                  <QRCode value={cv} size={64} level="M" style={{ height: "auto", maxWidth: "100%", width: "100%" }} />
+                                ) : (
+                                  <>
+                                    <Barcode value={cv} width={1} height={32} displayValue={false} margin={0} />
+                                    <span className="barcode-text">{cv}</span>
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                            {(config.fields.serial || config.fields.location || config.fields.purchaseDate) && (
+                              <div className="label-bottom">
+                                {config.fields.serial && (
+                                  <div className="info-item">
+                                    <div className="info-label">Serial Number</div>
+                                    <div className="info-value">{displayAsset?.serial || displayAsset?.serialNumber || '-'}</div>
+                                  </div>
+                                )}
+                                {config.fields.location && (
+                                  <div className="info-item">
+                                    <div className="info-label">Vị trí</div>
+                                    <div className="info-value">{displayAsset?.location || displayAsset?.locationName || '-'}</div>
+                                  </div>
+                                )}
+                                {config.fields.purchaseDate && (
+                                  <div className="info-item">
+                                    <div className="info-label">Ngày mua</div>
+                                    <div className="info-value">{displayAsset?.purchaseDate ? new Date(displayAsset.purchaseDate).toLocaleDateString('vi-VN') : '-'}</div>
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                  </div>
+                ) : (
+                  assets
+                    .filter(a => {
+                      const overridden = labelOverrides[a.id] || {};
+                      const codeValue = String(overridden.assetCode || a?.asset_code || a?.assetCode || a?.code || '');
+                      return codeValue.trim().length > 0;
+                    })
+                    .flatMap(a => Array.from({ length: config.copies }, (_, i) => ({ ...a, _copyIdx: i })))
+                    .map((asset: any, idx: number) => {
+                      const overridden = labelOverrides[asset.id] || {};
+                      const displayAsset = { ...asset, ...overridden };
+                      const cv = String(displayAsset?.assetCode || displayAsset?.asset_code || displayAsset?.code || '');
+
+                      return (
+                        <div key={`pls-${idx}`} className="asset-label">
+                          <div className={`label-top${config.advanced.qrPosition === 'LEFT' ? ' qr-left' : ''}`}>
+                            <div className="label-info">
+                              {config.fields.company && <div className="company-name">DANKO GROUP</div>}
+                              {config.fields.assetCode && <div className="asset-code-text">{cv}</div>}
+                              {config.fields.assetName && <div className="asset-name-text">{displayAsset?.assetName || ''}</div>}
+                            </div>
+                            <div className={config.codeType === 'QR' ? 'qr-box' : 'barcode-box'}>
+                              {config.codeType === 'QR' ? (
+                                <QRCode value={cv} size={64} level="M" style={{ height: "auto", maxWidth: "100%", width: "100%" }} />
+                              ) : (
+                                <>
+                                  <Barcode value={cv} width={1} height={32} displayValue={false} margin={0} />
+                                  <span className="barcode-text">{cv}</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                          {(config.fields.serial || config.fields.location || config.fields.purchaseDate) && (
+                            <div className="label-bottom">
+                              {config.fields.serial && (
+                                <div className="info-item">
+                                  <div className="info-label">Serial Number</div>
+                                  <div className="info-value">{displayAsset?.serial || displayAsset?.serialNumber || '-'}</div>
+                                </div>
+                              )}
+                              {config.fields.location && (
+                                <div className="info-item">
+                                  <div className="info-label">Vị trí</div>
+                                  <div className="info-value">{displayAsset?.location || displayAsset?.locationName || '-'}</div>
+                                </div>
+                              )}
+                              {config.fields.purchaseDate && (
+                                <div className="info-item">
+                                  <div className="info-label">Ngày mua</div>
+                                  <div className="info-value">{displayAsset?.purchaseDate ? new Date(displayAsset.purchaseDate).toLocaleDateString('vi-VN') : '-'}</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })
                 )}
               </div>
 
@@ -487,7 +857,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
               </button>
               <button 
                 disabled={assets.length === 0 || missingCodes.length === assets.length || isPrinting}
-                onClick={() => handleAction('PRINT')}
+                onClick={handlePrint}
                 className="flex items-center px-10 py-4 bg-primary-600 text-white rounded-[20px] text-[11px] font-black uppercase tracking-widest hover:bg-primary-700 transition-all shadow-2xl shadow-primary-200 disabled:opacity-50 disabled:shadow-none relative overflow-hidden group"
               >
                 {isPrinting ? (
