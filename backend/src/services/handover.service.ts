@@ -3,7 +3,7 @@ import { AuditService } from './audit.service';
 
 export class HandoverService {
   static async createHandover(data: {
-    type: 'HANDOVER' | 'TRANSFER';
+    type: 'HANDOVER' | 'TRANSFER' | 'REVOKE';
     recipientName: string;
     recipientPosition?: string;
     recipientDepartment?: string;
@@ -15,9 +15,10 @@ export class HandoverService {
     note?: string;
     reason?: string;
     assetIds: number[];
+    autoComplete?: boolean;
   }, performedBy: string) {
     return await prisma.$transaction(async (tx) => {
-      const typeCode = data.type === 'HANDOVER' ? 'BBBG' : 'BDC';
+      const typeCode = data.type === 'HANDOVER' ? 'BBBG' : (data.type === 'REVOKE' ? 'BTH' : 'BDC');
       const counter = await tx.documentCounter.upsert({
         where: { documentType: data.type },
         update: { lastNumber: { increment: 1 } },
@@ -40,7 +41,7 @@ export class HandoverService {
           senderDepartment: data.senderDepartment,
           reason: data.reason,
           note: data.note,
-          status: 'DRAFT',
+          status: data.autoComplete ? 'COMPLETED' : 'DRAFT',
           items: {
             create: await Promise.all(data.assetIds.map(async (id) => {
               const asset = await tx.asset.findUnique({ where: { id } });
@@ -51,7 +52,7 @@ export class HandoverService {
                 assetName: asset.assetName,
                 unit: asset.unit,
                 oldStatus: asset.status,
-                newStatus: 'ASSIGNED'
+                newStatus: data.type === 'REVOKE' ? 'IN_STOCK' : 'ASSIGNED'
               };
             }))
           }
@@ -59,10 +60,70 @@ export class HandoverService {
         include: { items: true }
       });
 
+      if (data.autoComplete) {
+        // Update each asset immediately
+        for (const item of document.items) {
+          const oldAsset = await tx.asset.findUnique({ where: { id: item.assetId } });
+          if (!oldAsset) continue;
+
+          const updatedAsset = await tx.asset.update({
+            where: { id: item.assetId },
+            data: {
+              status: data.type === 'REVOKE' ? 'IN_STOCK' : 'ASSIGNED',
+              currentUserName: data.type === 'REVOKE' ? null : data.recipientName,
+              currentPosition: data.type === 'REVOKE' ? null : data.recipientPosition,
+              departmentName: data.recipientDepartment,
+              locationName: data.newLocation,
+              cityName: data.newCity,
+              handoverDate: data.type === 'REVOKE' ? null : new Date(),
+            }
+          });
+
+          // Record history
+          await tx.assetAssignment.create({
+            data: {
+              assetId: item.assetId,
+              previousUserName: oldAsset.currentUserName,
+              newUserName: data.type === 'REVOKE' ? 'KHO QLTS' : data.recipientName,
+              newPosition: data.type === 'REVOKE' ? null : data.recipientPosition,
+              newDepartmentName: data.recipientDepartment,
+              newLocationName: data.newLocation,
+              newCityName: data.newCity,
+              newStatus: data.type === 'REVOKE' ? 'IN_STOCK' : 'ASSIGNED',
+              effectiveAt: new Date(),
+              note: `Hồ sơ ${documentNo} (${data.type === 'REVOKE' ? 'Thu hồi' : 'Bàn giao'})`
+            }
+          });
+
+          await AuditService.logAssetChange(item.assetId, oldAsset, updatedAsset, performedBy, tx);
+        }
+
+        // Create GeneratedDocument record for each asset involved (so it shows in their Document tab)
+        const templateCode = data.type === 'TRANSFER' ? 'BM06' : 'BM02';
+        const template = await tx.documentTemplate.findUnique({ where: { templateCode } });
+        
+        if (template) {
+          for (const assetId of data.assetIds) {
+            await tx.generatedDocument.create({
+              data: {
+                documentNo: document.documentNo,
+                templateId: template.id,
+                entityType: 'Asset',
+                entityId: assetId,
+                fileName: `${templateCode}_${document.documentNo.replace('/', '_')}.pdf`,
+                fileUrl: `/handover/${document.id}/pdf`,
+                status: 'COMPLETED',
+                createdBy: performedBy
+              }
+            });
+          }
+        }
+      }
+
       await AuditService.log({
         entityType: 'HANDOVER',
         entityId: document.id,
-        action: 'CREATE',
+        action: (data.autoComplete ? 'CREATE_AND_COMPLETE' : 'CREATE') as any,
         details: { documentNo, type: data.type, assetCount: data.assetIds.length },
         performedBy,
         tx
@@ -124,6 +185,27 @@ export class HandoverService {
         where: { id },
         data: { status: 'COMPLETED' }
       });
+
+      // Create GeneratedDocument record for each asset involved
+      const templateCode = doc.type === 'TRANSFER' ? 'BM06' : 'BM02';
+      const template = await tx.documentTemplate.findUnique({ where: { templateCode } });
+      
+      if (template) {
+        for (const item of doc.items) {
+          await tx.generatedDocument.create({
+            data: {
+              documentNo: doc.documentNo,
+              templateId: template.id,
+              entityType: 'Asset',
+              entityId: item.assetId,
+              fileName: `${templateCode}_${doc.documentNo.replace('/', '_')}.pdf`,
+              fileUrl: `/handover/${doc.id}/pdf`,
+              status: 'COMPLETED',
+              createdBy: performedBy
+            }
+          });
+        }
+      }
 
       await AuditService.log({
         entityType: 'HANDOVER',

@@ -19,11 +19,17 @@ import {
   Loader2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
-import QRCode from 'react-qr-code';
+// @ts-ignore
+import QRCodeComponent from 'react-qr-code';
+// @ts-ignore
+import BarcodeComponent from 'react-barcode';
 import api from '../lib/api';
 import { PdfPreviewModal } from './forms/PdfPreviewModal';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+
+const QRCode = (QRCodeComponent as any).default || QRCodeComponent;
+const Barcode = (BarcodeComponent as any).default || BarcodeComponent;
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -69,7 +75,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
 
   if (!isOpen) return null;
 
-  const missingCodes = assets.filter(a => !a.assetCode);
+  const missingCodes = (assets || []).filter(a => !(a.asset_code || a.assetCode || a.code));
   const nonTaggableAssets = assets.filter(a => ['DISPOSED', 'LOST'].includes(a.status));
 
   const handleAction = async (type: 'PREVIEW' | 'PRINT' | 'DOWNLOAD') => {
@@ -140,57 +146,60 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
     }
   };
 
-  const renderLabel = (asset: any) => {
-    const codeValue = asset?.assetCode || '';
-    const hasValidCode = codeValue.length > 0;
+    const renderLabel = (asset: any) => {
+      // Standardize asset code mapping as requested
+      const codeValue = String(asset?.asset_code || asset?.assetCode || asset?.code || '');
+      const hasValidCode = codeValue.trim().length > 0;
 
-    return (
-      <div className={cn(
-        "bg-white shadow-lg border border-slate-200 p-4 rounded-lg space-y-3 relative overflow-hidden transition-all hover:shadow-xl",
-        config.size === '30x20mm' ? "w-[160px]" : "w-[240px]"
-      )}>
+      return (
         <div className={cn(
-          "flex justify-between items-start",
-          config.advanced.qrPosition === 'LEFT' ? "flex-row-reverse" : "flex-row"
+          "bg-white shadow-lg border border-slate-200 p-4 rounded-lg space-y-3 relative overflow-hidden transition-all hover:shadow-xl",
+          config.size === '30x20mm' ? "w-[160px]" : "w-[240px]"
         )}>
-          <div className="space-y-1.5 flex-1 pr-3">
-            {config.fields.company && <p className="text-[9px] font-black text-primary-600 uppercase tracking-widest leading-none">DANKO GROUP</p>}
-            {config.fields.assetCode && <p className="text-[10px] font-black text-slate-800 font-mono tracking-tighter">{codeValue || 'CHƯA CÓ MÃ'}</p>}
-            {config.fields.assetName && <p className="text-[12px] font-black text-slate-900 leading-tight line-clamp-2 uppercase">{asset?.assetName || 'Tài sản mẫu'}</p>}
-          </div>
-          <div className="bg-white p-1 rounded-lg flex items-center justify-center border border-slate-100 shadow-sm shrink-0">
-            {hasValidCode ? (
-              config.codeType === 'QR' ? (
-                <div className="p-1 bg-white">
-                  <QRCode 
-                    value={codeValue} 
-                    size={64} 
-                    level="H"
-                    style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                  />
-                </div>
+          <div className={cn(
+            "flex justify-between items-start",
+            config.advanced.qrPosition === 'LEFT' ? "flex-row-reverse" : "flex-row"
+          )}>
+            <div className="space-y-1.5 flex-1 pr-3">
+              {config.fields.company && <p className="text-[9px] font-black text-primary-600 uppercase tracking-widest leading-none">DANKO GROUP</p>}
+              {config.fields.assetCode && (
+                <p className="text-[10px] font-black text-slate-800 font-mono tracking-tighter">
+                  {hasValidCode ? codeValue : 'CHƯA CÓ MÃ'}
+                </p>
+              )}
+              {config.fields.assetName && <p className="text-[12px] font-black text-slate-900 leading-tight line-clamp-2 uppercase">{asset?.assetName || 'Tài sản mẫu'}</p>}
+            </div>
+            <div className="bg-white p-1 rounded-lg flex items-center justify-center border border-slate-100 shadow-sm shrink-0 min-w-[72px] min-h-[72px]">
+              {hasValidCode ? (
+                config.codeType === 'QR' ? (
+                  <div className="p-1 bg-white">
+                    <QRCode 
+                      value={codeValue} 
+                      size={64} 
+                      level="M"
+                      style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                    />
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center bg-white overflow-hidden">
+                    <Barcode 
+                      value={codeValue}
+                      width={1.2}
+                      height={40}
+                      displayValue={false}
+                      margin={0}
+                    />
+                    <p className="text-[7px] font-mono font-black text-slate-700 mt-1 tracking-tighter">{codeValue}</p>
+                  </div>
+                )
               ) : (
-                <div className="flex flex-col items-center justify-center p-1 bg-white">
-                  <svg viewBox="0 0 120 50" className="w-[80px] h-[40px]">
-                    {codeValue.split('').map((char, i) => {
-                      const code = char.charCodeAt(0);
-                      const x = i * 4 + 2;
-                      return (
-                        <rect key={i} x={x} y={2} width={code % 2 === 0 ? 2 : 1} height={38} fill="#0f172a" />
-                      );
-                    })}
-                  </svg>
-                  <p className="text-[7px] font-mono font-black text-slate-700 mt-0.5 tracking-tighter">{codeValue}</p>
+                <div className="w-16 h-16 flex flex-col items-center justify-center text-rose-300 bg-rose-50 rounded-lg p-2 text-center">
+                  <AlertCircle className="h-4 w-4 mb-1" />
+                  <span className="text-[7px] font-black uppercase leading-tight">Thiếu mã</span>
                 </div>
-              )
-            ) : (
-              <div className="w-16 h-16 flex flex-col items-center justify-center text-rose-300 bg-rose-50 rounded-lg p-2 text-center">
-                <AlertCircle className="h-4 w-4 mb-1" />
-                <span className="text-[7px] font-black uppercase leading-tight">Thiếu mã</span>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
         
         {(config.fields.serial || config.fields.location || config.fields.purchaseDate) && (
           <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-x-3 gap-y-1.5">
@@ -237,7 +246,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
               <div>
                 <h3 className="text-lg font-black text-slate-800 uppercase tracking-tight">In tem tài sản</h3>
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mt-1.5 flex items-center">
-                  <Info className="h-3 w-3 mr-1.5 text-primary-500" /> Tạo mã định danh vật lý cho {assets.length} tài sản
+                  <Info className="h-3 w-3 mr-1.5 text-primary-500" /> Tạo mã định danh vật lý cho {(assets || []).length} tài sản
                 </p>
               </div>
             </div>
@@ -265,7 +274,9 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-[11px] font-black text-slate-800 truncate leading-none mb-1.5">{asset.assetName}</p>
-                        <p className="text-[9px] font-bold text-slate-400 font-mono tracking-tighter">{asset.assetCode || 'CHƯA CÓ MÃ'}</p>
+                        <p className="text-[9px] font-bold text-slate-400 font-mono tracking-tighter">
+                          {asset.asset_code || asset.assetCode || asset.code || 'CHƯA CÓ MÃ'}
+                        </p>
                       </div>
                     </div>
                   ))}
@@ -411,7 +422,14 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
               </div>
 
               <div className="flex-1 flex items-center justify-center p-12 bg-slate-50 border-4 border-dashed border-slate-100 rounded-[40px] overflow-hidden">
-                {previewMode === 'SINGLE' ? (
+                {assets.length === 0 ? (
+                  <div className="text-center space-y-4">
+                    <div className="bg-white p-6 rounded-3xl shadow-xl inline-block border border-slate-100">
+                      <AlertCircle className="h-10 w-10 text-rose-500 animate-pulse mx-auto" />
+                    </div>
+                    <p className="text-xs font-black text-slate-400 uppercase tracking-widest">Không có tài sản để xem trước</p>
+                  </div>
+                ) : previewMode === 'SINGLE' ? (
                    renderLabel(assets[0])
                 ) : (
                   <div className="bg-white shadow-2xl border border-slate-200 w-full max-w-[340px] aspect-[1/1.41] p-6 grid grid-cols-3 gap-2 overflow-hidden relative">

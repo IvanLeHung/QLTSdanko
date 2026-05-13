@@ -37,9 +37,11 @@ router.post('/login', async (req, res) => {
 
   const validPassword = await bcrypt.compare(password, user.passwordHash);
   if (!validPassword) {
+    console.log(`Login failed for ${username}: Incorrect password`);
     return res.status(401).json({ message: 'Invalid credentials' });
   }
 
+  console.log(`Login successful for: ${username}`);
   const roleNames = user.roles.map(ur => ur.role.name);
   const permissions = user.roles.flatMap(ur => 
     ur.role.permissions.map(rp => rp.permission.action)

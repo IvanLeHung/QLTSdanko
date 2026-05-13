@@ -160,11 +160,28 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
                   >
                     <Eye className="h-4 w-4" />
                   </button>
-                  <button className="p-2 hover:bg-slate-100 rounded-lg text-primary-600 transition-colors" title="Tải PDF">
+                  <button 
+                    onClick={() => {
+                      const url = generated.fileUrl.startsWith('http') ? generated.fileUrl : `http://localhost:3001/api${generated.fileUrl}`;
+                      window.open(url, '_blank');
+                    }}
+                    className="p-2 hover:bg-slate-100 rounded-lg text-primary-600 transition-colors" 
+                    title="Tải PDF"
+                  >
                     <FileDown className="h-4 w-4" />
                   </button>
                   <button 
-                    onClick={() => onSelectForm(t.templateCode, { ...generated, isCompleted: true, autoPrint: true })}
+                    onClick={() => {
+                      const url = generated.fileUrl.startsWith('http') ? generated.fileUrl : `http://localhost:3001/api${generated.fileUrl}`;
+                      const iframe = document.createElement('iframe');
+                      iframe.style.display = 'none';
+                      iframe.src = url;
+                      document.body.appendChild(iframe);
+                      iframe.onload = () => {
+                        iframe.contentWindow?.print();
+                        setTimeout(() => document.body.removeChild(iframe), 1000);
+                      };
+                    }}
                     className="p-2 hover:bg-slate-100 rounded-lg text-emerald-600 transition-colors" 
                     title="In hồ sơ"
                   >

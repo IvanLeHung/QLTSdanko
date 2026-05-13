@@ -37,6 +37,8 @@ import { AutocompleteInput, MultiSelect, PopoverFilter, FilterChip } from '../co
 import { Can } from '../components/Can';
 import { AssetDetailPopup } from '../components/AssetDetailPopup';
 import { AssetLabelPrintModal } from '../components/AssetLabelPrintModal';
+import { ErrorBoundary, ModalError } from '../components/ErrorBoundary';
+
 import { BMFormDispatcher } from '../components/forms/BMFormDispatcher';
 
 export const AssetList: React.FC = () => {
@@ -188,7 +190,7 @@ export const AssetList: React.FC = () => {
         setActiveBM({ code: 'BM02/QLTS', data: { asset } });
         break;
       case 'revoke':
-        setActiveBM({ code: 'BM01/QLTS', data: { asset } });
+        setActiveBM({ code: 'BM02/QLTS', data: { asset, type: 'Thu hồi' } });
         break;
       case 'inventory':
         setActiveBM({ code: 'BM09/QLTS', data: { asset, businessType: 'Kiểm tra đột xuất' } });
@@ -200,7 +202,16 @@ export const AssetList: React.FC = () => {
         toast.info("Đang mở hồ sơ thanh lý cho " + asset.assetCode);
         break;
       case 'print_label':
-        setAssetsToPrint([asset]);
+        if (!asset) {
+          toast.error('Không tìm thấy dữ liệu tài sản.');
+          break;
+        }
+        const assetCode = asset.asset_code || asset.assetCode || asset.code;
+        if (!assetCode) {
+          toast.error('Tài sản chưa có mã, không thể in tem.');
+          break;
+        }
+        setAssetsToPrint([{ ...asset, asset_code: assetCode }]);
         setIsPrintModalOpen(true);
         break;
       case 'history':
@@ -322,7 +333,7 @@ export const AssetList: React.FC = () => {
                   Thêm thao tác <ChevronDown className="ml-1.5 h-3.5 w-3.5" />
                 </button>
                 <div className="absolute bottom-full right-0 mb-4 hidden group-hover/more:block w-48 bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden shadow-2xl">
-                   <button onClick={() => setActiveBM({ code: 'BM01/QLTS', data: { assets: selectedAssets } })} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center">
+                   <button onClick={() => setActiveBM({ code: 'BM02/QLTS', data: { assets: selectedAssets, type: 'Thu hồi' } })} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center">
                      <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
                    </button>
                    <button onClick={() => setActiveBM({ code: 'BM10/QLTS', data: { assets: selectedAssets } })} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center">
@@ -422,8 +433,16 @@ export const AssetList: React.FC = () => {
                               <div className="fixed inset-0 z-30" onClick={() => setActiveMenuId(null)}></div>
                               <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-[#E2E8F0] z-40 p-2 animate-in fade-in zoom-in duration-150 text-left">
                                  <ActionItem label="Xem chi tiết" icon={<Eye className="h-4 w-4" />} onClick={() => handleAssetAction('view', asset)} />
-                                 <ActionItem label="Cấp phát / Điều chuyển" icon={<UserPlus className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} />
-                                 <ActionItem label="Thu hồi" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} />
+                                 
+                                 {asset.status === 'ASSIGNED' ? (
+                                   <>
+                                     <ActionItem label="Điều chuyển tài sản" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} />
+                                     <ActionItem label="Thu hồi về kho" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} />
+                                   </>
+                                 ) : (
+                                   <ActionItem label="Cấp phát / Bàn giao" icon={<UserPlus className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} />
+                                 )}
+
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
                                  <ActionItem label="Kiểm kê" icon={<ClipboardCheck className="h-4 w-4" />} onClick={() => handleAssetAction('inventory', asset)} />
                                  <ActionItem label="Sửa chữa / Bảo trì" icon={<Wrench className="h-4 w-4" />} onClick={() => handleAssetAction('repair', asset)} />
@@ -460,17 +479,21 @@ export const AssetList: React.FC = () => {
         initialTab={detailTab}
         onClose={() => setIsDetailOpen(false)}
         onAction={(action, id) => {
-          setIsDetailOpen(false);
+          if (action !== 'print_label') {
+            setIsDetailOpen(false);
+          }
           const asset = assets.find(a => a.id === id);
           if (asset) handleAssetAction(action, asset);
         }}
       />
 
-      <AssetLabelPrintModal 
-        isOpen={isPrintModalOpen}
-        onClose={() => setIsPrintModalOpen(false)}
-        assets={assetsToPrint}
-      />
+      <ErrorBoundary fallback={<ModalError message="Không thể mở chức năng In tem tài sản." />}>
+        <AssetLabelPrintModal 
+          isOpen={isPrintModalOpen}
+          onClose={() => setIsPrintModalOpen(false)}
+          assets={assetsToPrint}
+        />
+      </ErrorBoundary>
 
       <BMFormDispatcher 
         isOpen={!!activeBM}

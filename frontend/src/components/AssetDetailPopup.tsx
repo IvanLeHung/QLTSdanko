@@ -311,7 +311,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       <Edit3 className="h-3.5 w-3.5 mr-2" /> Sửa thông tin
                     </button>
                     <button 
-                      onClick={() => onAction('print_label', asset.id)}
+                      onClick={(e) => { e.stopPropagation(); onAction('print_label', asset.id); }}
                       className="flex items-center px-4 py-2.5 bg-white border border-slate-200 text-slate-500 hover:text-primary-600 hover:border-primary-100 rounded-xl transition-all shadow-sm group"
                       title="In tem tài sản"
                     >
@@ -916,12 +916,14 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         <div className="p-2 space-y-1">
                           {[
                             { id: 'edit', label: 'Sửa thông tin', icon: Edit3, color: 'text-slate-600', onClick: enterEditMode },
-                            { id: 'recover', label: 'Thu hồi tài sản', icon: RotateCcw, color: 'text-slate-600', onClick: () => setSelectedForm({ code: 'BM02' }) },
-                            { id: 'transfer', label: 'Điều chuyển tài sản', icon: ArrowRightLeft, color: 'text-primary-600', onClick: () => setSelectedForm({ code: 'BM06' }) },
+                            ...(asset.status === 'ASSIGNED' ? [
+                              { id: 'recover', label: 'Thu hồi tài sản', icon: RotateCcw, color: 'text-slate-600', onClick: () => setSelectedForm({ code: 'BM02', data: { type: 'Thu hồi' } }) },
+                              { id: 'transfer', label: 'Điều chuyển tài sản', icon: ArrowRightLeft, color: 'text-primary-600', onClick: () => setSelectedForm({ code: 'BM06' }) }
+                            ] : []),
                             { id: 'damage', label: 'Báo hỏng / Sửa chữa', icon: Wrench, color: 'text-amber-600', onClick: () => setSelectedForm({ code: 'BM03' }) },
                             { id: 'lost', label: 'Báo mất tài sản', icon: ShieldAlert, color: 'text-slate-900', onClick: () => setSelectedForm({ code: 'BM13' }) },
                             { id: 'liquidate', label: 'Thanh lý tài sản', icon: Trash2, color: 'text-rose-600', onClick: () => setSelectedForm({ code: 'BM04' }) },
-                            { id: 'print', label: 'In tem tài sản', icon: Printer, color: 'text-primary-600', onClick: () => onAction('print_label', asset.id) },
+                            { id: 'print', label: 'In tem tài sản', icon: Printer, color: 'text-primary-600', onClick: (e: any) => { e.stopPropagation(); onAction('print_label', asset.id); } },
                             { id: 'timeline', label: 'Xem nhật ký tài sản', icon: History, color: 'text-slate-500', onClick: () => setActiveTab('timeline') },
                           ].map((act) => (
                             <button

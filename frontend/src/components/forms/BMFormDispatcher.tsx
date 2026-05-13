@@ -23,11 +23,12 @@ export const BMFormDispatcher: React.FC<BMFormDispatcherProps> = ({
   onSubmit,
   data
 }) => {
-  switch (formCode) {
+  const baseCode = formCode.split('/')[0];
+  switch (baseCode) {
     case 'BM01':
       return <BM01HandoverModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} />;
     case 'BM02':
-      return <BM02HandoverModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} initialAsset={data?.asset} />;
+      return <BM02HandoverModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} initialAsset={data?.asset} initialAssets={data?.assets} initialType={data?.type} />;
     case 'BM03':
       return <BM03DamagedModal isOpen={isOpen} onClose={onClose} onSubmit={onSubmit} asset={data?.asset} />;
     case 'BM04':

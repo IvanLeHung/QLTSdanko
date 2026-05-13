@@ -21,6 +21,7 @@ import { DamageReport } from './pages/DamageReport';
 import { LostReport } from './pages/LostReport';
 import { Liquidation } from './pages/Liquidation';
 import { DocumentLibrary } from './pages/DocumentLibrary';
+import { PrintCenter } from './pages/PrintCenter';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -55,6 +56,7 @@ function App() {
           <Route path="/operational/liquidation" element={<PrivateRoute><Liquidation /></PrivateRoute>} />
           <Route path="/import/assets" element={<PrivateRoute><ImportAssets /></PrivateRoute>} />
           <Route path="/documents" element={<PrivateRoute><DocumentLibrary /></PrivateRoute>} />
+          <Route path="/print-center" element={<PrivateRoute><PrintCenter /></PrivateRoute>} />
           
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>

@@ -16,7 +16,8 @@ import {
   Layers,
   ShieldAlert,
   AlertTriangle,
-  Trash2
+  Trash2,
+  Printer
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { clsx, type ClassValue } from 'clsx';
@@ -36,6 +37,7 @@ const navItems = [
   { name: 'Thanh lý tài sản', path: '/operational/liquidation', icon: Trash2 },
   { name: 'Kiểm kê tài sản', path: '/inventory', icon: ClipboardCheck },
   { name: 'Biểu mẫu / Hồ sơ', path: '/documents', icon: FileText },
+  { name: 'Trung tâm in ấn', path: '/print-center', icon: Printer },
   { name: 'Nhập Excel', path: '/import/assets', icon: Upload },
   { name: 'Cấu trúc tài sản', path: '/settings/classification', icon: Layers },
   { name: 'Công ty thành viên', path: '/settings/companies', icon: Building2 },
