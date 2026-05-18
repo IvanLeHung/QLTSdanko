@@ -38,6 +38,7 @@ import { Can } from '../components/Can';
 import { AssetDetailPopup } from '../components/AssetDetailPopup';
 import { AssetLabelPrintModal } from '../components/AssetLabelPrintModal';
 import { ErrorBoundary, ModalError } from '../components/ErrorBoundary';
+import { TransferWizard } from '../components/TransferWizard';
 
 import { BMFormDispatcher } from '../components/forms/BMFormDispatcher';
 
@@ -88,6 +89,11 @@ export const AssetList: React.FC = () => {
   // Print Modal State
   const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
   const [assetsToPrint, setAssetsToPrint] = useState<any[]>([]);
+
+  // Transfer Wizard State
+  const [isTransferWizardOpen, setIsTransferWizardOpen] = useState(false);
+  const [wizardAssetIds, setWizardAssetIds] = useState<number[]>([]);
+  const [wizardDefaultType, setWizardDefaultType] = useState<'HANDOVER' | 'TRANSFER' | 'RECALL'>('HANDOVER');
 
   // BM Modal State
   const [activeBM, setActiveBM] = useState<{code: string, data?: any} | null>(null);
@@ -209,10 +215,14 @@ export const AssetList: React.FC = () => {
         openAssetDetail(asset.id, 'info');
         break;
       case 'handover':
-        setActiveBM({ code: 'BM02/QLTS', data: { asset } });
+        setWizardAssetIds([asset.id]);
+        setWizardDefaultType(asset.status === 'IN_STOCK' ? 'HANDOVER' : 'TRANSFER');
+        setIsTransferWizardOpen(true);
         break;
       case 'revoke':
-        setActiveBM({ code: 'BM02/QLTS', data: { asset, type: 'Thu hồi' } });
+        setWizardAssetIds([asset.id]);
+        setWizardDefaultType('RECALL');
+        setIsTransferWizardOpen(true);
         break;
       case 'inventory':
         setActiveBM({ code: 'BM09/QLTS', data: { asset, businessType: 'Kiểm tra đột xuất' } });
@@ -221,7 +231,7 @@ export const AssetList: React.FC = () => {
         setActiveBM({ code: 'BM03/QLTS', data: { asset } });
         break;
       case 'liquidation':
-        toast.info("Đang mở hồ sơ thanh lý cho " + asset.assetCode);
+        setActiveBM({ code: 'BM04/QLTS', data: { asset } });
         break;
       case 'print_label':
         if (!asset) {
@@ -249,6 +259,83 @@ export const AssetList: React.FC = () => {
     if (selectedAssets.length === 0) return;
     setAssetsToPrint(selectedAssets);
     setIsPrintModalOpen(true);
+  };
+
+  const handleExportAll = async () => {
+    try {
+      const response = await api.get('/import/assets/export', { responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `so_tai_san_toan_bo_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Xuất dữ liệu toàn bộ tài sản thành công!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi tải dữ liệu xuất toàn bộ");
+    }
+  };
+
+  const handleExportSelected = () => {
+    if (selectedAssets.length === 0) return;
+    
+    const headers = [
+      'Mã tài sản',
+      'Số TT',
+      'Mã công ty',
+      'Tên tài sản',
+      'Số Serial',
+      'ĐVT',
+      'Mục đích',
+      'Trạng thái',
+      'Người sử dụng',
+      'Chức vụ',
+      'Phòng ban',
+      'Vị trí',
+      'Thành phố',
+      'Dự án',
+      'Giá mua (VNĐ)',
+      'Nhà cung cấp',
+      'Ghi chú'
+    ];
+
+    const rows = selectedAssets.map(a => [
+      a.assetCode || '',
+      a.runningNoText || '',
+      a.companyCode || '',
+      a.assetName || '',
+      a.serialNumber || '',
+      a.unit || 'Cái',
+      a.usagePurpose || '',
+      getStatusLabel(a.status).label,
+      a.currentUserName || '',
+      a.currentPosition || '',
+      a.departmentName || '',
+      a.locationName || '',
+      a.cityName || '',
+      a.projectName || '',
+      a.purchasePriceExVat || 0,
+      a.supplierName || '',
+      a.note || ''
+    ]);
+
+    const csvContent = '\uFEFF' + [
+      headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `danh_sach_tai_san_chon_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Xuất dữ liệu Excel tài sản được chọn thành công!");
   };
 
   const handleSort = (columnKey: string) => {
@@ -353,7 +440,10 @@ export const AssetList: React.FC = () => {
               <div className="h-5 w-px bg-slate-100 mx-1"></div>
               
               <Can permission="asset.export">
-                <button className="h-[32px] px-3 flex items-center text-[11px] font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap">
+                <button 
+                  onClick={handleExportAll}
+                  className="h-[32px] px-3 flex items-center text-[11px] font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap"
+                >
                   <Download className="mr-1.5 h-3.5 w-3.5" /> Export
                 </button>
               </Can>
@@ -380,7 +470,15 @@ export const AssetList: React.FC = () => {
             <div className="h-6 w-px bg-[#334155]"></div>
             <div className="flex items-center space-x-2">
               <button onClick={() => setSelectedIds([])} className="px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400">Bỏ chọn</button>
-              <button onClick={() => setActiveBM({ code: 'BM02/QLTS', data: { asset: selectedAssets[0], assets: selectedAssets } })} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors">
+              <button 
+                onClick={() => {
+                  setWizardAssetIds(selectedIds);
+                  const hasInStock = selectedAssets.some(a => a.status === 'IN_STOCK');
+                  setWizardDefaultType(hasInStock ? 'HANDOVER' : 'TRANSFER');
+                  setIsTransferWizardOpen(true);
+                }} 
+                className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors"
+              >
                 <UserPlus className="mr-2 h-4 w-4" /> Bàn giao / Điều chuyển
               </button>
               <button onClick={() => setActiveBM({ code: 'BM12/QLTS', data: { assets: selectedAssets } })} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors">
@@ -404,16 +502,36 @@ export const AssetList: React.FC = () => {
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)}></div>
                     <div className="absolute bottom-full right-0 mb-4 w-48 bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden shadow-2xl z-50 animate-in slide-in-from-bottom-2">
-                       <button onClick={() => { setIsMoreMenuOpen(false); setActiveBM({ code: 'BM02/QLTS', data: { assets: selectedAssets, type: 'Thu hồi' } }); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white">
+                       <button 
+                         onClick={() => { 
+                           setIsMoreMenuOpen(false); 
+                           setWizardAssetIds(selectedIds);
+                           setWizardDefaultType('RECALL');
+                           setIsTransferWizardOpen(true);
+                         }} 
+                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
+                       >
                          <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
                        </button>
                        <button onClick={() => { setIsMoreMenuOpen(false); setActiveBM({ code: 'BM10/QLTS', data: { assets: selectedAssets } }); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white">
                          <Wrench className="mr-3 h-4 w-4 text-amber-500" /> Sửa chữa / Bảo trì
                        </button>
-                       <button onClick={() => setIsMoreMenuOpen(false)} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400">
+                       <button 
+                         onClick={() => { 
+                           setIsMoreMenuOpen(false); 
+                           setActiveBM({ code: 'BM04/QLTS', data: { asset: selectedAssets[0], assets: selectedAssets } }); 
+                         }} 
+                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400"
+                       >
                          <Trash2 className="mr-3 h-4 w-4" /> Thanh lý
                        </button>
-                       <button onClick={() => setIsMoreMenuOpen(false)} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-emerald-400">
+                       <button 
+                         onClick={() => { 
+                           setIsMoreMenuOpen(false); 
+                           handleExportSelected(); 
+                         }} 
+                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-emerald-400"
+                       >
                          <Download className="mr-3 h-4 w-4" /> Xuất Excel
                        </button>
                     </div>
@@ -587,6 +705,15 @@ export const AssetList: React.FC = () => {
           const asset = assets.find(a => a.id === id);
           if (asset) handleAssetAction(action, asset);
         }}
+      />
+
+      <TransferWizard
+        isOpen={isTransferWizardOpen}
+        onClose={() => setIsTransferWizardOpen(false)}
+        onComplete={fetchAssets}
+        initialAssetIds={wizardAssetIds}
+        defaultType={wizardDefaultType}
+        source="ASSET_DETAIL"
       />
 
       <ErrorBoundary fallback={<ModalError message="Không thể mở chức năng In tem tài sản." />}>

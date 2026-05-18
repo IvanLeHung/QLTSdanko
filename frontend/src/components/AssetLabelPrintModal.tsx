@@ -44,7 +44,7 @@ interface AssetLabelPrintModalProps {
 export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOpen, onClose, assets }) => {
   const [config, setConfig] = useState({
     codeType: 'QR' as 'QR' | 'BAR',
-    size: '50x30mm',
+    size: '61x40mm',
     template: 'FULL',
     copies: 1,
     fontSize: 'NORMAL',
@@ -79,6 +79,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
   // Map config.size to physical dimensions for @page
   const getLabelDimensions = useCallback((size: string) => {
     switch (size) {
+      case '61x40mm': return { w: '61mm', h: '40mm', pw: 61, ph: 40 };
       case '60x40mm': return { w: '60mm', h: '40mm', pw: 60, ph: 40 };
       case '40x25mm': return { w: '40mm', h: '25mm', pw: 40, ph: 25 };
       case '30x20mm': return { w: '30mm', h: '20mm', pw: 30, ph: 20 };
@@ -138,6 +139,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
     }
     html, body {
       width: ${dims.w};
+      height: ${dims.h};
       margin: 0;
       padding: 0;
       font-family: 'Inter', Arial, Helvetica, sans-serif;
@@ -161,6 +163,79 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
     }
     .asset-label:last-child {
       page-break-after: auto;
+    }
+    
+    /* ---- Custom 61x40mm printer specific layout ---- */
+    .asset-label.custom-61x40 {
+      width: 59mm !important;
+      height: 40mm !important;
+      margin-left: 1mm !important;
+      margin-right: 1mm !important;
+      border: 0.3mm solid #000 !important;
+      border-radius: 3.2mm !important;
+      overflow: hidden !important;
+      display: flex !important;
+      flex-direction: row !important;
+      justify-content: flex-start !important;
+      align-items: stretch !important;
+      padding: 0 !important;
+      font-family: Arial, Helvetica, sans-serif !important;
+      page-break-after: always;
+    }
+    .asset-label.custom-61x40:last-child {
+      page-break-after: auto;
+    }
+    .asset-label.custom-61x40 .label-left-col {
+      width: 21mm !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      padding: 1mm !important;
+      border-right: 0.3mm solid #000 !important;
+      background: #fff !important;
+      flex-shrink: 0 !important;
+    }
+    .asset-label.custom-61x40 .label-left-col svg {
+      width: 18mm !important;
+      height: 18mm !important;
+      display: block !important;
+    }
+    .asset-label.custom-61x40 .label-right-col {
+      flex: 1 !important;
+      display: flex !important;
+      flex-direction: column !important;
+      background: #fff !important;
+    }
+    .asset-label.custom-61x40 .info-table {
+      width: 100% !important;
+      height: 100% !important;
+      border-collapse: collapse !important;
+      table-layout: fixed !important;
+    }
+    .asset-label.custom-61x40 .info-table tr {
+      border-bottom: 0.3mm solid #000 !important;
+    }
+    .asset-label.custom-61x40 .info-table tr:last-child {
+      border-bottom: none !important;
+    }
+    .asset-label.custom-61x40 .info-table td {
+      padding: 0.4mm 1mm !important;
+      font-size: 5.5pt !important;
+      font-weight: bold !important;
+      color: #000 !important;
+      line-height: 1.1 !important;
+      word-break: break-word !important;
+      vertical-align: middle !important;
+    }
+    .asset-label.custom-61x40 .info-table td.col-label {
+      width: 16mm !important;
+      border-right: 0.3mm solid #000 !important;
+      font-weight: bold !important;
+      text-align: left !important;
+    }
+    .asset-label.custom-61x40 .info-table td.col-value {
+      font-weight: normal !important;
+      text-align: left !important;
     }
     /* ---- A4 grid layout ---- */
     .a4-grid {
@@ -332,6 +407,62 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
       const codeValue = String(displayAsset?.asset_code || displayAsset?.assetCode || displayAsset?.code || '');
       const hasValidCode = codeValue.trim().length > 0;
 
+      if (config.size === '61x40mm') {
+        return (
+          <div className="bg-white border border-slate-900 overflow-hidden flex flex-row items-stretch select-none mx-auto w-[286px] h-[194px] rounded-[15px] shadow-lg font-sans">
+            <div className="w-[100px] border-r border-slate-900 flex items-center justify-center p-2 bg-white shrink-0">
+              {hasValidCode ? (
+                <div className="p-1 bg-white">
+                  <QRCode 
+                    value={codeValue} 
+                    size={80} 
+                    level="M"
+                    style={{ height: "auto", maxWidth: "100%", width: "100%" }}
+                  />
+                </div>
+              ) : (
+                <div className="w-16 h-16 flex flex-col items-center justify-center text-rose-300 bg-rose-50 rounded-lg p-2 text-center">
+                  <AlertCircle className="h-4 w-4 mb-1" />
+                  <span className="text-[7px] font-black uppercase leading-tight">Thiếu mã</span>
+                </div>
+              )}
+            </div>
+            <div className="flex-1 flex flex-col justify-between bg-white text-black min-w-0">
+              <table className="w-full h-full border-collapse border-spacing-0 table-fixed">
+                <tbody>
+                  <tr className="border-b border-slate-900">
+                    <td className="w-[65px] border-r border-slate-900 px-1 py-0.5 text-[8px] font-bold text-left align-middle whitespace-nowrap">Loại TS</td>
+                    <td className="px-1 py-0.5 text-[8.5px] font-normal text-left align-middle truncate">{displayAsset?.level3Name || '-'}</td>
+                  </tr>
+                  <tr className="border-b border-slate-900">
+                    <td className="border-r border-slate-900 px-1 py-0.5 text-[8px] font-bold text-left align-middle whitespace-nowrap">Phân loại TS</td>
+                    <td className="px-1 py-0.5 text-[8.5px] font-normal text-left align-middle truncate">{displayAsset?.level4Name || '-'}</td>
+                  </tr>
+                  <tr className="border-b border-slate-900">
+                    <td className="border-r border-slate-900 px-1 py-0.5 text-[8px] font-bold text-left align-middle whitespace-nowrap">Mã TS</td>
+                    <td className="px-1 py-0.5 text-[8.5px] font-normal text-left align-middle truncate">{codeValue}</td>
+                  </tr>
+                  <tr className="border-b border-slate-900">
+                    <td className="border-r border-slate-900 px-1 py-0.5 text-[8px] font-bold text-left align-middle whitespace-nowrap">S/N TS</td>
+                    <td className="px-1 py-0.5 text-[8.5px] font-normal text-left align-middle truncate">{displayAsset?.serialNumber || displayAsset?.serial || '-'}</td>
+                  </tr>
+                  <tr className="border-b border-slate-900">
+                    <td className="border-r border-slate-900 px-1 py-0.5 text-[8px] font-bold text-left align-middle whitespace-nowrap">Mô tả kỹ thuật</td>
+                    <td className="px-1 py-0.5 text-[8px] font-normal text-left align-middle leading-[1.1] overflow-hidden break-words line-clamp-3" style={{ display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical' }}>
+                      {displayAsset?.assetName || '-'}
+                    </td>
+                  </tr>
+                  <tr>
+                    <td className="border-r border-slate-900 px-1 py-0.5 text-[8px] font-bold text-left align-middle whitespace-nowrap">Ngày mua</td>
+                    <td className="px-1 py-0.5 text-[8.5px] font-normal text-left align-middle truncate">{displayAsset?.purchaseDate ? new Date(displayAsset.purchaseDate).toLocaleDateString('vi-VN') : '-'}</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className={cn(
           "bg-white shadow-lg border border-slate-200 p-4 rounded-lg space-y-3 relative overflow-hidden transition-all hover:shadow-xl mx-auto",
@@ -493,6 +624,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
                     value={config.size}
                     onChange={(e) => setConfig({...config, size: e.target.value})}
                   >
+                    <option value="61x40mm">Khổ tem: 61 x 40 mm (Máy in tem - Table)</option>
                     <option value="50x30mm">Khổ tem: 50 x 30 mm (Chuẩn)</option>
                     <option value="60x40mm">Khổ tem: 60 x 40 mm (Lớn)</option>
                     <option value="40x25mm">Khổ tem: 40 x 25 mm (Nhỏ)</option>
@@ -770,6 +902,46 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
                       const overridden = labelOverrides[asset.id] || {};
                       const displayAsset = { ...asset, ...overridden };
                       const cv = String(displayAsset?.assetCode || displayAsset?.asset_code || displayAsset?.code || '');
+
+                      if (config.size === '61x40mm') {
+                        return (
+                          <div key={`pls-${idx}`} className="asset-label custom-61x40">
+                            <div className="label-left-col">
+                              <QRCode value={cv} size={72} level="M" style={{ height: "auto", maxWidth: "100%", width: "100%" }} />
+                            </div>
+                            <div className="label-right-col">
+                              <table className="info-table">
+                                <tbody>
+                                  <tr>
+                                    <td className="col-label">Loại TS</td>
+                                    <td className="col-value">{displayAsset?.level3Name || '-'}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="col-label">Phân loại TS</td>
+                                    <td className="col-value">{displayAsset?.level4Name || '-'}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="col-label">Mã TS</td>
+                                    <td className="col-value">{cv}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="col-label">S/N TS</td>
+                                    <td className="col-value">{displayAsset?.serialNumber || displayAsset?.serial || '-'}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="col-label">Mô tả kỹ thuật</td>
+                                    <td className="col-value">{displayAsset?.assetName || '-'}</td>
+                                  </tr>
+                                  <tr>
+                                    <td className="col-label">Ngày mua</td>
+                                    <td className="col-value">{displayAsset?.purchaseDate ? new Date(displayAsset.purchaseDate).toLocaleDateString('vi-VN') : '-'}</td>
+                                  </tr>
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
+                        );
+                      }
 
                       return (
                         <div key={`pls-${idx}`} className="asset-label">

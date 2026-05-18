@@ -144,6 +144,11 @@ model Asset {
   attachments             String?
   lastLabelPrint          DateTime?
   creationBatch           CreationBatch?      @relation(fields: [creationBatchId], references: [id])
+  invoiceBatchId          Int?
+  invoiceLineId           Int?
+  originalInvoiceItemName String?
+  invoiceBatch            AssetInvoiceBatch?  @relation(fields: [invoiceBatchId], references: [id])
+  invoiceLine             AssetInvoiceLine?   @relation(fields: [invoiceLineId], references: [id])
   assignments             AssetAssignment[]
   editLogs                AssetEditLog[]
   events                  AssetEvent[]
@@ -502,3 +507,51 @@ model GeneratedDocument {
   template     DocumentTemplate? @relation(fields: [templateId], references: [id])
   templateId   Int?
 }
+
+model AssetInvoiceBatch {
+  id              Int                @id @default(autoincrement())
+  invoiceNo       String
+  invoiceDate     DateTime
+  supplierId      Int?
+  supplierName    String
+  supplierTaxCode String?
+  companyId       Int
+  warehouseId     Int?
+  totalAmount     Float?
+  fileUrl         String?
+  status          String             @default("DRAFT") // DRAFT | VALIDATED | POSTED | CANCELLED
+  totalLines      Int                @default(0)
+  totalAssets     Int                @default(0)
+  totalValue      Float              @default(0)
+  createdById     Int?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  postedAt        DateTime?
+  lines           AssetInvoiceLine[]
+  assets          Asset[]
+}
+
+model AssetInvoiceLine {
+  id                 Int               @id @default(autoincrement())
+  batchId            Int
+  lineNo             Int
+  invoiceItemName    String
+  assetName          String
+  categoryLevel1Id   Int
+  categoryLevel2Id   Int
+  categoryLevel3Id   Int
+  categoryLevel4Id   Int
+  quantity           Int
+  unitPrice          Float
+  amount             Float
+  serialsJson        String?           // For serials list (serialized JSON array)
+  supplierName       String?
+  note               String?
+  validationStatus   String            @default("VALID") // VALID | WARNING | ERROR
+  warningsJson       String?           // Array of warning/error messages
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  batch              AssetInvoiceBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  assets             Asset[]
+}
+

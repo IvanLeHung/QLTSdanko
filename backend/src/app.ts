@@ -33,6 +33,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/inventory', inventoryRoutes);
 app.use('/api/repairs', repairRoutes);
 app.use('/api/handover', handoverRoutes);
+app.use('/api/asset-transfers', handoverRoutes);
 app.use('/api/lost', lostRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/import', importRoutes);

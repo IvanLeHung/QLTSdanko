@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import api from '../lib/api';
-import { FileText, Plus, Download, Printer } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Plus, Download, Printer } from 'lucide-react';
 import { format } from 'date-fns';
 
 export const HandoverList: React.FC = () => {

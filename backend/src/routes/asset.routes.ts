@@ -2,7 +2,11 @@ import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { AssetService } from '../services/asset.service';
 import { authenticateToken, AuthRequest } from '../middleware/auth.middleware';
+import multer from 'multer';
+import { InvoiceParserService } from '../services/invoice-parser.service';
+import { InvoicePostService } from '../services/invoice-post.service';
 
+const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
 // Stats for summary cards
@@ -299,6 +303,18 @@ router.get('/categories/active/children/:parentId', authenticateToken, async (re
   res.json(categories);
 });
 
+router.get('/categories/active/all', authenticateToken, async (req, res) => {
+  try {
+    const categories = await prisma.assetCategory.findMany({
+      where: { isActive: true },
+      orderBy: { sortOrder: 'asc' }
+    });
+    res.json(categories);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 // Creation & Retrieval
 router.post('/bulk-create', authenticateToken, async (req: AuthRequest, res) => {
   const {
@@ -418,6 +434,74 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
 
     const updatedAsset = await AssetService.updateAsset(Number(id), updates, performedBy, reason);
     res.json(updatedAsset);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// --- INVOICE IMPORT ENDPOINTS ---
+router.post('/import-invoice/parse', authenticateToken, upload.single('file'), async (req: any, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Vui lòng chọn tệp tin để tải lên.' });
+    }
+
+    const filename = req.file.originalname.toLowerCase();
+    
+    if (filename.endsWith('.xml')) {
+      const xmlContent = req.file.buffer.toString('utf-8');
+      const result = await InvoiceParserService.parseXml(xmlContent);
+      return res.json(result);
+    } else if (filename.endsWith('.xlsx') || filename.endsWith('.xls') || filename.endsWith('.csv')) {
+      const result = await InvoiceParserService.parseExcel(req.file.buffer);
+      return res.json(result);
+    } else if (filename.endsWith('.pdf') || filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
+      // PDF or Image text fallback
+      return res.json({
+        invoice: { invoiceNo: '', invoiceDate: '', supplierName: '', supplierTaxCode: '', totalAmount: 0 },
+        lines: [],
+        warnings: ['Không thể bóc tách đầy đủ dữ liệu từ PDF. Vui lòng nhập thủ công hoặc dùng file Excel/XML.']
+      });
+    } else {
+      return res.status(400).json({ message: 'Định dạng tệp không được hỗ trợ. Chỉ hỗ trợ XML, Excel, PDF và ảnh.' });
+    }
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/import-invoice/post', authenticateToken, async (req: any, res) => {
+  const performedBy = req.user?.username || 'system';
+
+  try {
+    const result = await InvoicePostService.postInvoice(req.body, performedBy);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Get static CSV template for importing assets from invoices
+router.get('/import-invoice/template', async (req, res) => {
+  try {
+    const headers = [
+      'invoiceNo', 'invoiceDate', 'supplierName', 'supplierTaxCode',
+      'itemName', 'standardAssetName', 'category1', 'category2',
+      'category3', 'category4', 'quantity', 'unitPrice', 'serials', 'note'
+    ];
+    const example = [
+      'HD-001', '2026-05-18', 'Dell Vietnam', '0102030405',
+      'Laptop Dell XPS 15 9530', 'Laptop Dell XPS 15 2024', '03 - Máy móc, thiết bị', '01 - Thiết bị văn phòng',
+      '01 - Thiết bị đầu cuối', '01 - PC', '5', '45000000', 'SN-XPS001, SN-XPS002, SN-XPS003, SN-XPS004, SN-XPS005', 'Hàng nhập mới cho ban CNTT'
+    ];
+    
+    // Add BOM for Microsoft Excel to auto-detect UTF-8 and display Vietnamese diacritics
+    const BOM = '\uFEFF';
+    const csvContent = BOM + [headers.join(','), example.join(',')].join('\n');
+    
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', 'attachment; filename="Template_Nhap_Tai_San_Hoa_Don.csv"');
+    res.send(csvContent);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
