@@ -10,7 +10,8 @@
     "forceConsistentCasingInFileNames": true,
     "moduleResolution": "node",
     "baseUrl": ".",
-    "types": ["node"]
+    "types": ["node"],
+    "ignoreDeprecations": "6.0"
   },
   "include": ["src/**/*", "prisma/seed.ts"],
   "exclude": ["node_modules"]

@@ -57,7 +57,7 @@ export const AssetAssign: React.FC = () => {
         ]);
         
         // Simple filter for the first few assets for display
-        const filteredAssets = await Promise.all(selectedIds.map(id => api.get(`/assets/${id}`).then(r => r.data)));
+        const filteredAssets = await Promise.all(selectedIds.map((id: any) => api.get(`/assets/${id}`).then(r => r.data)));
         setAssets(filteredAssets);
         setDepartments(deptRes.data);
         setLocations(locRes.data);

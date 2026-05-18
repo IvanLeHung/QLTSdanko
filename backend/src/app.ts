@@ -16,6 +16,10 @@ import documentRoutes from './routes/document.routes';
 import importRoutes from './routes/import.routes';
 import operationalRoutes from './routes/operational.routes';
 import creationRoutes from './routes/creation.routes';
+import auditRoutes from './routes/audit.routes';
+import adminRoutes from './routes/admin.routes';
+import { auditMiddleware } from './middleware/audit.middleware';
+import { authenticateToken, loadPermissions } from './middleware/auth.middleware';
 
 dotenv.config();
 
@@ -25,20 +29,33 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Routes
+// Apply audit middleware globally
+app.use(auditMiddleware);
+
+// Public or semi-public routes
 app.use('/api/auth', authRoutes);
-app.use('/api/assets', assetRoutes);
-app.use('/api/settings', settingsRoutes);
-app.use('/api/dashboard', dashboardRoutes);
-app.use('/api/inventory', inventoryRoutes);
-app.use('/api/repairs', repairRoutes);
-app.use('/api/handover', handoverRoutes);
-app.use('/api/asset-transfers', handoverRoutes);
-app.use('/api/lost', lostRoutes);
-app.use('/api/documents', documentRoutes);
-app.use('/api/import', importRoutes);
-app.use('/api/operational', operationalRoutes);
-app.use('/api/creation', creationRoutes);
+
+// Protected routes that need permissions loaded
+const protectedApi = express.Router();
+protectedApi.use(authenticateToken);
+protectedApi.use(loadPermissions);
+
+protectedApi.use('/admin', adminRoutes);
+protectedApi.use('/assets', assetRoutes);
+protectedApi.use('/settings', settingsRoutes);
+protectedApi.use('/dashboard', dashboardRoutes);
+protectedApi.use('/inventory', inventoryRoutes);
+protectedApi.use('/repairs', repairRoutes);
+protectedApi.use('/handover', handoverRoutes);
+protectedApi.use('/asset-transfers', handoverRoutes);
+protectedApi.use('/lost', lostRoutes);
+protectedApi.use('/documents', documentRoutes);
+protectedApi.use('/import', importRoutes);
+protectedApi.use('/operational', operationalRoutes);
+protectedApi.use('/creation', creationRoutes);
+protectedApi.use('/audit', auditRoutes);
+
+app.use('/api', protectedApi);
 
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
@@ -49,3 +66,4 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 export default app;
+ 

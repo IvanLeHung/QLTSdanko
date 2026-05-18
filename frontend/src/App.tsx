@@ -22,12 +22,19 @@ import { LostReport } from './pages/LostReport';
 import { Liquidation } from './pages/Liquidation';
 import { DocumentLibrary } from './pages/DocumentLibrary';
 import { PrintCenter } from './pages/PrintCenter';
+import { ActivityLogs } from './pages/ActivityLogs';
+import { UserPermissions } from './pages/UserPermissions';
+import { ForceChangePassword } from './pages/ForceChangePassword';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
   
   if (loading) return <div>Loading...</div>;
   if (!user) return <Navigate to="/login" />;
+  
+  if (user.mustChangePassword) {
+    return <Navigate to="/force-change-password" />;
+  }
   
   return <Layout>{children}</Layout>;
 };
@@ -38,6 +45,7 @@ function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
+          <Route path="/force-change-password" element={<ForceChangePassword />} />
           
           <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/assets" element={<PrivateRoute><AssetList /></PrivateRoute>} />
@@ -57,6 +65,8 @@ function App() {
           <Route path="/import/assets" element={<PrivateRoute><ImportAssets /></PrivateRoute>} />
           <Route path="/documents" element={<PrivateRoute><DocumentLibrary /></PrivateRoute>} />
           <Route path="/print-center" element={<PrivateRoute><PrintCenter /></PrivateRoute>} />
+          <Route path="/activity-logs" element={<PrivateRoute><ActivityLogs /></PrivateRoute>} />
+          <Route path="/settings/permissions" element={<PrivateRoute><UserPermissions /></PrivateRoute>} />
           
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>

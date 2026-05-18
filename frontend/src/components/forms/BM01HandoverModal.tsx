@@ -81,7 +81,7 @@ export const BM01HandoverModal: React.FC<BM01ModalProps> = ({ isOpen, onClose, o
       submitting={loading}
       summary={summary}
       confirmLabel="Tạo tài sản từ biên bản"
-      isCompleted={formData.status === 'COMPLETED'}
+      isCompleted={false}
     >
       {/* SECTION 1: RECEIVE INFO */}
       <FormSection title="Thông tin tiếp nhận" icon={ClipboardCheck}>

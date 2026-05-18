@@ -17,7 +17,9 @@ import {
   ShieldAlert,
   AlertTriangle,
   Trash2,
-  Printer
+  Printer,
+  History,
+  Shield
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { clsx, type ClassValue } from 'clsx';
@@ -28,23 +30,25 @@ function cn(...inputs: ClassValue[]) {
 }
 
 const navItems = [
-  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard },
-  { name: 'Sổ tài sản', path: '/assets', icon: Package },
-  { name: 'Cấp mới / Nhập lô', path: '/assets/new', icon: PlusCircle },
-  { name: 'Bàn giao / Điều chuyển', path: '/handover', icon: UserPlus },
-  { name: 'Báo hỏng / Sửa chữa', path: '/operational/damage', icon: AlertTriangle },
-  { name: 'Báo mất tài sản', path: '/operational/lost', icon: ShieldAlert },
-  { name: 'Thanh lý tài sản', path: '/operational/liquidation', icon: Trash2 },
-  { name: 'Kiểm kê tài sản', path: '/inventory', icon: ClipboardCheck },
-  { name: 'Biểu mẫu / Hồ sơ', path: '/documents', icon: FileText },
-  { name: 'Trung tâm in ấn', path: '/print-center', icon: Printer },
-  { name: 'Nhập Excel', path: '/import/assets', icon: Upload },
-  { name: 'Cấu trúc tài sản', path: '/settings/classification', icon: Layers },
-  { name: 'Công ty thành viên', path: '/settings/companies', icon: Building2 },
+  { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, requiredPermission: 'REPORT_VIEW' },
+  { name: 'Sổ tài sản', path: '/assets', icon: Package, requiredPermission: 'ASSET_VIEW' },
+  { name: 'Cấp mới / Nhập lô', path: '/assets/new', icon: PlusCircle, requiredPermission: 'ASSET_CREATE' },
+  { name: 'Bàn giao / Điều chuyển', path: '/handover', icon: UserPlus, requiredPermission: 'TRANSFER_VIEW' },
+  { name: 'Báo hỏng / Sửa chữa', path: '/operational/damage', icon: AlertTriangle, requiredPermission: 'REPAIR_VIEW' },
+  { name: 'Báo mất tài sản', path: '/operational/lost', icon: ShieldAlert, requiredPermission: 'REPAIR_VIEW' },
+  { name: 'Thanh lý tài sản', path: '/operational/liquidation', icon: Trash2, requiredPermission: 'REPAIR_VIEW' },
+  { name: 'Kiểm kê tài sản', path: '/inventory', icon: ClipboardCheck, requiredPermission: 'INVENTORY_VIEW' },
+  { name: 'Biểu mẫu / Hồ sơ', path: '/documents', icon: FileText, requiredPermission: 'ASSET_VIEW' },
+  { name: 'Trung tâm in ấn', path: '/print-center', icon: Printer, requiredPermission: 'ASSET_PRINT_LABEL' },
+  { name: 'Nhật ký hoạt động', path: '/activity-logs', icon: History, requiredPermission: 'AUDIT_LOG_VIEW' },
+  { name: 'Nhập Excel', path: '/import/assets', icon: Upload, requiredPermission: 'ASSET_CREATE' },
+  { name: 'Phân quyền & Scope', path: '/settings/permissions', icon: Shield, requiredPermission: 'USER_VIEW' },
+  { name: 'Cấu trúc tài sản', path: '/settings/classification', icon: Layers, requiredPermission: 'ROLE_MANAGE' },
+  { name: 'Công ty thành viên', path: '/settings/companies', icon: Building2, requiredPermission: 'ROLE_MANAGE' },
 ];
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, logout } = useAuth();
+  const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -64,6 +68,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
           {navItems.map((item) => {
+            if (!hasPermission(item.requiredPermission)) return null;
+            
             const isActive = location.pathname.startsWith(item.path);
             return (
               <Link

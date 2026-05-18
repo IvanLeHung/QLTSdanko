@@ -1,4 +1,6 @@
 import prisma from '../utils/prisma';
+import { AuditExportService, AuditExportOptions } from './audit-export.service';
+import { AuditParser } from '../utils/audit-parser.util';
 
 export class AuditService {
   static async log({
@@ -64,4 +66,76 @@ export class AuditService {
       });
     }
   }
+
+  static async getLogs(options: {
+    startDate?: string;
+    endDate?: string;
+    action?: string;
+    entityType?: string;
+    keyword?: string;
+    performedBy?: string;
+    page?: number;
+    limit?: number;
+  }) {
+    const { startDate, endDate, action, entityType, keyword, performedBy, page = 1, limit = 50 } = options;
+    const skip = (page - 1) * limit;
+
+    const whereClause: any = {};
+
+    if (startDate || endDate) {
+      whereClause.createdAt = {};
+      if (startDate) {
+        const start = new Date(startDate);
+        start.setHours(0, 0, 0, 0);
+        whereClause.createdAt.gte = start;
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        whereClause.createdAt.lte = end;
+      }
+    }
+
+    if (action) whereClause.action = action;
+    if (entityType) whereClause.entityType = entityType;
+    if (performedBy) whereClause.performedBy = { contains: performedBy };
+    
+    if (keyword) {
+      whereClause.OR = [
+        { details: { contains: keyword } },
+        { action: { contains: keyword } },
+      ];
+    }
+
+    const [total, logs] = await Promise.all([
+      prisma.auditLog.count({ where: whereClause }),
+      prisma.auditLog.findMany({
+        where: whereClause,
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+    ]);
+
+    const dataWithDesc = logs.map(log => ({
+      ...log,
+      description: AuditParser.buildDescription(log),
+      actionVn: AuditParser.getActionName(log.action),
+      entityVn: AuditParser.getEntityName(log.entityType),
+    }));
+
+    return {
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      data: dataWithDesc,
+    };
+  }
+
+  static async exportExcel(options: AuditExportOptions, requestUser: string) {
+    return AuditExportService.export(options, requestUser);
+  }
+
+
 }

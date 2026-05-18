@@ -510,6 +510,7 @@ export class HandoverService {
     limit?: number;
     sortBy?: string;
     sortOrder?: 'asc' | 'desc';
+    scopeWhere?: any;
   } = {}) {
     const { 
       type, 
@@ -522,7 +523,8 @@ export class HandoverService {
       page = 1, 
       limit = 50,
       sortBy,
-      sortOrder
+      sortOrder,
+      scopeWhere
     } = params;
 
     const where: any = {};
@@ -551,6 +553,15 @@ export class HandoverService {
         // Inclusively filter by full date up to 23:59:59.999
         where.createdAt.lte = new Date(toDate + 'T23:59:59.999Z');
       }
+    }
+
+    if (scopeWhere && Object.keys(scopeWhere).length > 0) {
+      if (scopeWhere.id === -1) {
+        return { items: [], total: 0, page, limit };
+      }
+      
+      if (!where.AND) where.AND = [];
+      where.AND.push(scopeWhere);
     }
 
     const skip = (page - 1) * limit;

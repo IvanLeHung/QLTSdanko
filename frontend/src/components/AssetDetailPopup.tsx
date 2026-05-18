@@ -40,10 +40,12 @@ import {
   FileUp,
   FileDown,
   QrCode as QrCodeIcon,
-  Copy
+  Copy,
+  Lock
 } from 'lucide-react';
 import api from '../lib/api';
 import { format } from 'date-fns';
+import { useAuth } from '../context/AuthContext';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { RepairTicketForm } from './RepairTicketForm';
@@ -68,6 +70,7 @@ interface AssetDetailPopupProps {
 type TabType = 'info' | 'assignment' | 'inventory' | 'repair' | 'timeline' | 'documents';
 
 export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isOpen, onClose, onAction, initialTab = 'info' }) => {
+  const { hasPermission } = useAuth();
   const [asset, setAsset] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('info');
@@ -459,14 +462,22 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       <DollarSign className="mr-2 h-3 w-3" /> Giá mua (ex VAT)
                     </p>
                     {mode === 'edit' ? (
-                      <input 
-                        type="number" 
-                        value={editForm.purchasePriceExVat} 
-                        onChange={e => setEditForm({...editForm, purchasePriceExVat: Number(e.target.value)})}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
-                      />
+                      hasPermission('ASSET_VIEW_PRICE') ? (
+                        <input 
+                          type="number" 
+                          value={editForm.purchasePriceExVat} 
+                          onChange={e => setEditForm({...editForm, purchasePriceExVat: Number(e.target.value)})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                        />
+                      ) : (
+                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2.5"><Lock className="w-3.5 h-3.5" /> Không có quyền sửa</p>
+                      )
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.purchasePriceExVat?.toLocaleString()} ₫</p>
+                      hasPermission('ASSET_VIEW_PRICE') ? (
+                        <p className="text-[15px] font-bold text-slate-800">{asset.purchasePriceExVat?.toLocaleString()} ₫</p>
+                      ) : (
+                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</p>
+                      )
                     )}
                   </div>
 
@@ -507,14 +518,22 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       <Building2 className="mr-2 h-3 w-3" /> Nhà cung cấp
                     </p>
                     {mode === 'edit' ? (
-                      <input 
-                        type="text" 
-                        value={editForm.supplierName} 
-                        onChange={e => setEditForm({...editForm, supplierName: e.target.value})}
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
-                      />
+                      hasPermission('ASSET_VIEW_PRICE') ? (
+                        <input 
+                          type="text" 
+                          value={editForm.supplierName} 
+                          onChange={e => setEditForm({...editForm, supplierName: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                        />
+                      ) : (
+                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2.5"><Lock className="w-3.5 h-3.5" /> Không có quyền sửa</p>
+                      )
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.supplierName || 'N/A'}</p>
+                      hasPermission('ASSET_VIEW_PRICE') ? (
+                        <p className="text-[15px] font-bold text-slate-800">{asset.supplierName || 'N/A'}</p>
+                      ) : (
+                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</p>
+                      )
                     )}
                   </div>
 

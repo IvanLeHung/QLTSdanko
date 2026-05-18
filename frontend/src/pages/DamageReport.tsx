@@ -13,7 +13,8 @@ import {
   AlertCircle,
   Filter,
   ArrowRight,
-  Loader2
+  Loader2,
+  User
 } from 'lucide-react';
 import api from '../lib/api';
 import { toast } from 'react-toastify';

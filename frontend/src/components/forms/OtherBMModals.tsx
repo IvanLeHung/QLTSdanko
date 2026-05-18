@@ -26,7 +26,7 @@ export const BM09InspectionModal: React.FC<any> = ({ isOpen, onClose, onSubmit, 
     <BaseFormModal
       isOpen={isOpen} onClose={onClose} formCode="BM09/QLTS" title="Biên bản kiểm tra hiện trạng"
       documentNo={formData.documentNo} date={formData.date} onConfirm={() => onSubmit(formData)}
-      isCompleted={formData.status === 'COMPLETED'}
+      isCompleted={false}
     >
       <FormSection title="Thông tin tài sản" icon={Search}>
         <div className="col-span-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between">

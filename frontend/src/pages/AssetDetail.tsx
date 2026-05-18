@@ -6,18 +6,20 @@ import {
   Copy, 
   Save, 
   History as HistoryIcon, 
-  Wrench, 
   UserPlus, 
   ClipboardCheck,
   FileText,
   DollarSign,
   Calendar,
-  Building
+  Building,
+  Lock
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
+import { useAuth } from '../context/AuthContext';
 
 export const AssetDetail: React.FC = () => {
+  const { hasPermission } = useAuth();
   const { id } = useParams();
   const [asset, setAsset] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -224,8 +226,22 @@ export const AssetDetail: React.FC = () => {
                   <h3 className="text-sm font-black text-slate-400 uppercase tracking-widest">Financials</h3>
                 </div>
                 <div className="space-y-1">
-                  <DetailRow label="Purchase Price (Ex VAT)" value={`${asset.purchasePriceExVat?.toLocaleString()} ₫`} />
-                  <DetailRow label="Supplier" value={asset.supplierName} />
+                  {hasPermission('ASSET_VIEW_PRICE') ? (
+                    <DetailRow label="Purchase Price (Ex VAT)" value={`${asset.purchasePriceExVat?.toLocaleString()} ₫`} />
+                  ) : (
+                    <div className="flex flex-col py-3 border-b border-slate-50 last:border-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Purchase Price (Ex VAT)</span>
+                      <span className="inline-flex items-center gap-1 text-slate-450 text-xs font-semibold"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</span>
+                    </div>
+                  )}
+                  {hasPermission('ASSET_VIEW_PRICE') ? (
+                    <DetailRow label="Supplier" value={asset.supplierName} />
+                  ) : (
+                    <div className="flex flex-col py-3 border-b border-slate-50 last:border-0">
+                      <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1">Supplier</span>
+                      <span className="inline-flex items-center gap-1 text-slate-450 text-xs font-semibold"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</span>
+                    </div>
+                  )}
                   <DetailRow label="Usage Purpose" value={asset.usagePurpose} />
                 </div>
               </section>

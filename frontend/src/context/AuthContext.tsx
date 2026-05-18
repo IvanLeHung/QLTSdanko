@@ -8,6 +8,14 @@ interface User {
   role: string;
   roles: string[];
   permissions: string[];
+  mustChangePassword?: boolean;
+  dataScope?: {
+    scopeType: string;
+    companyIdsJson?: string;
+    departmentIdsJson?: string;
+    warehouseIdsJson?: string;
+    projectIdsJson?: string;
+  };
 }
 
 interface AuthContextType {
@@ -17,6 +25,7 @@ interface AuthContextType {
   logout: () => void;
   hasPermission: (permission: string) => boolean;
   isAdmin: () => boolean;
+  refetchUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -25,19 +34,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    const initAuth = async () => {
-      const token = localStorage.getItem('token');
-      if (token) {
-        try {
-          const res = await api.get('/auth/me');
-          setUser(res.data);
-        } catch (err) {
-          localStorage.removeItem('token');
-        }
+  const initAuth = async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const res = await api.get('/auth/me');
+        setUser(res.data);
+      } catch (err) {
+        localStorage.removeItem('token');
       }
-      setLoading(false);
-    };
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
     initAuth();
   }, []);
 
@@ -62,8 +72,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return user.roles.includes('SUPER_ADMIN') || user.roles.includes('ADMIN');
   };
 
+  const refetchUser = async () => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        const res = await api.get('/auth/me');
+        setUser(res.data);
+      } catch (err) {
+        console.error('Error refetching user details:', err);
+      }
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, loading, login, logout, hasPermission, isAdmin }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, hasPermission, isAdmin, refetchUser }}>
       {children}
     </AuthContext.Provider>
   );
@@ -76,3 +98,4 @@ export const useAuth = () => {
   }
   return context;
 };
+

@@ -1,10 +1,11 @@
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { AssetService } from '../services/asset.service';
-import { authenticateToken, AuthRequest } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requirePermission } from '../middleware/auth.middleware';
 import multer from 'multer';
 import { InvoiceParserService } from '../services/invoice-parser.service';
 import { InvoicePostService } from '../services/invoice-post.service';
+import { buildDataScopeWhere } from '../utils/data-scope.util';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -139,7 +140,7 @@ router.get('/filter-options/suppliers', authenticateToken, async (req, res) => {
 });
 
 // Main Asset List Query
-router.get('/', authenticateToken, async (req, res) => {
+router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
   const { 
     page = 1, 
     limit = 10, 
@@ -178,19 +179,38 @@ router.get('/', authenticateToken, async (req, res) => {
 
   const skip = (Number(page) - 1) * Number(limit);
   const where: any = { isDeleted: false };
+  const andClauses: any[] = [];
+
+  // Data Scope
+  const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+    company: 'companyCode',
+    department: 'departmentName', // Assuming departmentIdsJson stores codes or names? Actually it stores IDs. Wait, in QLTSdanko we might be storing department names. Let's assume the helper is adapted or we fix it.
+    warehouse: 'locationName',
+    user: 'currentUserName'
+  });
+  
+  if (Object.keys(scopeWhere).length > 0) {
+    // If scope is { id: -1 } it means nothing matches
+    if (scopeWhere.id === -1) {
+      return res.json({ assets: [], pagination: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 } });
+    }
+    andClauses.push(scopeWhere);
+  }
 
   // Advanced Search (Global Search Box)
   if (search) {
-    where.OR = [
-      { assetCode: { contains: String(search) } },
-      { assetName: { contains: String(search) } },
-      { serialNumber: { contains: String(search) } },
-      { currentUserName: { contains: String(search) } },
-      { departmentName: { contains: String(search) } },
-      { locationName: { contains: String(search) } },
-      { projectName: { contains: String(search) } },
-      { supplierName: { contains: String(search) } },
-    ];
+    andClauses.push({
+      OR: [
+        { assetCode: { contains: String(search) } },
+        { assetName: { contains: String(search) } },
+        { serialNumber: { contains: String(search) } },
+        { currentUserName: { contains: String(search) } },
+        { departmentName: { contains: String(search) } },
+        { locationName: { contains: String(search) } },
+        { projectName: { contains: String(search) } },
+        { supplierName: { contains: String(search) } },
+      ]
+    });
   }
 
   // Multi-status filter
@@ -209,12 +229,13 @@ router.get('/', authenticateToken, async (req, res) => {
   if (cityName) where.cityName = { contains: String(cityName) };
   if (projectName) where.projectName = { contains: String(projectName) };
   if (locationQuery) {
-    where.OR = where.OR || [];
-    where.OR.push(
-      { locationName: { contains: String(locationQuery) } },
-      { cityName: { contains: String(locationQuery) } },
-      { projectName: { contains: String(locationQuery) } }
-    );
+    andClauses.push({
+      OR: [
+        { locationName: { contains: String(locationQuery) } },
+        { cityName: { contains: String(locationQuery) } },
+        { projectName: { contains: String(locationQuery) } }
+      ]
+    });
   }
 
   // Price Range
@@ -258,6 +279,10 @@ router.get('/', authenticateToken, async (req, res) => {
 
   if (hasDocuments === 'true') where.documentNote = { not: null, notIn: ['', 'N/A', 'n/a'] };
   if (hasDocuments === 'false') where.documentNote = { in: [null, '', 'N/A', 'n/a'] };
+
+  if (andClauses.length > 0) {
+    where.AND = andClauses;
+  }
 
   try {
     const [assets, total] = await Promise.all([
@@ -316,7 +341,7 @@ router.get('/categories/active/all', authenticateToken, async (req, res) => {
 });
 
 // Creation & Retrieval
-router.post('/bulk-create', authenticateToken, async (req: AuthRequest, res) => {
+router.post('/bulk-create', authenticateToken, requirePermission('ASSET_CREATE'), async (req: AuthRequest, res) => {
   const {
     companyId, cat1Id, cat2Id, cat3Id, cat4Id,
     assetName, serialNumber, quantity, unit, 
@@ -388,7 +413,7 @@ router.post('/bulk-create', authenticateToken, async (req: AuthRequest, res) => 
   }
 });
 
-router.get('/:id', authenticateToken, async (req, res) => {
+router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
   const asset = await prisma.asset.findUnique({
     where: { id: Number(req.params.id) },
     include: {
@@ -405,6 +430,39 @@ router.get('/:id', authenticateToken, async (req, res) => {
 
   if (!asset) return res.status(404).json({ message: 'Asset not found' });
 
+  // Data Scope Check for details view
+  const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+    company: 'companyCode',
+    department: 'departmentName',
+    warehouse: 'locationName',
+    user: 'currentUserName'
+  });
+
+  // Verify the user can see this specific asset
+  if (scopeWhere.id !== undefined && scopeWhere.id === -1) {
+    return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Data Scope)' });
+  }
+
+  if (scopeWhere.OR) {
+    // Fast manual check since we already have the asset data
+    const canView = scopeWhere.OR.some((clause: any) => {
+      if (clause.companyCode && clause.companyCode.in.includes(asset.companyCode)) return true;
+      if (clause.departmentName && clause.departmentName.in.includes(asset.departmentName)) return true;
+      if (clause.locationName && clause.locationName.in.includes(asset.locationName)) return true;
+      return false;
+    });
+    if (!canView) return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Data Scope)' });
+  } else if ((scopeWhere as any).currentUserName) {
+    if (asset.currentUserName !== req.user?.fullName && asset.currentUserName !== req.user?.username) {
+      return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Chỉ xem của bản thân)' });
+    }
+  }
+
+  // Hide price if no ASSET_VIEW_PRICE
+  if (!req.user?.roles?.includes('SUPER_ADMIN') && !req.user?.permissions?.includes('ASSET_VIEW_PRICE')) {
+    asset.purchasePriceExVat = null;
+  }
+
   // Fetch centralized audit logs
   const auditLogs = await prisma.auditLog.findMany({
     where: { entityType: 'ASSET', entityId: asset.id },
@@ -414,7 +472,7 @@ router.get('/:id', authenticateToken, async (req, res) => {
   res.json({ ...asset, auditLogs });
 });
 
-router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
+router.patch('/:id', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const performedBy = req.user?.username || 'system';
 

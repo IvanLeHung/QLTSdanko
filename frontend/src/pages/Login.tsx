@@ -18,10 +18,14 @@ export const Login: React.FC = () => {
     try {
       const res = await api.post('/auth/login', { username, password });
       login(res.data.token, res.data.user);
-      toast.success("Login successful");
-      navigate('/dashboard');
+      toast.success("Đăng nhập thành công!");
+      if (res.data.user.mustChangePassword) {
+        navigate('/force-change-password');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Login failed");
+      toast.error(err.response?.data?.message || "Đăng nhập thất bại");
     } finally {
       setLoading(false);
     }

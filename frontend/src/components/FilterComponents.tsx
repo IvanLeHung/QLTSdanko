@@ -9,7 +9,8 @@ export const AutocompleteInput: React.FC<{
   onChange: (val: string) => void;
   endpoint: string;
   icon?: React.ReactNode;
-}> = ({ placeholder, value, onChange, endpoint, icon }) => {
+  className?: string;
+}> = ({ placeholder, value, onChange, endpoint, icon, className = '' }) => {
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -47,7 +48,7 @@ export const AutocompleteInput: React.FC<{
   }, [value, endpoint, isOpen]);
 
   return (
-    <div className="relative" ref={wrapperRef}>
+    <div className={`relative ${className}`} ref={wrapperRef}>
       <div className="relative">
         {icon && <div className="absolute left-3 top-2.5 text-slate-400">{icon}</div>}
         <input

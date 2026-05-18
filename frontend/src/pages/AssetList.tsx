@@ -39,10 +39,12 @@ import { AssetDetailPopup } from '../components/AssetDetailPopup';
 import { AssetLabelPrintModal } from '../components/AssetLabelPrintModal';
 import { ErrorBoundary, ModalError } from '../components/ErrorBoundary';
 import { TransferWizard } from '../components/TransferWizard';
+import { useAuth } from '../context/AuthContext';
 
 import { BMFormDispatcher } from '../components/forms/BMFormDispatcher';
 
 export const AssetList: React.FC = () => {
+  const { hasPermission } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -296,7 +298,7 @@ export const AssetList: React.FC = () => {
       'Vị trí',
       'Thành phố',
       'Dự án',
-      'Giá mua (VNĐ)',
+      ...(hasPermission('ASSET_VIEW_PRICE') ? ['Giá mua (VNĐ)'] : []),
       'Nhà cung cấp',
       'Ghi chú'
     ];
@@ -316,7 +318,7 @@ export const AssetList: React.FC = () => {
       a.locationName || '',
       a.cityName || '',
       a.projectName || '',
-      a.purchasePriceExVat || 0,
+      ...(hasPermission('ASSET_VIEW_PRICE') ? [a.purchasePriceExVat || 0] : []),
       a.supplierName || '',
       a.note || ''
     ]);
@@ -439,7 +441,7 @@ export const AssetList: React.FC = () => {
               
               <div className="h-5 w-px bg-slate-100 mx-1"></div>
               
-              <Can permission="asset.export">
+              <Can permission="ASSET_EXPORT">
                 <button 
                   onClick={handleExportAll}
                   className="h-[32px] px-3 flex items-center text-[11px] font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap"
@@ -448,7 +450,7 @@ export const AssetList: React.FC = () => {
                 </button>
               </Can>
               
-              <Can permission="asset.create">
+              <Can permission="ASSET_CREATE">
                 <button onClick={() => navigate('/assets/new')} className="h-[32px] px-3 flex items-center text-[11px] font-black bg-primary-600 text-white rounded-lg shadow-sm hover:bg-primary-700 transition-all whitespace-nowrap">
                   <Plus className="mr-1.5 h-3.5 w-3.5" /> Thêm mới
                 </button>
@@ -638,21 +640,21 @@ export const AssetList: React.FC = () => {
                             <>
                               <div className="fixed inset-0 z-30" onClick={() => setActiveMenuId(null)}></div>
                               <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-[#E2E8F0] z-40 p-2 animate-in fade-in zoom-in duration-150 text-left">
-                                 <ActionItem label="Xem chi tiết" icon={<Eye className="h-4 w-4" />} onClick={() => handleAssetAction('view', asset)} />
+                                 <Can permission="ASSET_VIEW"><ActionItem label="Xem chi tiết" icon={<Eye className="h-4 w-4" />} onClick={() => handleAssetAction('view', asset)} /></Can>
                                  
                                  {asset.status === 'ASSIGNED' ? (
                                    <>
-                                     <ActionItem label="Điều chuyển tài sản" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} />
-                                     <ActionItem label="Thu hồi về kho" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} />
+                                     <Can permission="TRANSFER_CREATE"><ActionItem label="Điều chuyển tài sản" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} /></Can>
+                                     <Can permission="TRANSFER_CREATE"><ActionItem label="Thu hồi về kho" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} /></Can>
                                    </>
                                  ) : (
-                                   <ActionItem label="Cấp phát / Bàn giao" icon={<UserPlus className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} />
+                                   <Can permission="TRANSFER_CREATE"><ActionItem label="Cấp phát / Bàn giao" icon={<UserPlus className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} /></Can>
                                  )}
 
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
-                                 <ActionItem label="Kiểm kê" icon={<ClipboardCheck className="h-4 w-4" />} onClick={() => handleAssetAction('inventory', asset)} />
-                                 <ActionItem label="Sửa chữa / Bảo trì" icon={<Wrench className="h-4 w-4" />} onClick={() => handleAssetAction('repair', asset)} />
-                                 <ActionItem label="Thanh lý" icon={<Trash className="h-4 w-4" />} onClick={() => handleAssetAction('liquidation', asset)} />
+                                 <Can permission="INVENTORY_CREATE"><ActionItem label="Kiểm kê" icon={<ClipboardCheck className="h-4 w-4" />} onClick={() => handleAssetAction('inventory', asset)} /></Can>
+                                 <Can permission="REPAIR_CREATE"><ActionItem label="Sửa chữa / Bảo trì" icon={<Wrench className="h-4 w-4" />} onClick={() => handleAssetAction('repair', asset)} /></Can>
+                                 <Can permission="REPAIR_CREATE"><ActionItem label="Thanh lý" icon={<Trash className="h-4 w-4" />} onClick={() => handleAssetAction('liquidation', asset)} /></Can>
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
                                  <ActionItem label="Nhật ký tài sản" icon={<Activity className="h-4 w-4" />} onClick={() => handleAssetAction('history', asset)} />
                               </div>

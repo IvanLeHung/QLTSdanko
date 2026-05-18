@@ -19,7 +19,27 @@ model User {
   updatedAt    DateTime     @updatedAt
   managedDepts Department[] @relation("DeptManager")
   department   Department?  @relation(fields: [departmentId], references: [id])
-  roles        UserRole[]
+  roles                 UserRole[]
+  dataScope             UserDataScope?
+  extraPermissionsJson  String?
+  deniedPermissionsJson String?
+
+  // Additional fields
+  phone                 String?
+  email                 String?         @unique
+  employeeCode          String?         @unique
+  position              String?
+  status                String          @default("ACTIVE") // ACTIVE, LOCKED, INACTIVE, RESIGNED
+  mustChangePassword    Boolean         @default(false)
+  passwordChangedAt     DateTime?
+  failedLoginCount      Int             @default(0)
+  lockedUntil           DateTime?
+  lastLoginAt           DateTime?
+  managerUserId         Int?
+  extraDepartmentIds    String?         // JSON array of integers
+
+  managerUser           User?           @relation("UserManager", fields: [managerUserId], references: [id])
+  subordinates          User[]          @relation("UserManager")
 }
 
 model Role {
@@ -47,32 +67,83 @@ model RolePermission {
 }
 
 model UserRole {
-  userId Int
-  roleId Int
-  role   Role @relation(fields: [roleId], references: [id])
-  user   User @relation(fields: [userId], references: [id])
+  userId    Int
+  roleId    Int
+  validFrom DateTime?
+  validTo   DateTime?
+  role      Role      @relation(fields: [roleId], references: [id])
+  user      User      @relation(fields: [userId], references: [id])
 
   @@id([userId, roleId])
 }
 
+model UserDataScope {
+  id                Int      @id @default(autoincrement())
+  userId            Int      @unique
+  scopeType         String   @default("SELF") // ALL, COMPANY, DEPARTMENT, WAREHOUSE, PROJECT, SELF, CUSTOM
+  companyIdsJson    String?
+  departmentIdsJson String?
+  warehouseIdsJson  String?
+  projectIdsJson    String?
+  categoryIdsJson   String?  // Scoping limit by asset categories (JSON array of category IDs/codes)
+  user              User     @relation(fields: [userId], references: [id])
+}
+
+model RoleDelegation {
+  id         Int      @id @default(autoincrement())
+  fromUserId Int
+  toUserId   Int
+  roleId     Int
+  validFrom  DateTime
+  validTo    DateTime
+  isActive   Boolean  @default(true)
+  reason     String?
+  createdAt  DateTime @default(now())
+}
+
+model PermissionRequest {
+  id                  Int       @id @default(autoincrement())
+  userId              Int
+  requestedRoleId     Int?
+  requestedPermission String?   // JSON array of specific overriding permission actions
+  reason              String
+  durationDays        Int?
+  status              String    @default("PENDING") // PENDING, APPROVED, REJECTED
+  approvedBy          String?
+  approvedAt          DateTime?
+  createdAt           DateTime  @default(now())
+}
+
 model Company {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique
-  name      String
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          Int          @id @default(autoincrement())
+  code        String       @unique
+  name        String
+  isActive    Boolean      @default(true)
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  departments Department[]
 }
 
 model Department {
-  id        Int      @id @default(autoincrement())
-  code      String   @unique
-  name      String
-  managerId Int?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  manager   User?    @relation("DeptManager", fields: [managerId], references: [id])
-  users     User[]
+  id          Int          @id @default(autoincrement())
+  code        String       @unique
+  name        String
+  managerId   Int?
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  manager     User?        @relation("DeptManager", fields: [managerId], references: [id])
+  users       User[]
+
+  // Additional fields
+  type        String       @default("DEPARTMENT") // BOARD, DEPARTMENT, TEAM, PROJECT, WAREHOUSE, OTHER
+  companyId   Int?
+  parentId    Int?
+  description String?
+  status      String       @default("ACTIVE") // ACTIVE, INACTIVE
+
+  company     Company?     @relation(fields: [companyId], references: [id])
+  parent      Department?  @relation("DeptHierarchy", fields: [parentId], references: [id])
+  children    Department[] @relation("DeptHierarchy")
 }
 
 model Location {

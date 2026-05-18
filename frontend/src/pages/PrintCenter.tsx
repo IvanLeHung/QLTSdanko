@@ -11,16 +11,9 @@ import {
   Eye,
   Trash2,
   Settings,
-  MoreVertical,
-  ArrowRightLeft,
-  RotateCcw,
-  Plus,
   Box,
-  Layout,
   ScanLine,
   Activity,
-  ChevronRight,
-  AlertCircle,
   Loader2
 } from 'lucide-react';
 import api from '../lib/api';
