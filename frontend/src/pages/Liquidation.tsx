@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 import { 
   Trash2, 
@@ -17,6 +18,7 @@ import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 
 export const Liquidation: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -35,13 +37,22 @@ export const Liquidation: React.FC = () => {
     note: ''
   });
 
+  const fromDate = searchParams.get('fromDate');
+  const toDate = searchParams.get('toDate');
+
   useEffect(() => {
     fetchReports();
-  }, []);
+  }, [fromDate, toDate]);
 
   const fetchReports = async () => {
     try {
-      const res = await api.get('/assets', { params: { status: 'LIQUIDATED' } });
+      const res = await api.get('/assets', { 
+        params: { 
+          status: 'LIQUIDATED',
+          createdFrom: fromDate || undefined,
+          createdTo: toDate || undefined
+        } 
+      });
       setReports(res.data.assets);
     } catch (err) {
       console.error(err);

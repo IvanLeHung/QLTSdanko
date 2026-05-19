@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
   ShieldAlert, 
   Plus, 
@@ -28,6 +29,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export const LostReport: React.FC = () => {
+  const [searchParams] = useSearchParams();
   const [reports, setReports] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
@@ -35,14 +37,23 @@ export const LostReport: React.FC = () => {
   const [filterStatus, setFilterStatus] = useState('ALL');
   const [searchTerm, setSearchTerm] = useState('');
 
+  const fromDate = searchParams.get('fromDate');
+  const toDate = searchParams.get('toDate');
+
   useEffect(() => {
     fetchReports();
-  }, [filterStatus]);
+  }, [filterStatus, fromDate, toDate]);
 
   const fetchReports = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/lost', { params: { status: filterStatus } });
+      const res = await api.get('/lost', { 
+        params: { 
+          status: filterStatus,
+          fromDate: fromDate || undefined,
+          toDate: toDate || undefined
+        } 
+      });
       setReports(res.data);
     } catch (err) {
       console.error(err);

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { 
   AlertTriangle, 
   Plus, 
@@ -29,21 +30,39 @@ function cn(...inputs: ClassValue[]) {
 }
 
 export const DamageReport: React.FC = () => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const initialStatus = searchParams.get('status') || 'ALL';
+
   const [tickets, setTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [selectedTicketId, setSelectedTicketId] = useState<number | null>(null);
-  const [filterStatus, setFilterStatus] = useState('ALL');
+  const [filterStatus, setFilterStatus] = useState(initialStatus);
   const [searchTerm, setSearchTerm] = useState('');
+
+  const fromDate = searchParams.get('fromDate');
+  const toDate = searchParams.get('toDate');
+
+  // Sync state if URL changes
+  useEffect(() => {
+    const statusParam = searchParams.get('status') || 'ALL';
+    setFilterStatus(statusParam);
+  }, [searchParams]);
 
   useEffect(() => {
     fetchTickets();
-  }, [filterStatus]);
+  }, [filterStatus, fromDate, toDate]);
 
   const fetchTickets = async () => {
     setLoading(true);
     try {
-      const res = await api.get('/repairs', { params: { status: filterStatus } });
+      const res = await api.get('/repairs', { 
+        params: { 
+          status: filterStatus,
+          fromDate: fromDate || undefined,
+          toDate: toDate || undefined
+        } 
+      });
       setTickets(res.data);
     } catch (err) {
       console.error(err);
@@ -137,7 +156,10 @@ export const DamageReport: React.FC = () => {
              ].map(f => (
                 <button 
                    key={f.id}
-                   onClick={() => setFilterStatus(f.id)}
+                   onClick={() => {
+                      setFilterStatus(f.id);
+                      setSearchParams({ status: f.id });
+                   }}
                    className={cn(
                       "px-5 py-2 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all whitespace-nowrap",
                       filterStatus === f.id ? "bg-slate-900 text-white shadow-lg shadow-slate-200" : "bg-white border border-slate-200 text-slate-500 hover:border-slate-300"

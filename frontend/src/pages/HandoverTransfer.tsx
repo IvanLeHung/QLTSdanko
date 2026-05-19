@@ -29,13 +29,20 @@ import {
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { useModal } from '../context/ModalContext';
+import { useSearchParams } from 'react-router-dom';
 
 export const HandoverTransfer: React.FC = () => {
+  const [searchParams] = useSearchParams();
+  const initialType = searchParams.get('type') || 'ALL';
+  const initialFromDate = searchParams.get('fromDate') || '';
+  const initialToDate = searchParams.get('toDate') || '';
+  const initialStatus = searchParams.get('status') || 'ALL';
+
   const { openModal, openConfirm } = useModal();
   // Master data lists for Wizard dropdowns
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState('ALL'); // ALL, DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED
+  const [activeTab, setActiveTab] = useState(initialStatus); // ALL, DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED
 
   // Pagination & List State
   const [documents, setDocuments] = useState<any[]>([]);
@@ -54,12 +61,29 @@ export const HandoverTransfer: React.FC = () => {
   // Filters State
   const [filters, setFilters] = useState({
     search: '',
-    type: 'ALL', // ALL, HANDOVER, TRANSFER, RECALL
-    fromDate: '',
-    toDate: '',
+    type: initialType, // ALL, HANDOVER, TRANSFER, RECALL
+    fromDate: initialFromDate,
+    toDate: initialToDate,
     page: 1,
     limit: 20 // default 20 items per page as requested
   });
+
+  // Sync searchParams if they change dynamically
+  useEffect(() => {
+    const typeParam = searchParams.get('type') || 'ALL';
+    const fromDateParam = searchParams.get('fromDate') || '';
+    const toDateParam = searchParams.get('toDate') || '';
+    const statusParam = searchParams.get('status') || 'ALL';
+    
+    setFilters(prev => ({
+      ...prev,
+      type: typeParam,
+      fromDate: fromDateParam,
+      toDate: toDateParam,
+      page: 1
+    }));
+    setActiveTab(statusParam);
+  }, [searchParams]);
 
   // Drawer Viewing State
   const [viewingDoc, setViewingDoc] = useState<any>(null);

@@ -360,6 +360,7 @@ router.get('/me', authenticateToken, loadPermissions, async (req: AuthRequest, r
     roles: req.user.roles,
     permissions: req.user.permissions,
     dataScope: req.user.dataScope,
+    departmentName: req.user.departmentName,
     mustChangePassword: dbUser?.mustChangePassword || false
   });
 });

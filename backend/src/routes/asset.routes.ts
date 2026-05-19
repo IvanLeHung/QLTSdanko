@@ -188,7 +188,9 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     hasDocuments,
     lastInventoryFrom,
     lastInventoryTo,
-    inventoryStatus
+    inventoryStatus,
+    createdFrom,
+    createdTo
   } = req.query;
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -251,7 +253,19 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
   if (status) {
     const statusArray = String(status).split(',').filter(Boolean);
     if (statusArray.length > 0) {
-      where.status = { in: statusArray };
+      const mappedStatuses: string[] = [];
+      for (const s of statusArray) {
+        if (s === 'BROKEN') {
+          mappedStatuses.push('DAMAGED');
+          mappedStatuses.push('BROKEN');
+        } else if (s === 'LIQUIDATED') {
+          mappedStatuses.push('LIQUIDATED');
+          mappedStatuses.push('DISPOSED');
+        } else {
+          mappedStatuses.push(s);
+        }
+      }
+      where.status = { in: mappedStatuses };
     }
   }
 
@@ -302,6 +316,16 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     where.lastInventoryDate = {};
     if (lastInventoryFrom) where.lastInventoryDate.gte = new Date(String(lastInventoryFrom));
     if (lastInventoryTo) where.lastInventoryDate.lte = new Date(String(lastInventoryTo));
+  }
+
+  if (createdFrom || createdTo) {
+    where.createdAt = {};
+    if (createdFrom) where.createdAt.gte = new Date(String(createdFrom));
+    if (createdTo) {
+      const end = new Date(String(createdTo));
+      end.setHours(23, 59, 59, 999);
+      where.createdAt.lte = end;
+    }
   }
 
   // Other metadata

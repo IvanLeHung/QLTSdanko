@@ -245,7 +245,7 @@ export class RepairService {
   }
 
   static async getAllTickets(filters: any = {}) {
-    const { status, search } = filters;
+    const { status, search, fromDate, toDate } = filters;
     const where: any = {};
     
     if (status && status !== 'ALL') {
@@ -258,6 +258,16 @@ export class RepairService {
         { asset: { assetName: { contains: search } } },
         { asset: { assetCode: { contains: search } } }
       ];
+    }
+
+    if (fromDate || toDate) {
+      where.reportedDate = {};
+      if (fromDate) where.reportedDate.gte = new Date(String(fromDate));
+      if (toDate) {
+        const end = new Date(String(toDate));
+        end.setHours(23, 59, 59, 999);
+        where.reportedDate.lte = end;
+      }
     }
 
     return await prisma.assetRepairTicket.findMany({

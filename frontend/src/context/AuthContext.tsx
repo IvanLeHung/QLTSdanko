@@ -9,6 +9,7 @@ interface User {
   roles: string[];
   permissions: string[];
   mustChangePassword?: boolean;
+  departmentName?: string | null;
   dataScope?: {
     scopeType: string;
     companyIdsJson?: string;
