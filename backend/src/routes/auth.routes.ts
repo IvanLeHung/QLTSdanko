@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
 import { authenticateToken, AuthRequest, loadPermissions } from '../middleware/auth.middleware';
+import { AuditService } from '../services/audit.service';
 
 const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-123';
@@ -29,114 +30,275 @@ router.post('/login', async (req, res) => {
   const { username, password } = req.body;
   console.log(`Login attempt for: ${username}`);
 
-  const user = await prisma.user.findUnique({ 
-    where: { username },
-    include: {
-      roles: {
-        include: {
-          role: {
-            include: {
-              permissions: {
-                include: {
-                  permission: true
+  try {
+    const user = await prisma.user.findUnique({ 
+      where: { username },
+      include: {
+        roles: {
+          include: {
+            role: {
+              include: {
+                permissions: {
+                  include: {
+                    permission: true
+                  }
                 }
               }
             }
           }
-        }
+        },
+        dataScope: true
+      }
+    });
+
+    if (!user) {
+      console.log(`Login failed for ${username}: User not found`);
+      await AuditService.log({
+        entityType: 'USER',
+        entityId: -1,
+        action: 'LOGIN_FAILED',
+        details: { reason: 'Tài khoản không tồn tại', username },
+        performedBy: username || 'System'
+      });
+      return res.status(401).json({ message: 'Tên đăng nhập hoặc mật khẩu không đúng.' });
+    }
+
+    // Account status/lock checks
+    if (user.status === 'LOCKED' || !user.isActive) {
+      // Check if locked temporarily or manually
+      if (user.lockedUntil && new Date() < new Date(user.lockedUntil)) {
+        // Handled below in the lockedUntil check
+      } else {
+        console.log(`Login failed for ${username}: Account is locked or inactive`);
+        await AuditService.log({
+          entityType: 'USER',
+          entityId: user.id,
+          action: 'LOGIN_FAILED',
+          details: { reason: 'Tài khoản bị khóa thủ công hoặc không hoạt động' },
+          performedBy: username
+        });
+        return res.status(401).json({ message: 'Tài khoản của bạn đã bị khóa hoặc ngừng hoạt động. Vui lòng liên hệ Admin.' });
+      }
+    }
+
+    if (user.lockedUntil && new Date() < new Date(user.lockedUntil)) {
+      console.log(`Login failed for ${username}: Account is temporarily locked`);
+      return res.status(401).json({ message: 'Tài khoản tạm khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau.' });
+    }
+
+    const validPassword = await bcrypt.compare(password, user.passwordHash);
+    if (!validPassword) {
+      console.log(`Login failed for ${username}: Incorrect password`);
+      const nextFailedCount = (user.failedLoginCount || 0) + 1;
+      
+      if (nextFailedCount >= 5) {
+        const lockedUntil = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes lockout
+        await prisma.user.update({
+          where: { id: user.id },
+          data: {
+            failedLoginCount: nextFailedCount,
+            lockedUntil,
+            status: 'LOCKED' // Still set LOCKED status so it shows locked properly, but lockedUntil takes precedence
+          }
+        });
+
+        await AuditService.log({
+          entityType: 'USER',
+          entityId: user.id,
+          action: 'LOCK_USER_BY_FAILED_LOGIN',
+          details: { reason: 'Nhập sai mật khẩu 5 lần liên tiếp' },
+          performedBy: username
+        });
+
+        return res.status(401).json({ message: 'Tài khoản tạm khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau.' });
+      } else {
+        await prisma.user.update({
+          where: { id: user.id },
+          data: { failedLoginCount: nextFailedCount }
+        });
+
+        await AuditService.log({
+          entityType: 'USER',
+          entityId: user.id,
+          action: 'LOGIN_FAILED',
+          details: { reason: 'Mật khẩu không đúng', attempt: nextFailedCount },
+          performedBy: username
+        });
+
+        return res.status(401).json({ message: `Mật khẩu không đúng. Bạn còn ${5 - nextFailedCount} lần thử trước khi tài khoản bị khóa.` });
+      }
+    }
+
+    console.log(`Login successful for: ${username}`);
+    
+    // Reset failure count on success
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        failedLoginCount: 0,
+        lockedUntil: null,
+        status: 'ACTIVE',
+        lastLoginAt: new Date()
+      }
+    });
+
+    await AuditService.log({
+      entityType: 'USER',
+      entityId: user.id,
+      action: 'LOGIN_SUCCESS',
+      details: { ip: req.ip || '' },
+      performedBy: username
+    });
+
+    const roleNames = user.roles.map(ur => ur.role.name);
+    const rolePermissions = user.roles.flatMap(ur => 
+      ur.role.permissions.map(rp => rp.permission.action)
+    );
+
+    // Compute effective permissions at login time
+    const extraPerms: string[] = user.extraPermissionsJson ? JSON.parse(user.extraPermissionsJson) : [];
+    const deniedPerms: string[] = user.deniedPermissionsJson ? JSON.parse(user.deniedPermissionsJson) : [];
+
+    const effectivePerms = new Set<string>(rolePermissions);
+    extraPerms.forEach(p => effectivePerms.add(p));
+    deniedPerms.forEach(p => effectivePerms.delete(p));
+
+    const permissions = Array.from(effectivePerms);
+
+    // Default to user.role if roles array is empty
+    const finalRoles = roleNames.length > 0 ? roleNames : [user.role];
+
+    const token = jwt.sign(
+      { id: user.id, username: user.username, roles: finalRoles, permissions },
+      JWT_SECRET,
+      { expiresIn: '24h' }
+    );
+
+    res.json({
+      token,
+      user: {
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        role: finalRoles[0],
+        roles: finalRoles,
+        permissions,
+        dataScope: user.dataScope,
+        mustChangePassword: user.mustChangePassword
       },
-      dataScope: true
-    }
-  });
-
-  if (!user) {
-    console.log(`Login failed for ${username}: User not found`);
-    return res.status(401).json({ message: 'Tên đăng nhập hoặc mật khẩu không đúng.' });
+    });
+  } catch (err: any) {
+    console.error('Error logging in:', err);
+    res.status(500).json({ message: 'Lỗi hệ thống khi đăng nhập: ' + err.message });
   }
+});
 
-  // Account status/lock checks
-  if (user.status === 'LOCKED' || !user.isActive) {
-    console.log(`Login failed for ${username}: Account is locked or inactive`);
-    return res.status(401).json({ message: 'Tài khoản của bạn đã bị khóa hoặc ngừng hoạt động. Vui lòng liên hệ Admin.' });
-  }
-
-  if (user.lockedUntil && new Date() < new Date(user.lockedUntil)) {
-    const diff = Math.ceil((new Date(user.lockedUntil).getTime() - new Date().getTime()) / 1000 / 60);
-    return res.status(401).json({ message: `Tài khoản tạm thời bị khóa. Vui lòng thử lại sau ${diff} phút.` });
-  }
-
-  const validPassword = await bcrypt.compare(password, user.passwordHash);
-  if (!validPassword) {
-    console.log(`Login failed for ${username}: Incorrect password`);
-    const nextFailedCount = (user.failedLoginCount || 0) + 1;
-    if (nextFailedCount >= 5) {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: {
-          failedLoginCount: nextFailedCount,
-          status: 'LOCKED',
-          isActive: false
-        }
+router.post('/logout', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    if (req.user) {
+      await AuditService.log({
+        entityType: 'USER',
+        entityId: req.user.id,
+        action: 'LOGOUT',
+        performedBy: req.user.username
       });
-      return res.status(401).json({ message: 'Tài khoản đã bị khóa do nhập sai mật khẩu 5 lần liên tiếp. Vui lòng liên hệ admin để mở khóa.' });
-    } else {
-      await prisma.user.update({
-        where: { id: user.id },
-        data: { failedLoginCount: nextFailedCount }
-      });
-      return res.status(401).json({ message: `Mật khẩu không đúng. Bạn còn ${5 - nextFailedCount} lần thử trước khi tài khoản bị khóa.` });
     }
+    res.json({ success: true, message: 'Đăng xuất thành công.' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi khi đăng xuất: ' + error.message });
   }
+});
 
-  console.log(`Login successful for: ${username}`);
-  
-  // Reset failure count on success
-  await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      failedLoginCount: 0,
-      lockedUntil: null,
-      lastLoginAt: new Date()
+router.post('/forgot-password', async (req, res) => {
+  try {
+    const { usernameOrEmail } = req.body;
+    if (!usernameOrEmail) {
+      return res.status(400).json({ message: 'Vui lòng cung cấp tên đăng nhập hoặc email.' });
     }
-  });
 
-  const roleNames = user.roles.map(ur => ur.role.name);
-  const rolePermissions = user.roles.flatMap(ur => 
-    ur.role.permissions.map(rp => rp.permission.action)
-  );
+    const user = await prisma.user.findFirst({
+      where: {
+        OR: [
+          { username: usernameOrEmail },
+          { email: usernameOrEmail }
+        ]
+      }
+    });
 
-  // Compute effective permissions at login time
-  const extraPerms: string[] = user.extraPermissionsJson ? JSON.parse(user.extraPermissionsJson) : [];
-  const deniedPerms: string[] = user.deniedPermissionsJson ? JSON.parse(user.deniedPermissionsJson) : [];
+    const isEmailServiceConfigured = !!process.env.SMTP_HOST;
 
-  const effectivePerms = new Set<string>(rolePermissions);
-  extraPerms.forEach(p => effectivePerms.add(p));
-  deniedPerms.forEach(p => effectivePerms.delete(p));
+    if (!isEmailServiceConfigured) {
+      return res.status(400).json({
+        code: 'NO_EMAIL_SERVICE',
+        message: 'Vui lòng liên hệ quản trị viên để được reset mật khẩu.'
+      });
+    }
 
-  const permissions = Array.from(effectivePerms);
+    if (user) {
+      const resetToken = jwt.sign(
+        { userId: user.id, purpose: 'reset-password' },
+        JWT_SECRET,
+        { expiresIn: '1h' }
+      );
+      console.log(`[Forgot Password] Generated reset token for ${user.username}: ${resetToken}`);
+    }
 
-  // Default to user.role if roles array is empty
-  const finalRoles = roleNames.length > 0 ? roleNames : [user.role];
+    // Security Rule: return generic success regardless of user existence
+    res.json({
+      success: true,
+      message: 'Nếu tài khoản hợp lệ, hướng dẫn đặt lại mật khẩu sẽ được gửi hoặc quản trị viên sẽ hỗ trợ.'
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi khi yêu cầu đặt lại mật khẩu: ' + error.message });
+  }
+});
 
-  const token = jwt.sign(
-    { id: user.id, username: user.username, roles: finalRoles, permissions },
-    JWT_SECRET,
-    { expiresIn: '24h' }
-  );
+router.post('/reset-password', async (req, res) => {
+  try {
+    const { token, newPassword } = req.body;
+    if (!token || !newPassword) {
+      return res.status(400).json({ message: 'Mã xác thực và mật khẩu mới không được để trống.' });
+    }
 
-  res.json({
-    token,
-    user: {
-      id: user.id,
-      username: user.username,
-      fullName: user.fullName,
-      role: finalRoles[0],
-      roles: finalRoles,
-      permissions,
-      dataScope: user.dataScope,
-      mustChangePassword: user.mustChangePassword
-    },
-  });
+    let decoded: any;
+    try {
+      decoded = jwt.verify(token, JWT_SECRET);
+    } catch (err) {
+      return res.status(400).json({ message: 'Mã xác thực không hợp lệ hoặc đã hết hạn.' });
+    }
+
+    if (decoded.purpose !== 'reset-password') {
+      return res.status(400).json({ message: 'Mã xác thực không hợp lệ.' });
+    }
+
+    const user = await prisma.user.findUnique({ where: { id: decoded.userId } });
+    if (!user) return res.status(404).json({ message: 'Không tìm thấy tài khoản.' });
+
+    const pwdErr = validatePassword(newPassword, user.username);
+    if (pwdErr) return res.status(400).json({ message: pwdErr });
+
+    const passwordHash = await bcrypt.hash(newPassword, 10);
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        mustChangePassword: true,
+        passwordChangedAt: new Date()
+      }
+    });
+
+    await AuditService.log({
+      entityType: 'USER',
+      entityId: user.id,
+      action: 'RESET_PASSWORD',
+      details: { reason: 'Reset qua mã xác thực (Forgot Password)' },
+      performedBy: user.username
+    });
+
+    res.json({ success: true, message: 'Mật khẩu đã được đặt lại thành công. Vui lòng đăng nhập bằng mật khẩu mới.' });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi khi đặt lại mật khẩu: ' + error.message });
+  }
 });
 
 router.post('/change-password-force', authenticateToken, async (req: AuthRequest, res) => {
@@ -167,6 +329,13 @@ router.post('/change-password-force', authenticateToken, async (req: AuthRequest
         mustChangePassword: false,
         passwordChangedAt: new Date()
       }
+    });
+
+    await AuditService.log({
+      entityType: 'USER',
+      entityId: user.id,
+      action: 'CHANGE_PASSWORD',
+      performedBy: user.username
     });
 
     res.json({ success: true, message: 'Đổi mật khẩu thành công. Bạn đã có thể truy cập hệ thống.' });

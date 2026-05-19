@@ -230,6 +230,7 @@ model Asset {
   liquidations            LiquidationItem[]
   lostReports             LostReport[]
   lostLogs                LostReportLog[]
+  histories               AssetHistory[]
 }
 
 model CreationBatch {
@@ -625,4 +626,83 @@ model AssetInvoiceLine {
   batch              AssetInvoiceBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
   assets             Asset[]
 }
+
+model AssetHistory {
+  id                  Int      @id @default(autoincrement())
+  assetId             Int
+  assetCode           String
+  eventTime           DateTime
+  source              String   @default("SYSTEM") // SYSTEM, IMPORT_EXCEL_HISTORY
+  actionType          String   @default("STATUS_LOCATION_USER_CHANGE") // STATUS_LOCATION_USER_CHANGE, IMPORT_HISTORY
+  
+  oldStatus           String?
+  newStatus           String?
+  
+  oldUserName         String?
+  newUserName         String?
+  
+  oldLocationName     String?
+  newLocationName     String?
+  
+  oldDepartmentName   String?
+  newDepartmentName   String?
+  
+  oldProjectName      String?
+  newProjectName      String?
+  
+  oldCityName         String?
+  newCityName         String?
+  
+  oldNote             String?
+  newNote             String?
+  
+  assetNameSnapshot   String?
+  rawImportJson       String?   // JSON representation of raw row data
+  
+  importedById        Int?
+  importedAt          DateTime? @default(now())
+
+  asset               Asset    @relation(fields: [assetId], references: [id])
+}
+
+model Template {
+  id           Int               @id @default(autoincrement())
+  code         String            @unique
+  name         String
+  module       String            // e.g. HANDOVER_NEW_ASSET, HANDOVER, TRANSFER, REPAIR, LIQUIDATION, LOSS, INVENTORY, RECALL
+  documentType String            @default("PDF") // PDF, HTML
+  version      String            @default("v1")
+  status       String            @default("ACTIVE") // ACTIVE | DRAFT | INACTIVE
+  isDefault    Boolean           @default(false)
+  configJson   String            // Stringified JSON configuration
+  createdById  Int?
+  updatedById  Int?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  versions     TemplateVersion[]
+  usages       TemplateUsageLog[]
+}
+
+model TemplateVersion {
+  id          Int      @id @default(autoincrement())
+  templateId  Int
+  version     String
+  configJson  String
+  changeNote  String?
+  createdById Int?
+  createdAt   DateTime @default(now())
+  template    Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model TemplateUsageLog {
+  id         Int      @id @default(autoincrement())
+  templateId Int
+  documentId String?
+  documentNo String?
+  usedById   Int?
+  usedAt     DateTime @default(now())
+  template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+
 

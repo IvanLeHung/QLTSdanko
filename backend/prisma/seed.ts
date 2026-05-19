@@ -68,6 +68,16 @@ async function main() {
     { action: 'USER_UPDATE', description: 'Cập nhật người dùng' },
     { action: 'ROLE_MANAGE', description: 'Quản lý Role' },
     { action: 'PERMISSION_MANAGE', description: 'Quản lý phân quyền' },
+    { action: 'USER_RESET_PASSWORD', description: 'Đặt lại mật khẩu người dùng' },
+    
+    // Templates
+    { action: 'TEMPLATE_VIEW', description: 'Xem thư viện biểu mẫu' },
+    { action: 'TEMPLATE_CREATE', description: 'Tạo mẫu biểu mẫu' },
+    { action: 'TEMPLATE_UPDATE', description: 'Sửa cấu hình biểu mẫu' },
+    { action: 'TEMPLATE_SET_DEFAULT', description: 'Đặt biểu mẫu làm mặc định' },
+    { action: 'TEMPLATE_DELETE', description: 'Xóa biểu mẫu' },
+    { action: 'TEMPLATE_PREVIEW', description: 'Xem trước biểu mẫu' },
+    { action: 'TEMPLATE_EXPORT', description: 'Xuất bản mẫu biểu mẫu' },
   ];
 
   for (const perm of permissions) {
@@ -218,7 +228,83 @@ async function main() {
   ];
   for (const l4 of l4s_01_01) await ensureCategory({ ...l4, level: 4, parentId: l3_01_01.id });
 
-  console.log('Master data fully updated with Roles, Departments, Locations and Companies');
+  // --- TEMPLATES SEED ---
+  const defaultConfig = {
+    page: {
+      size: "A4",
+      orientation: "portrait",
+      marginTop: 12,
+      marginRight: 15,
+      marginBottom: 12,
+      marginLeft: 15
+    },
+    header: {
+      showLogo: true,
+      departmentText: "BỘ PHẬN QLTS",
+      showTemplateCode: true,
+      showDocumentQr: true
+    },
+    assetTable: {
+      showAssetQr: true,
+      assetQrSize: 48,
+      repeatHeader: true,
+      columns: [
+        "index",
+        "assetCodeQr",
+        "assetName",
+        "specification",
+        "serial",
+        "unit",
+        "quantity",
+        "condition",
+        "note"
+      ]
+    },
+    signature: {
+      columns: [
+        "sender",
+        "receiver",
+        "qlts"
+      ]
+    },
+    footer: {
+      showSupportLine: true,
+      supportLine: "CBNV có nhu cầu hỗ trợ về CNTT xin liên hệ: Lê Khánh Hùng – Phone/Viber: 0977131579",
+      showPageNumber: true
+    }
+  };
+
+  const seedTemplates = [
+    { code: 'BM01/QLTS', name: 'Biên bản bàn giao tài sản mới', module: 'HANDOVER_NEW_ASSET', config: defaultConfig },
+    { code: 'BM02/QLTS', name: 'Biên bản bàn giao tài sản', module: 'HANDOVER', config: defaultConfig },
+    { code: 'BM06/QLTS', name: 'Biên bản điều chuyển tài sản', module: 'TRANSFER', config: defaultConfig },
+    { code: 'BM03/QLTS', name: 'Biên bản tài sản hỏng / sửa chữa', module: 'REPAIR', config: defaultConfig },
+    { code: 'BM04/QLTS', name: 'Biên bản thanh lý tài sản', module: 'LIQUIDATION', config: defaultConfig },
+    { code: 'BM05/QLTS', name: 'Biên bản tiêu hủy / mất tài sản', module: 'LOSS', config: defaultConfig },
+    { code: 'BM12/QLTS', name: 'Biên bản kiểm kê tài sản', module: 'INVENTORY', config: defaultConfig },
+    { code: 'BM09/QLTS', name: 'Biên bản thu hồi tài sản', module: 'RECALL', config: defaultConfig }
+  ];
+
+  for (const t of seedTemplates) {
+    const existing = await prisma.template.findUnique({ where: { code: t.code } });
+    if (!existing) {
+      await prisma.template.create({
+        data: {
+          code: t.code,
+          name: t.name,
+          module: t.module,
+          documentType: 'PDF',
+          version: 'v1',
+          status: 'ACTIVE',
+          isDefault: true,
+          configJson: JSON.stringify(t.config)
+        }
+      });
+    }
+  }
+
+  console.log('Master data fully updated with Roles, Departments, Locations, Companies, and default templates');
 }
+
 
 main().catch(console.error).finally(() => prisma.$disconnect());

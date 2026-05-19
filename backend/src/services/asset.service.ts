@@ -169,7 +169,7 @@ export class AssetService {
     }, { timeout: 30000 });
   }
 
-  static async updateAsset(id: number, updates: any, performedBy: string, reason?: string) {
+  static async updateAsset(id: number, updates: any, performedBy: string, reason?: string, updateAllSameName?: boolean) {
     return await prisma.$transaction(async (tx) => {
       const oldAsset = await tx.asset.findUnique({ where: { id } });
       if (!oldAsset) throw new Error('Asset not found');
@@ -180,6 +180,37 @@ export class AssetService {
       });
 
       await AuditService.logAssetChange(id, oldAsset, updatedAsset, performedBy, tx, reason);
+
+      if (updateAllSameName && oldAsset.assetName) {
+        const otherAssets = await tx.asset.findMany({
+          where: {
+            assetName: oldAsset.assetName,
+            id: { not: id },
+            isDeleted: false
+          }
+        });
+
+        const bulkUpdates = { ...updates };
+        delete bulkUpdates.assetCode;
+        delete bulkUpdates.serialNumber;
+        delete bulkUpdates.runningNo;
+        delete bulkUpdates.runningNoText;
+
+        for (const other of otherAssets) {
+          const updatedOther = await tx.asset.update({
+            where: { id: other.id },
+            data: bulkUpdates
+          });
+          await AuditService.logAssetChange(
+            other.id,
+            other,
+            updatedOther,
+            performedBy,
+            tx,
+            `[Cập nhật hàng loạt cùng tên] ${reason || ''}`
+          );
+        }
+      }
 
       return updatedAsset;
     }, { timeout: 30000 });

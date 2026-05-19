@@ -17,6 +17,11 @@ export const ACTION_MAP: Record<string, string> = {
   LOST: 'Báo mất',
   LIQUIDATE: 'Thanh lý',
   IMPORT: 'Nhập Excel',
+  LOGIN_SUCCESS: 'Đăng nhập thành công',
+  LOGIN_FAILED: 'Đăng nhập thất bại',
+  CHANGE_PASSWORD: 'Đổi mật khẩu',
+  RESET_PASSWORD: 'Reset mật khẩu',
+  LOCK_USER_BY_FAILED_LOGIN: 'Tạm khóa tài khoản do sai pass nhiều lần',
 };
 
 export const ENTITY_MAP: Record<string, string> = {
@@ -33,6 +38,7 @@ export const ENTITY_MAP: Record<string, string> = {
   LIQUIDATION: 'Thanh lý',
   DOCUMENT: 'Tài liệu',
   API: 'Hệ thống API',
+  TEMPLATE: 'Biểu mẫu',
 };
 
 export const STATUS_MAP: Record<string, string> = {
@@ -99,6 +105,39 @@ export class AuditParser {
     const parsed = this.parseDetails(log.details);
     const actionVn = this.getActionName(log.action);
     const entityVn = this.getEntityName(log.entityType);
+
+    // Custom authentication descriptions
+    if (log.action === 'LOGIN_SUCCESS') {
+      return 'Đăng nhập hệ thống thành công.';
+    }
+    if (log.action === 'LOGIN_FAILED') {
+      return `Đăng nhập hệ thống thất bại. Lý do: ${parsed?.reason || 'Mật khẩu không đúng'}.`;
+    }
+    if (log.action === 'LOCK_USER_BY_FAILED_LOGIN') {
+      return 'Tài khoản bị tạm khóa 15 phút do nhập sai mật khẩu 5 lần liên tiếp.';
+    }
+    if (log.action === 'CHANGE_PASSWORD') {
+      return 'Thay đổi mật khẩu cá nhân thành công.';
+    }
+    if (log.action === 'RESET_PASSWORD') {
+      return `Quản trị viên đã đặt lại mật khẩu. Yêu cầu đổi pass tiếp theo: ${parsed?.mustChangePassword ? 'Có' : 'Không'}.`;
+    }
+    if (log.action === 'LOGOUT') {
+      return 'Đăng xuất khỏi hệ thống.';
+    }
+
+    // Special parsing for TEMPLATE
+    if (log.entityType === 'TEMPLATE') {
+      if (log.action === 'CREATE') {
+        return `Tạo biểu mẫu [${parsed?.code}] - ${parsed?.name} (${parsed?.module}).`;
+      }
+      if (log.action === 'UPDATE') {
+        return `Cập nhật cấu hình biểu mẫu [${parsed?.code}] - ${parsed?.name} (Phiên bản: ${parsed?.version || 'v1'}). Ghi chú: ${parsed?.changeNote || 'Không có'}`;
+      }
+      if (log.action === 'DELETE') {
+        return `Xóa biểu mẫu [${parsed?.code}] - ${parsed?.name} (${parsed?.module}).`;
+      }
+    }
 
     // If it's a simple API log from middleware
     if (log.details && log.details.startsWith('API:')) {

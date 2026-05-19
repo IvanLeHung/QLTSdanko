@@ -35,16 +35,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { AutocompleteInput, MultiSelect, PopoverFilter, FilterChip } from '../components/FilterComponents';
 import { Can } from '../components/Can';
-import { AssetDetailPopup } from '../components/AssetDetailPopup';
-import { AssetLabelPrintModal } from '../components/AssetLabelPrintModal';
-import { ErrorBoundary, ModalError } from '../components/ErrorBoundary';
-import { TransferWizard } from '../components/TransferWizard';
 import { useAuth } from '../context/AuthContext';
-
-import { BMFormDispatcher } from '../components/forms/BMFormDispatcher';
+import { useModal } from '../context/ModalContext';
 
 export const AssetList: React.FC = () => {
   const { hasPermission } = useAuth();
+  const { activeModal, openModal } = useModal();
+  const isDetailOpen = activeModal?.type === 'ASSET_DETAIL';
+  const selectedAssetId = activeModal?.payload?.assetId;
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -82,23 +80,25 @@ export const AssetList: React.FC = () => {
   };
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
-  const [isDetailOpen, setIsDetailOpen] = useState(false);
-  const [selectedAssetId, setSelectedAssetId] = useState<number | null>(null);
-  const [detailTab, setDetailTab] = useState<any>('info');
+  const [localSearch, setLocalSearch] = useState(search);
+
+  // Sync localSearch with search query param when it changes externally
+  useEffect(() => {
+    setLocalSearch(search);
+  }, [search]);
+
+  // Debounce updating the search URL parameter to prevent focus loss & IME breaks
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localSearch !== search) {
+        updateParam('search', localSearch);
+      }
+    }, 400);
+    return () => clearTimeout(timer);
+  }, [localSearch, search]);
+
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
-  
-  // Print Modal State
-  const [isPrintModalOpen, setIsPrintModalOpen] = useState(false);
-  const [assetsToPrint, setAssetsToPrint] = useState<any[]>([]);
-
-  // Transfer Wizard State
-  const [isTransferWizardOpen, setIsTransferWizardOpen] = useState(false);
-  const [wizardAssetIds, setWizardAssetIds] = useState<number[]>([]);
-  const [wizardDefaultType, setWizardDefaultType] = useState<'HANDOVER' | 'TRANSFER' | 'RECALL'>('HANDOVER');
-
-  // BM Modal State
-  const [activeBM, setActiveBM] = useState<{code: string, data?: any} | null>(null);
 
   // Compact Header State
   const [isCompact, setIsCompact] = useState(false);
@@ -205,9 +205,14 @@ export const AssetList: React.FC = () => {
       }
     }
 
-    setSelectedAssetId(assetId);
-    setDetailTab(targetTab);
-    setIsDetailOpen(true);
+    openModal("ASSET_DETAIL", {
+      assetId,
+      initialTab: targetTab,
+      onAction: (action: string, id: number) => {
+        const targetAsset = assets.find(a => a.id === id);
+        if (targetAsset) handleAssetAction(action, targetAsset);
+      }
+    });
   };
 
   const handleAssetAction = (action: string, asset: any) => {
@@ -217,23 +222,40 @@ export const AssetList: React.FC = () => {
         openAssetDetail(asset.id, 'info');
         break;
       case 'handover':
-        setWizardAssetIds([asset.id]);
-        setWizardDefaultType(asset.status === 'IN_STOCK' ? 'HANDOVER' : 'TRANSFER');
-        setIsTransferWizardOpen(true);
+        openModal("TRANSFER_WIZARD", {
+          initialAssetIds: [asset.id],
+          defaultType: asset.status === 'IN_STOCK' ? 'HANDOVER' : 'TRANSFER',
+          source: 'ASSET_DETAIL',
+          onComplete: fetchAssets
+        });
         break;
       case 'revoke':
-        setWizardAssetIds([asset.id]);
-        setWizardDefaultType('RECALL');
-        setIsTransferWizardOpen(true);
+        openModal("TRANSFER_WIZARD", {
+          initialAssetIds: [asset.id],
+          defaultType: 'RECALL',
+          source: 'ASSET_DETAIL',
+          onComplete: fetchAssets
+        });
         break;
       case 'inventory':
-        setActiveBM({ code: 'BM09/QLTS', data: { asset, businessType: 'Kiểm tra đột xuất' } });
+        openModal("INVENTORY_WIZARD", {
+          initialAssetIds: [asset.id],
+          onComplete: fetchAssets
+        });
         break;
       case 'repair':
-        setActiveBM({ code: 'BM03/QLTS', data: { asset } });
+        openModal("BM_FORM", {
+          code: 'BM03/QLTS',
+          data: { asset },
+          onSubmit: fetchAssets
+        });
         break;
       case 'liquidation':
-        setActiveBM({ code: 'BM04/QLTS', data: { asset } });
+        openModal("BM_FORM", {
+          code: 'BM04/QLTS',
+          data: { asset },
+          onSubmit: fetchAssets
+        });
         break;
       case 'print_label':
         if (!asset) {
@@ -245,8 +267,9 @@ export const AssetList: React.FC = () => {
           toast.error('Tài sản chưa có mã, không thể in tem.');
           break;
         }
-        setAssetsToPrint([{ ...asset, asset_code: assetCode }]);
-        setIsPrintModalOpen(true);
+        openModal("PRINT_LABEL", {
+          assets: [{ ...asset, asset_code: assetCode }]
+        });
         break;
       case 'history':
         openAssetDetail(asset.id, 'timeline');
@@ -259,8 +282,7 @@ export const AssetList: React.FC = () => {
   const handleBulkPrint = () => {
     const selectedAssets = assets.filter(a => selectedIds.includes(a.id));
     if (selectedAssets.length === 0) return;
-    setAssetsToPrint(selectedAssets);
-    setIsPrintModalOpen(true);
+    openModal("PRINT_LABEL", { assets: selectedAssets });
   };
 
   const handleExportAll = async () => {
@@ -356,6 +378,33 @@ export const AssetList: React.FC = () => {
     { key: "status", label: "Trạng thái" },
   ];
 
+  const statCards = useMemo(() => {
+    if (!stats) return [];
+    return [
+      { key: 'ALL', label: 'TỔNG TÀI SẢN', status: '', value: stats.total, icon: <Box className="h-4 w-4" />, color: 'primary' },
+      { key: 'ASSIGNED', label: 'ĐANG SỬ DỤNG', status: 'ASSIGNED', value: stats.assigned, icon: <CheckCircle2 className="h-4 w-4" />, color: 'blue' },
+      { key: 'IN_STOCK', label: 'TRONG KHO', status: 'IN_STOCK', value: stats.inStock, icon: <Box className="h-4 w-4" />, color: 'emerald' },
+      { key: 'DAMAGED', label: 'BÁO HỎNG', status: 'DAMAGED', value: stats.damaged, icon: <AlertCircle className="h-4 w-4" />, color: 'amber' },
+      { key: 'LOST', label: 'MẤT / THẤT THOÁT', status: 'LOST', value: stats.lost, icon: <ShieldAlert className="h-4 w-4" />, color: 'rose' },
+    ];
+  }, [stats]);
+
+  const getStatusLabelText = (statusVal: string) => {
+    const parts = statusVal.split(',').filter(Boolean);
+    return parts.map(p => {
+      switch (p) {
+        case 'IN_STOCK': return 'Trong kho';
+        case 'ASSIGNED': return 'Đang sử dụng';
+        case 'UNDER_REPAIR': return 'Đang sửa chữa';
+        case 'PENDING_DISPOSAL': return 'Chờ thanh lý';
+        case 'DISPOSED': return 'Đã thanh lý';
+        case 'LOST': return 'Mất';
+        case 'DAMAGED': return 'Hỏng';
+        default: return p;
+      }
+    }).join(', ');
+  };
+
   const selectedAssets = useMemo(() => assets.filter(a => selectedIds.includes(a.id)), [assets, selectedIds]);
 
   return (
@@ -385,15 +434,49 @@ export const AssetList: React.FC = () => {
           {/* Stats Section — Animates away */}
           <div className={cn(
             "transition-all duration-500 ease-in-out overflow-hidden",
-            isCompact ? "max-h-0 opacity-0 -translate-y-10" : "max-h-64 opacity-100 translate-y-0"
+            isCompact ? "max-h-0 opacity-0 -translate-y-10" : "max-h-[140px] opacity-100 translate-y-0"
           )}>
             {stats && (
-              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 pt-1 pb-4">
-                <StatCard label="TỔNG TÀI SẢN" value={stats.total} icon={<Box className="h-4 w-4" />} color="primary" />
-                <StatCard label="ĐANG SỬ DỤNG" value={stats.assigned} icon={<CheckCircle2 className="h-4 w-4" />} color="blue" />
-                <StatCard label="TRONG KHO" value={stats.inStock} icon={<Box className="h-4 w-4" />} color="emerald" />
-                <StatCard label="BÁO HỎNG" value={stats.damaged} icon={<AlertCircle className="h-4 w-4" />} color="amber" />
-                <StatCard label="MẤT / THẤT THOÁT" value={stats.lost} icon={<ShieldAlert className="h-4 w-4" />} color="rose" />
+              <div className="pt-1 pb-4">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                  {statCards.map((card) => {
+                    const active = card.key === 'ALL' ? !filters.status : filters.status === card.status;
+                    return (
+                      <StatCard
+                        key={card.key}
+                        label={card.label}
+                        value={card.value}
+                        icon={card.icon}
+                        color={card.color}
+                        active={active}
+                        onClick={() => updateParam('status', card.status)}
+                      />
+                    );
+                  })}
+                </div>
+                {filters.status && (
+                  <div className="flex items-center gap-2 mt-3 px-1 animate-in fade-in slide-in-from-top-1">
+                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+                      Đang lọc:
+                    </span>
+                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white shadow-sm">
+                      {getStatusLabelText(filters.status)}
+                      <button 
+                        onClick={() => updateParam('status', '')}
+                        className="ml-2 text-slate-400 hover:text-white transition-colors"
+                        title="Xóa bộ lọc"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </span>
+                    <button 
+                      onClick={() => updateParam('status', '')}
+                      className="text-[10px] font-black text-rose-600 hover:text-rose-700 uppercase tracking-widest ml-3 transition-colors hover:underline"
+                    >
+                      Xóa lọc
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -409,8 +492,8 @@ export const AssetList: React.FC = () => {
                   type="text" 
                   placeholder="Tìm theo mã, tên, serial..." 
                   className="w-full pl-9 pr-3 py-1 bg-slate-50 border border-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 transition-all text-xs text-slate-900 placeholder:text-slate-400 h-[32px]"
-                  value={search}
-                  onChange={(e) => updateParam('search', e.target.value)}
+                  value={localSearch}
+                  onChange={(e) => setLocalSearch(e.target.value)}
                 />
               </div>
               
@@ -451,7 +534,7 @@ export const AssetList: React.FC = () => {
               </Can>
               
               <Can permission="ASSET_CREATE">
-                <button onClick={() => navigate('/assets/new')} className="h-[32px] px-3 flex items-center text-[11px] font-black bg-primary-600 text-white rounded-lg shadow-sm hover:bg-primary-700 transition-all whitespace-nowrap">
+                <button onClick={() => openModal("ASSET_CREATE", { onComplete: fetchAssets })} className="h-[32px] px-3 flex items-center text-[11px] font-black bg-primary-600 text-white rounded-lg shadow-sm hover:bg-primary-700 transition-all whitespace-nowrap">
                   <Plus className="mr-1.5 h-3.5 w-3.5" /> Thêm mới
                 </button>
               </Can>
@@ -474,16 +557,27 @@ export const AssetList: React.FC = () => {
               <button onClick={() => setSelectedIds([])} className="px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400">Bỏ chọn</button>
               <button 
                 onClick={() => {
-                  setWizardAssetIds(selectedIds);
                   const hasInStock = selectedAssets.some(a => a.status === 'IN_STOCK');
-                  setWizardDefaultType(hasInStock ? 'HANDOVER' : 'TRANSFER');
-                  setIsTransferWizardOpen(true);
+                  openModal("TRANSFER_WIZARD", {
+                    initialAssetIds: selectedIds,
+                    defaultType: hasInStock ? 'HANDOVER' : 'TRANSFER',
+                    source: 'ASSET_DETAIL',
+                    onComplete: () => { setSelectedIds([]); fetchAssets(); }
+                  });
                 }} 
                 className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors"
               >
                 <UserPlus className="mr-2 h-4 w-4" /> Bàn giao / Điều chuyển
               </button>
-              <button onClick={() => setActiveBM({ code: 'BM12/QLTS', data: { assets: selectedAssets } })} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors">
+              <button 
+                onClick={() => {
+                  openModal("INVENTORY_WIZARD", {
+                    initialAssetIds: selectedIds,
+                    onComplete: () => { setSelectedIds([]); fetchAssets(); }
+                  });
+                }} 
+                className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors"
+              >
                 <ClipboardCheck className="mr-2 h-4 w-4" /> Kiểm kê
               </button>
               <button onClick={handleBulkPrint} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-primary-400">
@@ -507,21 +601,38 @@ export const AssetList: React.FC = () => {
                        <button 
                          onClick={() => { 
                            setIsMoreMenuOpen(false); 
-                           setWizardAssetIds(selectedIds);
-                           setWizardDefaultType('RECALL');
-                           setIsTransferWizardOpen(true);
+                           openModal("TRANSFER_WIZARD", {
+                             initialAssetIds: selectedIds,
+                             defaultType: 'RECALL',
+                             source: 'ASSET_DETAIL',
+                             onComplete: () => { setSelectedIds([]); fetchAssets(); }
+                           });
                          }} 
                          className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
                        >
                          <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
                        </button>
-                       <button onClick={() => { setIsMoreMenuOpen(false); setActiveBM({ code: 'BM10/QLTS', data: { assets: selectedAssets } }); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white">
+                       <button 
+                         onClick={() => { 
+                           setIsMoreMenuOpen(false); 
+                           openModal("BM_FORM", {
+                             code: 'BM10/QLTS',
+                             data: { assets: selectedAssets },
+                             onSubmit: () => { setSelectedIds([]); fetchAssets(); }
+                           });
+                         }} 
+                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
+                       >
                          <Wrench className="mr-3 h-4 w-4 text-amber-500" /> Sửa chữa / Bảo trì
                        </button>
                        <button 
                          onClick={() => { 
                            setIsMoreMenuOpen(false); 
-                           setActiveBM({ code: 'BM04/QLTS', data: { asset: selectedAssets[0], assets: selectedAssets } }); 
+                           openModal("BM_FORM", {
+                             code: 'BM04/QLTS',
+                             data: { asset: selectedAssets[0], assets: selectedAssets },
+                             onSubmit: () => { setSelectedIds([]); fetchAssets(); }
+                           });
                          }} 
                          className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400"
                        >
@@ -693,66 +804,68 @@ export const AssetList: React.FC = () => {
         </div>
       </div>
     </main>
-
-      {/* POPUPS & MODALS */}
-      <AssetDetailPopup 
-        assetId={selectedAssetId}
-        isOpen={isDetailOpen}
-        initialTab={detailTab}
-        onClose={() => setIsDetailOpen(false)}
-        onAction={(action, id) => {
-          if (action !== 'print_label') {
-            setIsDetailOpen(false);
-          }
-          const asset = assets.find(a => a.id === id);
-          if (asset) handleAssetAction(action, asset);
-        }}
-      />
-
-      <TransferWizard
-        isOpen={isTransferWizardOpen}
-        onClose={() => setIsTransferWizardOpen(false)}
-        onComplete={fetchAssets}
-        initialAssetIds={wizardAssetIds}
-        defaultType={wizardDefaultType}
-        source="ASSET_DETAIL"
-      />
-
-      <ErrorBoundary fallback={<ModalError message="Không thể mở chức năng In tem tài sản." />}>
-        <AssetLabelPrintModal 
-          isOpen={isPrintModalOpen}
-          onClose={() => setIsPrintModalOpen(false)}
-          assets={assetsToPrint}
-        />
-      </ErrorBoundary>
-
-      <BMFormDispatcher 
-        isOpen={!!activeBM}
-        formCode={activeBM?.code || ''}
-        data={activeBM?.data}
-        onClose={() => setActiveBM(null)}
-        onSubmit={() => { setActiveBM(null); fetchAssets(); }}
-      />
     </div>
   );
 };
 
-const StatCard = ({ label, value, icon, color }: any) => {
+const StatCard = ({ label, value, icon, color, active, onClick }: any) => {
   const colors: any = {
-    primary: 'text-primary-600 bg-primary-50/20 border-primary-100',
-    blue: 'text-blue-600 bg-blue-50/20 border-blue-100',
-    emerald: 'text-emerald-600 bg-emerald-50/20 border-emerald-100',
-    amber: 'text-amber-600 bg-amber-50/20 border-amber-100',
-    rose: 'text-rose-600 bg-rose-50/20 border-rose-100',
+    primary: {
+      active: 'border-primary-500 ring-2 ring-primary-100 bg-primary-50/30 text-primary-700',
+      inactive: 'border-slate-200 hover:border-primary-300 hover:-translate-y-0.5 text-slate-600 bg-white',
+      iconActive: 'bg-primary-600 text-white shadow-md shadow-primary-200',
+      iconInactive: 'bg-slate-50 text-slate-400 group-hover:bg-primary-50 group-hover:text-primary-600',
+    },
+    blue: {
+      active: 'border-blue-500 ring-2 ring-blue-100 bg-blue-50/30 text-blue-700',
+      inactive: 'border-slate-200 hover:border-blue-300 hover:-translate-y-0.5 text-slate-600 bg-white',
+      iconActive: 'bg-blue-600 text-white shadow-md shadow-blue-200',
+      iconInactive: 'bg-slate-50 text-slate-400 group-hover:bg-blue-50 group-hover:text-blue-600',
+    },
+    emerald: {
+      active: 'border-emerald-500 ring-2 ring-emerald-100 bg-emerald-50/30 text-emerald-700',
+      inactive: 'border-slate-200 hover:border-emerald-300 hover:-translate-y-0.5 text-slate-600 bg-white',
+      iconActive: 'bg-emerald-600 text-white shadow-md shadow-emerald-200',
+      iconInactive: 'bg-slate-50 text-slate-400 group-hover:bg-emerald-50 group-hover:text-emerald-600',
+    },
+    amber: {
+      active: 'border-amber-500 ring-2 ring-amber-100 bg-amber-50/30 text-amber-700',
+      inactive: 'border-slate-200 hover:border-amber-300 hover:-translate-y-0.5 text-slate-600 bg-white',
+      iconActive: 'bg-amber-600 text-white shadow-md shadow-amber-200',
+      iconInactive: 'bg-slate-50 text-slate-400 group-hover:bg-amber-50 group-hover:text-amber-600',
+    },
+    rose: {
+      active: 'border-rose-500 ring-2 ring-rose-100 bg-rose-50/30 text-rose-700',
+      inactive: 'border-slate-200 hover:border-rose-300 hover:-translate-y-0.5 text-slate-600 bg-white',
+      iconActive: 'bg-rose-600 text-white shadow-md shadow-rose-200',
+      iconInactive: 'bg-slate-50 text-slate-400 group-hover:bg-rose-50 group-hover:text-rose-600',
+    },
   };
+
+  const style = colors[color] || colors.primary;
+
   return (
-    <div className={cn("h-[60px] px-4 rounded-xl border bg-white flex items-center gap-3 shadow-sm hover:shadow-md transition-all group", colors[color])}>
-      <div className="w-8 h-8 rounded-lg bg-white shadow-sm flex items-center justify-center shrink-0 transition-transform group-hover:scale-105">{icon}</div>
-      <div className="min-w-0">
-        <p className="text-[9px] font-bold uppercase text-[#94A3B8] tracking-wider leading-none">{label}</p>
-        <p className="text-xl font-[900] text-[#0F172A] tracking-tighter leading-tight mt-0.5">{value?.toLocaleString() || 0}</p>
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "h-[60px] px-4 rounded-xl border flex items-center gap-3 shadow-sm hover:shadow-md transition-all group w-full outline-none cursor-pointer",
+        active ? style.active : style.inactive
+      )}
+    >
+      <div className={cn(
+        "w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-all",
+        active ? style.iconActive : style.iconInactive
+      )}>
+        {icon}
       </div>
-    </div>
+      <div className="min-w-0 text-left">
+        <p className="text-[9px] font-black uppercase text-[#94A3B8] tracking-wider leading-none">{label}</p>
+        <p className="text-xl font-[900] text-[#0F172A] tracking-tighter leading-tight mt-0.5">
+          {value?.toLocaleString('vi-VN') || 0}
+        </p>
+      </div>
+    </button>
   );
 };
 

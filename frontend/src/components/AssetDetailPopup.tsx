@@ -54,6 +54,7 @@ import { toast } from 'react-toastify';
 import { AppliedFormsBlock } from './AppliedFormsBlock';
 import { AssetDocumentsTab } from './AssetDocumentsTab';
 import { BMFormDispatcher } from './forms/BMFormDispatcher';
+import { BaseModal } from './BaseModal';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -88,6 +89,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [copied, setCopied] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
   const [selectedForm, setSelectedForm] = useState<{code: string, data?: any} | null>(null);
+  const [updateAllSameName, setUpdateAllSameName] = useState(false);
 
   useEffect(() => {
     if (isOpen && assetId) {
@@ -198,7 +200,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       supplierName: asset.supplierName || '',
       companyCode: asset.companyCode,
       assetCode: asset.assetCode,
-      note: asset.note || ''
+      documentNote: asset.documentNote || ''
     });
     setMode('edit');
   };
@@ -206,6 +208,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const cancelEdit = () => {
     setMode('view');
     setEditForm(null);
+    setUpdateAllSameName(false);
   };
 
   const handleSave = async () => {
@@ -243,11 +246,12 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const submitUpdates = async (updates: any, changeReason?: string) => {
     setIsSaving(true);
     try {
-      await api.patch(`/assets/${asset.id}`, { ...updates, reason: changeReason });
+      await api.patch(`/assets/${asset.id}`, { ...updates, reason: changeReason, updateAllSameName });
       toast.success("Cập nhật tài sản thành công");
       setMode('view');
       setShowReasonModal(false);
       setReason('');
+      setUpdateAllSameName(false);
       fetchAssetDetail();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi cập nhật tài sản");
@@ -257,15 +261,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   };
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
-      {/* OVERLAY */}
-      <div 
-        className="absolute inset-0 bg-slate-900/40 backdrop-blur-[2px] transition-opacity animate-in fade-in duration-300" 
-        onClick={onClose}
-      />
-
-      {/* POPUP CONTAINER */}
-      <div className="relative w-full max-w-[880px] max-h-[82vh] bg-white rounded-3xl shadow-2xl overflow-hidden flex flex-col animate-in zoom-in-95 fade-in duration-300">
+    <BaseModal isOpen={isOpen} onClose={onClose} size="detail" noScroll>
+      <div className="w-full h-full bg-white flex flex-col">
         
         {loading ? (
           <div className="h-[500px] flex flex-col items-center justify-center space-y-4">
@@ -558,12 +555,12 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ghi chú</p>
                     {mode === 'edit' ? (
                       <textarea 
-                        value={editForm.note} 
-                        onChange={e => setEditForm({...editForm, note: e.target.value})}
+                        value={editForm.documentNote} 
+                        onChange={e => setEditForm({...editForm, documentNote: e.target.value})}
                         className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-medium text-slate-600 focus:ring-2 focus:ring-primary-500 h-24 resize-none"
                       />
                     ) : (
-                      <p className="text-sm text-slate-600 font-medium leading-relaxed">{asset.note || 'Không có ghi chú.'}</p>
+                      <p className="text-sm text-slate-600 font-medium leading-relaxed">{asset.documentNote || 'Không có ghi chú.'}</p>
                     )}
                   </div>
                 </div>
@@ -837,24 +834,39 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
             </div>
 
             {/* FOOTER ACTIONS */}
-            <div className="px-8 py-8 border-t border-slate-100 bg-slate-50/50 flex space-x-3 items-center">
-              {mode === 'edit' ? (
-                <>
-                  <button 
-                    onClick={cancelEdit}
-                    className="flex-1 bg-white border border-slate-200 text-slate-400 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:text-slate-600 transition-all shadow-sm"
-                  >
-                    Hủy chỉnh sửa
-                  </button>
-                  <button 
-                    onClick={handleSave}
-                    disabled={isSaving}
-                    className="flex-[2] bg-primary-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center justify-center disabled:opacity-50"
-                  >
-                    {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <><Save className="mr-2 h-4 w-4" /> Lưu thay đổi</>}
-                  </button>
-                </>
-              ) : activeTab === 'documents' ? (
+            <div className="px-8 py-8 border-t border-slate-100 bg-slate-50/50 flex flex-col space-y-4">
+              {mode === 'edit' && (
+                <label className="flex items-center space-x-3 cursor-pointer select-none py-3.5 bg-primary-50/40 rounded-2xl px-5 border border-primary-100/50 animate-in slide-in-from-bottom-2 duration-200">
+                  <input 
+                    type="checkbox" 
+                    checked={updateAllSameName}
+                    onChange={(e) => setUpdateAllSameName(e.target.checked)}
+                    className="h-5 w-5 rounded border-slate-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                  />
+                  <div className="flex flex-col">
+                    <span className="text-[11px] font-black text-slate-700 uppercase tracking-wider">Áp dụng đồng loạt cho tài sản cùng tên</span>
+                    <span className="text-[9px] text-slate-400 font-bold uppercase tracking-widest mt-0.5">Cập nhật tất cả tài sản có cùng tên "{asset.assetName}"</span>
+                  </div>
+                </label>
+              )}
+              <div className="flex space-x-3 items-center w-full">
+                {mode === 'edit' ? (
+                  <>
+                    <button 
+                      onClick={cancelEdit}
+                      className="flex-1 bg-white border border-slate-200 text-slate-400 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:text-slate-600 transition-all shadow-sm"
+                    >
+                      Hủy chỉnh sửa
+                    </button>
+                    <button 
+                      onClick={handleSave}
+                      disabled={isSaving}
+                      className="flex-[2] bg-primary-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center justify-center disabled:opacity-50"
+                    >
+                      {isSaving ? <Loader2 className="h-5 w-5 animate-spin" /> : <><Save className="mr-2 h-4 w-4" /> Lưu thay đổi</>}
+                    </button>
+                  </>
+                ) : activeTab === 'documents' ? (
                 <>
                    <button 
                     onClick={onClose}
@@ -956,6 +968,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                   </div>
                 </>
               )}
+              </div>
             </div>
           </>
         ) : (
@@ -1031,6 +1044,6 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
           });
         }}
       />
-    </div>
+    </BaseModal>
   );
 };

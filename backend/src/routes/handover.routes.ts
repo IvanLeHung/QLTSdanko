@@ -171,12 +171,41 @@ router.post('/:id/pdf', authenticateToken, requirePermission('TRANSFER_PRINT_PDF
   }
 });
 
-router.get('/:id/pdf', authenticateToken, requirePermission('TRANSFER_PRINT_PDF'), async (req, res) => {
+router.get('/:id/pdf', authenticateToken, requirePermission('TRANSFER_PRINT_PDF'), async (req: AuthRequest, res) => {
   try {
     const detail = await HandoverService.getHandoverDetail(Number(req.params.id));
     if (!detail) return res.status(404).json({ message: 'Không tìm thấy hồ sơ bàn giao.' });
 
-    const pdfBuffer = await PdfUtil.generateHandoverPdf(detail);
+    // Fetch dynamic template if any
+    let moduleKey = 'HANDOVER';
+    if (detail.type === 'TRANSFER') moduleKey = 'TRANSFER';
+    if (detail.type === 'REVOKE' || detail.type === 'RECALL') moduleKey = 'RECALL';
+
+    const prismaInstance = require('../utils/prisma').default;
+    const defaultTemplate = await prismaInstance.template.findFirst({
+      where: { module: moduleKey, isDefault: true, status: 'ACTIVE' }
+    });
+
+    let pdfBuffer;
+    if (defaultTemplate) {
+      try {
+        const config = JSON.parse(defaultTemplate.configJson);
+        pdfBuffer = await PdfUtil.generateHandoverPdf(detail, { 
+          configJson: config,
+          templateName: defaultTemplate.name,
+          templateCode: defaultTemplate.code
+        });
+        
+        // Log template usage in background
+        const { TemplateService } = require('../services/template.service');
+        TemplateService.logUsage(defaultTemplate.id, String(detail.id), detail.documentNo, req.user?.id);
+      } catch (err) {
+        console.error('Failed to generate PDF with custom template config, falling back to default:', err);
+        pdfBuffer = await PdfUtil.generateHandoverPdf(detail);
+      }
+    } else {
+      pdfBuffer = await PdfUtil.generateHandoverPdf(detail);
+    }
     
     res.setHeader('Content-Type', 'application/pdf');
     res.setHeader('Content-Disposition', `inline; filename=BBBG_${detail.documentNo.replace('/', '_')}.pdf`);

@@ -10,17 +10,31 @@ import { buildDataScopeWhere } from '../utils/data-scope.util';
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
-// Stats for summary cards
-router.get('/stats', authenticateToken, async (req, res) => {
+router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+      company: 'companyCode',
+      department: 'departmentName',
+      warehouse: 'locationName',
+      user: 'currentUserName'
+    });
+
+    const baseWhere: any = { isDeleted: false };
+    if (Object.keys(scopeWhere).length > 0) {
+      if (scopeWhere.id === -1) {
+        return res.json({ total: 0, assigned: 0, inStock: 0, underRepair: 0, damaged: 0, lost: 0, liquidated: 0 });
+      }
+      baseWhere.AND = [scopeWhere];
+    }
+
     const [total, assigned, inStock, underRepair, damaged, lost, liquidated] = await Promise.all([
-      prisma.asset.count({ where: { isDeleted: false } }),
-      prisma.asset.count({ where: { status: 'ASSIGNED', isDeleted: false } }),
-      prisma.asset.count({ where: { status: 'IN_STOCK', isDeleted: false } }),
-      prisma.asset.count({ where: { status: 'UNDER_REPAIR', isDeleted: false } }),
-      prisma.asset.count({ where: { status: 'DAMAGED', isDeleted: false } }),
-      prisma.asset.count({ where: { status: 'LOST', isDeleted: false } }),
-      prisma.asset.count({ where: { status: 'LIQUIDATED', isDeleted: false } }),
+      prisma.asset.count({ where: baseWhere }),
+      prisma.asset.count({ where: { ...baseWhere, status: 'ASSIGNED' } }),
+      prisma.asset.count({ where: { ...baseWhere, status: 'IN_STOCK' } }),
+      prisma.asset.count({ where: { ...baseWhere, status: 'UNDER_REPAIR' } }),
+      prisma.asset.count({ where: { ...baseWhere, status: 'DAMAGED' } }),
+      prisma.asset.count({ where: { ...baseWhere, status: 'LOST' } }),
+      prisma.asset.count({ where: { ...baseWhere, status: 'LIQUIDATED' } }),
     ]);
     res.json({ total, assigned, inStock, underRepair, damaged, lost, liquidated });
   } catch (error: any) {
@@ -199,16 +213,36 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
 
   // Advanced Search (Global Search Box)
   if (search) {
+    const searchString = String(search);
     andClauses.push({
       OR: [
-        { assetCode: { contains: String(search) } },
-        { assetName: { contains: String(search) } },
-        { serialNumber: { contains: String(search) } },
-        { currentUserName: { contains: String(search) } },
-        { departmentName: { contains: String(search) } },
-        { locationName: { contains: String(search) } },
-        { projectName: { contains: String(search) } },
-        { supplierName: { contains: String(search) } },
+        { assetCode: { contains: searchString } },
+        { assetName: { contains: searchString } },
+        { assetNameShort: { contains: searchString } },
+        { serialNumber: { contains: searchString } },
+        { companyCode: { contains: searchString } },
+        { companyName: { contains: searchString } },
+        { projectName: { contains: searchString } },
+        { level1Code: { contains: searchString } },
+        { level1Name: { contains: searchString } },
+        { level2Code: { contains: searchString } },
+        { level2Name: { contains: searchString } },
+        { level3Code: { contains: searchString } },
+        { level3Name: { contains: searchString } },
+        { level4Code: { contains: searchString } },
+        { level4Name: { contains: searchString } },
+        { runningNoText: { contains: searchString } },
+        { status: { contains: searchString } },
+        { unit: { contains: searchString } },
+        { usagePurpose: { contains: searchString } },
+        { supplierName: { contains: searchString } },
+        { currentUserName: { contains: searchString } },
+        { currentPosition: { contains: searchString } },
+        { departmentName: { contains: searchString } },
+        { locationName: { contains: searchString } },
+        { cityName: { contains: searchString } },
+        { documentNote: { contains: searchString } },
+        { lastInventoryStatus: { contains: searchString } }
       ]
     });
   }
@@ -403,7 +437,7 @@ router.post('/bulk-create', authenticateToken, requirePermission('ASSET_CREATE')
       supplierName,
       purchaseDate: purchaseDate ? new Date(purchaseDate) : null,
       depreciationEndDate: depreciationEndDate ? new Date(depreciationEndDate) : null,
-      note
+      documentNote: note
     }));
 
     await AssetService.createAssets(assetsData, performedBy);
@@ -424,7 +458,8 @@ router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (re
       events: { orderBy: { eventDate: 'desc' } },
       editLogs: { orderBy: { createdAt: 'desc' } },
       repairTickets: { orderBy: { createdAt: 'desc' } },
-      repairLogs: { orderBy: { createdAt: 'desc' } }
+      repairLogs: { orderBy: { createdAt: 'desc' } },
+      histories: { orderBy: { eventTime: 'desc' } }
     }
   });
 
@@ -480,7 +515,7 @@ router.patch('/:id', authenticateToken, requirePermission('ASSET_UPDATE'), async
     const asset = await prisma.asset.findUnique({ where: { id: Number(id) } });
     if (!asset) return res.status(404).json({ message: 'Asset not found' });
 
-    const { reason, ...updates } = req.body;
+    const { reason, updateAllSameName, ...updates } = req.body;
     
     // Auto-update short name if name changes
     if (updates.assetName && updates.assetName !== asset.assetName) {
@@ -490,7 +525,7 @@ router.patch('/:id', authenticateToken, requirePermission('ASSET_UPDATE'), async
       }
     }
 
-    const updatedAsset = await AssetService.updateAsset(Number(id), updates, performedBy, reason);
+    const updatedAsset = await AssetService.updateAsset(Number(id), updates, performedBy, reason, !!updateAllSameName);
     res.json(updatedAsset);
   } catch (error: any) {
     res.status(500).json({ message: error.message });

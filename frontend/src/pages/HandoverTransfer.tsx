@@ -28,9 +28,10 @@ import {
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
-import { TransferWizard } from '../components/TransferWizard';
+import { useModal } from '../context/ModalContext';
 
 export const HandoverTransfer: React.FC = () => {
+  const { openModal, openConfirm } = useModal();
   // Master data lists for Wizard dropdowns
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
@@ -66,9 +67,6 @@ export const HandoverTransfer: React.FC = () => {
   const [printing, setPrinting] = useState(false);
   const [pdfGeneratedUrl, setPdfGeneratedUrl] = useState<string | null>(null);
 
-  // Stepper Wizard State
-  const [showWizard, setShowWizard] = useState(false);
-  const [editingDocId, setEditingDocId] = useState<number | null>(null);
 
   // Fetch departments and locations on mount
   useEffect(() => {
@@ -157,51 +155,73 @@ export const HandoverTransfer: React.FC = () => {
 
   // Launch New Wizard
   const openNewWizard = () => {
-    setEditingDocId(null);
-    setShowWizard(true);
+    openModal("TRANSFER_WIZARD", {
+      initialAssetIds: [],
+      source: "HANDOVER_TRANSFER_PAGE",
+      onComplete: fetchDocuments
+    });
   };
 
   // Load Draft to edit (re-uses wizard step 2-5)
   const openEditDraftWizard = async (doc: any) => {
-    setEditingDocId(doc.id);
+    openModal("TRANSFER_WIZARD", {
+      initialAssetIds: [],
+      editingDocId: doc.id,
+      source: "HANDOVER_TRANSFER_PAGE",
+      onComplete: fetchDocuments
+    });
   };
 
   // Row Level Action Confirmation / Cancellation
   const handleConfirmDoc = async (id: number) => {
-    if (!window.confirm('Xác nhận hoàn tất hồ sơ bàn giao/luân chuyển này? Cập nhật sổ tài sản sẽ có hiệu lực ngay lập tức.')) return;
-    try {
-      await api.post(`/handover/${id}/confirm`);
-      toast.success('Hồ sơ đã được xác nhận hoàn tất. Trạng thái tài sản đã được cập nhật!');
-      fetchDocuments();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Có lỗi xảy ra.');
-    }
+    openConfirm({
+      title: 'Xác nhận hoàn tất hồ sơ',
+      message: 'Bạn có chắc chắn muốn xác nhận hoàn tất hồ sơ bàn giao/luân chuyển này? Cập nhật sổ tài sản sẽ có hiệu lực ngay lập tức.',
+      onConfirm: async () => {
+        try {
+          await api.post(`/handover/${id}/confirm`);
+          toast.success('Hồ sơ đã được xác nhận hoàn tất. Trạng thái tài sản đã được cập nhật!');
+          fetchDocuments();
+        } catch (err: any) {
+          toast.error(err.response?.data?.message || 'Có lỗi xảy ra.');
+        }
+      }
+    });
   };
 
   const handleCancelDoc = async (id: number) => {
-    if (!window.confirm('Bạn có chắc chắn muốn hủy hồ sơ này? Thao tác này không thể hoàn tác.')) return;
-    try {
-      await api.post(`/handover/${id}/cancel`);
-      toast.success('Hồ sơ đã bị hủy bỏ thành công.');
-      fetchDocuments();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Có lỗi xảy ra.');
-    }
+    openConfirm({
+      title: 'Hủy hồ sơ',
+      message: 'Bạn có chắc chắn muốn hủy hồ sơ này? Thao tác này không thể hoàn tác.',
+      onConfirm: async () => {
+        try {
+          await api.post(`/handover/${id}/cancel`);
+          toast.success('Hồ sơ đã bị hủy bỏ thành công.');
+          fetchDocuments();
+        } catch (err: any) {
+          toast.error(err.response?.data?.message || 'Có lỗi xảy ra.');
+        }
+      }
+    });
   };
 
   // Bulk Actions Handlers
   const handleBulkCancel = async () => {
     if (selectedIds.length === 0) return;
-    if (!window.confirm(`Bạn có chắc chắn muốn hủy hàng loạt ${selectedIds.length} hồ sơ đang chọn?`)) return;
-
-    try {
-      await api.post('/handover/bulk-cancel', { ids: selectedIds });
-      toast.success(`Đã hủy thành công các hồ sơ hợp lệ!`);
-      setSelectedIds([]);
-      fetchDocuments();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Không thể thực hiện hủy hàng loạt.');
-    }
+    openConfirm({
+      title: 'Hủy hàng loạt hồ sơ',
+      message: `Bạn có chắc chắn muốn hủy hàng loạt ${selectedIds.length} hồ sơ đang chọn? Thao tác này không thể hoàn tác.`,
+      onConfirm: async () => {
+        try {
+          await api.post('/handover/bulk-cancel', { ids: selectedIds });
+          toast.success(`Đã hủy thành công các hồ sơ hợp lệ!`);
+          setSelectedIds([]);
+          fetchDocuments();
+        } catch (err: any) {
+          toast.error(err.response?.data?.message || 'Không thể thực hiện hủy hàng loạt.');
+        }
+      }
+    });
   };
 
   const handleBulkExport = async () => {
@@ -1077,13 +1097,6 @@ export const HandoverTransfer: React.FC = () => {
           </div>
         </div>
       )}
-      {/* UNIFIED CREATION & FAST TRANSFER WIZARD MODAL */}
-      <TransferWizard
-        isOpen={showWizard || !!editingDocId}
-        onClose={() => { setShowWizard(false); setEditingDocId(null); }}
-        onComplete={fetchDocuments}
-        editingDocId={editingDocId}
-      />
     </div>
   );
 };

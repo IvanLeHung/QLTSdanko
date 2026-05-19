@@ -420,6 +420,7 @@ export const ActivityLogs: React.FC = () => {
 
       {selectedLog && (
         <LogDetailModal
+          isOpen={!!selectedLog}
           log={selectedLog}
           onClose={() => setSelectedLog(null)}
         />

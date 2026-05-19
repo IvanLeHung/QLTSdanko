@@ -4,7 +4,7 @@ import {
   Eye, Settings, Key, Users, 
   Layers, Activity, Building2, Briefcase, MapPin, ClipboardList,
   CheckCircle2, XCircle, Plus, Trash2, Calendar, ArrowRight,
-  Download, Sparkles
+  Download, Sparkles, RotateCcw, EyeOff
 } from 'lucide-react';
 import api from '../lib/api';
 import { toast } from 'react-toastify';
@@ -61,7 +61,7 @@ interface RoleAssignment {
 }
 
 export function UserPermissions() {
-  const { refetchUser } = useAuth();
+  const { refetchUser, hasPermission } = useAuth();
   const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<'users' | 'matrix' | 'roles' | 'departments'>('users');
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
@@ -96,6 +96,76 @@ export function UserPermissions() {
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [projectInput, setProjectInput] = useState('');
+
+  // Reset Password Modal State
+  const [isResetPwdModalOpen, setIsResetPwdModalOpen] = useState(false);
+  const [resetPwdUser, setResetPwdUser] = useState<User | null>(null);
+  const [resetPwdNewPassword, setResetPwdNewPassword] = useState('');
+  const [resetPwdConfirmPassword, setResetPwdConfirmPassword] = useState('');
+  const [resetPwdMustChange, setResetPwdMustChange] = useState(true);
+  const [showResetPwd, setShowResetPwd] = useState(false);
+  const [showResetConfirmPwd, setShowResetConfirmPwd] = useState(false);
+  const [resetPwdLoading, setResetPwdLoading] = useState(false);
+
+  const handleResetPasswordOpen = (user: User) => {
+    setResetPwdUser(user);
+    setResetPwdNewPassword('');
+    setResetPwdConfirmPassword('');
+    setResetPwdMustChange(true);
+    setShowResetPwd(false);
+    setShowResetConfirmPwd(false);
+    setIsResetPwdModalOpen(true);
+  };
+
+  const generateRandomPassword = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*()_+~`|}{[]:;?><,./-=';
+    const length = 12;
+    let pwd = '';
+    
+    const uppers = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const lowers = 'abcdefghijklmnopqrstuvwxyz';
+    const digits = '0123456789';
+    const specials = '!@#$%^&*()_+~`|}{[]:;?><,./-=';
+    
+    pwd += uppers.charAt(Math.floor(Math.random() * uppers.length));
+    pwd += lowers.charAt(Math.floor(Math.random() * lowers.length));
+    pwd += digits.charAt(Math.floor(Math.random() * digits.length));
+    pwd += specials.charAt(Math.floor(Math.random() * specials.length));
+    
+    for (let i = 4; i < length; i++) {
+      pwd += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
+    
+    pwd = pwd.split('').sort(() => 0.5 - Math.random()).join('');
+    
+    setResetPwdNewPassword(pwd);
+    setResetPwdConfirmPassword(pwd);
+    toast.info("Đã tự động tạo mật khẩu ngẫu nhiên độ bảo mật cao!");
+  };
+
+  const handleResetPasswordSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!resetPwdUser) return;
+    
+    if (resetPwdNewPassword !== resetPwdConfirmPassword) {
+      toast.error("Mật khẩu xác nhận không khớp!");
+      return;
+    }
+    
+    setResetPwdLoading(true);
+    try {
+      await api.post(`/admin/users/${resetPwdUser.id}/reset-password`, {
+        password: resetPwdNewPassword,
+        mustChangePassword: resetPwdMustChange
+      });
+      toast.success(`Đã đặt lại mật khẩu cho tài khoản ${resetPwdUser.username} thành công!`);
+      setIsResetPwdModalOpen(false);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi reset mật khẩu");
+    } finally {
+      setResetPwdLoading(false);
+    }
+  };
 
   // Overrides list
   const [extraPerms, setExtraPerms] = useState<string[]>([]);
@@ -1038,6 +1108,14 @@ export function UserPermissions() {
                               >
                                 <Key className="w-3.5 h-3.5" /> Đổi TT/MK
                               </button>
+                              {(hasPermission('USER_RESET_PASSWORD') || hasPermission('PERMISSION_MANAGE')) && (
+                                <button
+                                  onClick={() => handleResetPasswordOpen(user)}
+                                  className="p-1.5 text-rose-600 hover:bg-rose-50 border border-transparent rounded hover:border-rose-100 transition-all flex items-center gap-0.5 text-xs font-bold"
+                                >
+                                  <RotateCcw className="w-3.5 h-3.5" /> Reset MK
+                                </button>
+                              )}
                             </div>
                           </td>
                         </tr>
@@ -2261,6 +2339,109 @@ export function UserPermissions() {
               <div className="flex justify-end gap-2 pt-3 border-t">
                 <button type="button" onClick={() => setIsDeptModalOpen(false)} className="px-4 py-2 border rounded-lg text-xs font-semibold bg-white hover:bg-slate-50">Hủy</button>
                 <button type="submit" className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-bold text-xs shadow hover:bg-indigo-755">Lưu thông tin</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* DEDICATED ADMIN RESET USER PASSWORD MODAL */}
+      {isResetPwdModalOpen && resetPwdUser && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md border border-slate-100 flex flex-col overflow-hidden transition-all duration-300">
+            <div className="p-5 border-b flex justify-between items-center bg-slate-50">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-rose-500 animate-spin" style={{ animationDuration: '3s' }} />
+                <h2 className="text-sm font-bold text-slate-800">
+                  Reset Mật Khẩu: <span className="text-rose-600">{resetPwdUser.fullName} ({resetPwdUser.username})</span>
+                </h2>
+              </div>
+              <button 
+                onClick={() => setIsResetPwdModalOpen(false)} 
+                className="text-slate-400 hover:text-slate-655 p-1 rounded-full transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            
+            <form onSubmit={handleResetPasswordSubmit} className="p-5 space-y-4">
+              <div className="space-y-1.5 relative">
+                <label className="text-xs font-bold text-slate-700 block">Mật khẩu mới:</label>
+                <div className="relative">
+                  <input
+                    type={showResetPwd ? "text" : "password"}
+                    required
+                    placeholder="Mật khẩu tối thiểu 8 ký tự..."
+                    value={resetPwdNewPassword}
+                    onChange={(e) => setResetPwdNewPassword(e.target.value)}
+                    className="w-full p-2.5 pr-10 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-semibold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetPwd(!showResetPwd)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    {showResetPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="space-y-1.5 relative">
+                <label className="text-xs font-bold text-slate-700 block">Xác nhận mật khẩu mới:</label>
+                <div className="relative">
+                  <input
+                    type={showResetConfirmPwd ? "text" : "password"}
+                    required
+                    placeholder="Nhập lại mật khẩu mới..."
+                    value={resetPwdConfirmPassword}
+                    onChange={(e) => setResetPwdConfirmPassword(e.target.value)}
+                    className="w-full p-2.5 pr-10 text-xs border rounded-lg focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 font-semibold"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowResetConfirmPwd(!showResetConfirmPwd)}
+                    className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600"
+                  >
+                    {showResetConfirmPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex justify-between items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={generateRandomPassword}
+                  className="flex items-center gap-1 text-xs font-bold text-rose-600 hover:text-rose-800 bg-rose-50 hover:bg-rose-100/80 px-3 py-1.5 rounded-lg border border-rose-200 transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5" /> Tạo mật khẩu ngẫu nhiên
+                </button>
+              </div>
+
+              <label className="flex items-center gap-2 cursor-pointer select-none text-xs font-bold text-slate-600 bg-slate-50 hover:bg-slate-100 p-2.5 rounded-lg border border-slate-200/60 transition-colors mt-2">
+                <input
+                  type="checkbox"
+                  checked={resetPwdMustChange}
+                  onChange={(e) => setResetPwdMustChange(e.target.checked)}
+                  className="h-4 w-4 rounded border-slate-300 text-rose-600 focus:ring-rose-500"
+                />
+                Yêu cầu đổi mật khẩu khi đăng nhập lần sau
+              </label>
+
+              <div className="flex justify-end gap-2 pt-3 border-t">
+                <button 
+                  type="button" 
+                  onClick={() => setIsResetPwdModalOpen(false)} 
+                  className="px-4 py-2 border rounded-lg text-xs font-bold bg-white hover:bg-slate-50 transition-colors"
+                >
+                  Hủy
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={resetPwdLoading}
+                  className="px-4 py-2 bg-rose-600 text-white rounded-lg font-bold text-xs shadow hover:bg-rose-700 transition-all shadow-rose-200 disabled:opacity-50"
+                >
+                  {resetPwdLoading ? "Đang xử lý..." : "Đặt lại mật khẩu"}
+                </button>
               </div>
             </form>
           </div>

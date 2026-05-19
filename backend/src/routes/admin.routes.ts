@@ -1443,8 +1443,14 @@ router.patch('/users/:id', requirePermission('USER_UPDATE'), async (req: AuthReq
 });
 
 // POST reset password
-router.post('/users/:id/reset-password', requirePermission('PERMISSION_MANAGE'), async (req: AuthRequest, res: Response): Promise<any> => {
+router.post('/users/:id/reset-password', async (req: AuthRequest, res: Response): Promise<any> => {
   try {
+    const userPerms = req.user?.permissions || [];
+    const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+    if (!isSuperAdmin && !userPerms.includes('USER_RESET_PASSWORD') && !userPerms.includes('PERMISSION_MANAGE')) {
+      return res.status(403).json({ message: 'Bạn không có quyền thực hiện thao tác đặt lại mật khẩu.' });
+    }
+
     const id = parseInt(req.params.id as string);
     const { password, mustChangePassword } = req.body;
 
@@ -1478,8 +1484,8 @@ router.post('/users/:id/reset-password', requirePermission('PERMISSION_MANAGE'),
     await AuditService.log({
       entityType: 'USER',
       entityId: id,
-      action: 'UPDATE',
-      details: JSON.stringify({ action: 'RESET_PASSWORD', mustChangePassword }),
+      action: 'RESET_PASSWORD',
+      details: { mustChangePassword: !!mustChangePassword },
       performedBy: currentUser
     });
 

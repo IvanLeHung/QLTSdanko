@@ -41,11 +41,14 @@ const navItems = [
   { name: 'Biểu mẫu / Hồ sơ', path: '/documents', icon: FileText, requiredPermission: 'ASSET_VIEW' },
   { name: 'Trung tâm in ấn', path: '/print-center', icon: Printer, requiredPermission: 'ASSET_PRINT_LABEL' },
   { name: 'Nhật ký hoạt động', path: '/activity-logs', icon: History, requiredPermission: 'AUDIT_LOG_VIEW' },
-  { name: 'Nhập Excel', path: '/import/assets', icon: Upload, requiredPermission: 'ASSET_CREATE' },
+  { name: 'Nhập Excel tài sản', path: '/import/assets', icon: Upload, requiredPermission: 'ASSET_CREATE' },
+  { name: 'Import lịch sử tài sản', path: '/import/assets-history', icon: History, requiredPermission: 'ASSET_CREATE' },
   { name: 'Phân quyền & Scope', path: '/settings/permissions', icon: Shield, requiredPermission: 'USER_VIEW' },
   { name: 'Cấu trúc tài sản', path: '/settings/classification', icon: Layers, requiredPermission: 'ROLE_MANAGE' },
   { name: 'Công ty thành viên', path: '/settings/companies', icon: Building2, requiredPermission: 'ROLE_MANAGE' },
 ];
+
+import { ModalManager } from './ModalManager';
 
 export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout, hasPermission } = useAuth();
@@ -127,6 +130,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         <div className="flex-1 overflow-y-auto p-8">
           {children}
         </div>
+        <ModalManager />
       </main>
     </div>
   );

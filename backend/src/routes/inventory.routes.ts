@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { InventoryService } from '../services/inventory.service';
 import { authenticateToken, AuthRequest } from '../middleware/auth.middleware';
+import prisma from '../utils/prisma';
 
 const router = Router();
 
@@ -43,6 +44,63 @@ router.post('/item/:id/check', authenticateToken, async (req: AuthRequest, res) 
     res.json(item);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest, res) => {
+  const checkedBy = req.user?.username || 'system';
+  const { sessionId, assetIds, actualStatus, quality, note } = req.body;
+  if (!sessionId || !assetIds || !Array.isArray(assetIds)) {
+    return res.status(400).json({ message: 'Invalid payload' });
+  }
+
+  try {
+    const results = await prisma.$transaction(async (tx) => {
+      const output = [];
+      for (const assetId of assetIds) {
+        const asset = await tx.asset.findUnique({ where: { id: Number(assetId) } });
+        if (!asset) continue;
+
+        let item = await tx.inventoryItem.findFirst({
+          where: { inventoryCheckId: Number(sessionId), assetId: Number(assetId) }
+        });
+
+        if (item) {
+          item = await tx.inventoryItem.update({
+            where: { id: item.id },
+            data: {
+              actualStatus,
+              quality,
+              note: note || '',
+              checkStatus: 'CHECKED',
+              checkedAt: new Date(),
+              checkedBy
+            }
+          });
+        } else {
+          item = await tx.inventoryItem.create({
+            data: {
+              inventoryCheckId: Number(sessionId),
+              assetId: Number(assetId),
+              assetCode: asset.assetCode,
+              expectedStatus: asset.status,
+              actualStatus,
+              quality,
+              note: note || '',
+              checkStatus: 'CHECKED',
+              checkedAt: new Date(),
+              checkedBy
+            }
+          });
+        }
+        output.push(item);
+      }
+      return output;
+    });
+
+    res.json({ message: `Đã kiểm kê thành công ${results.length} tài sản`, items: results });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 });
 

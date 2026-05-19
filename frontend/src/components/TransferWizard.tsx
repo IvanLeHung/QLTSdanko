@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import { toast } from 'react-toastify';
+import { BaseModal } from './BaseModal';
 
 interface TransferWizardProps {
   isOpen: boolean;
@@ -386,12 +387,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose}></div>
-
-      {/* Modal Container */}
-      <div className="bg-white rounded-3xl w-full max-w-4xl relative z-10 shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-wizard-pop border border-slate-100">
+    <BaseModal isOpen={isOpen} onClose={onClose} size="wizard" noScroll>
+      <div className="w-full h-full bg-white flex flex-col">
         
         {/* Header Section */}
         <div className="p-6 bg-slate-900 text-white flex justify-between items-center shrink-0">
@@ -929,6 +926,6 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
           </div>
         </div>
       </div>
-    </div>
+    </BaseModal>
   );
 };

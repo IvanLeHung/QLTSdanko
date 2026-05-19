@@ -13,7 +13,7 @@ export class AuditService {
   }: {
     entityType: string;
     entityId: number;
-    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'ASSIGN' | 'REPAIR' | 'REQUEST' | 'COMPLETE' | 'DAMAGE' | 'LOST' | 'LIQUIDATE' | 'PRINT' | 'CREATE_AND_COMPLETE' | 'IMPORT' | 'CANCEL';
+    action: 'CREATE' | 'UPDATE' | 'DELETE' | 'ASSIGN' | 'REPAIR' | 'REQUEST' | 'COMPLETE' | 'DAMAGE' | 'LOST' | 'LIQUIDATE' | 'PRINT' | 'CREATE_AND_COMPLETE' | 'IMPORT' | 'CANCEL' | 'LOGIN_SUCCESS' | 'LOGIN_FAILED' | 'LOGOUT' | 'CHANGE_PASSWORD' | 'RESET_PASSWORD' | 'LOCK_USER_BY_FAILED_LOGIN';
     details?: any;
     performedBy: string;
     tx?: any;

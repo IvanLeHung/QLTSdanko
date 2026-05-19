@@ -17,6 +17,7 @@ import { ClassificationSettings } from './pages/ClassificationSettings';
 import { CompanySettings } from './pages/CompanySettings';
 import { HandoverTransfer } from './pages/HandoverTransfer';
 import { ImportAssets } from './pages/ImportAssets';
+import { ImportAssetsHistory } from './pages/ImportAssetsHistory';
 import { DamageReport } from './pages/DamageReport';
 import { LostReport } from './pages/LostReport';
 import { Liquidation } from './pages/Liquidation';
@@ -39,10 +40,13 @@ const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => 
   return <Layout>{children}</Layout>;
 };
 
+import { ModalProvider } from './context/ModalContext';
+
 function App() {
   return (
     <AuthProvider>
-      <BrowserRouter>
+      <ModalProvider>
+        <BrowserRouter>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/force-change-password" element={<ForceChangePassword />} />
@@ -63,6 +67,7 @@ function App() {
           <Route path="/operational/lost" element={<PrivateRoute><LostReport /></PrivateRoute>} />
           <Route path="/operational/liquidation" element={<PrivateRoute><Liquidation /></PrivateRoute>} />
           <Route path="/import/assets" element={<PrivateRoute><ImportAssets /></PrivateRoute>} />
+          <Route path="/import/assets-history" element={<PrivateRoute><ImportAssetsHistory /></PrivateRoute>} />
           <Route path="/documents" element={<PrivateRoute><DocumentLibrary /></PrivateRoute>} />
           <Route path="/print-center" element={<PrivateRoute><PrintCenter /></PrivateRoute>} />
           <Route path="/activity-logs" element={<PrivateRoute><ActivityLogs /></PrivateRoute>} />
@@ -71,6 +76,7 @@ function App() {
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>
       </BrowserRouter>
+      </ModalProvider>
       <ToastContainer position="bottom-right" />
     </AuthProvider>
   );

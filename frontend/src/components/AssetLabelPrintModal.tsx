@@ -27,6 +27,7 @@ import api from '../lib/api';
 import { PdfPreviewModal } from './forms/PdfPreviewModal';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { BaseModal } from './BaseModal';
 
 const QRCode = (QRCodeComponent as any).default || QRCodeComponent;
 const Barcode = (BarcodeComponent as any).default || BarcodeComponent;
@@ -545,10 +546,8 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
 
   return (
     <>
-      <div className="fixed inset-0 z-[110] flex items-center justify-center p-4">
-        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm transition-opacity animate-in fade-in duration-300" onClick={onClose} />
-        
-        <div className="relative w-full max-w-[920px] bg-white rounded-[32px] shadow-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95 fade-in duration-300">
+      <BaseModal isOpen={isOpen} onClose={onClose} size="wizard" noScroll>
+        <div className="w-full h-full bg-white flex flex-col">
           {/* HEADER */}
           <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center bg-white sticky top-0 z-10">
             <div className="flex items-center space-x-4">
@@ -1044,7 +1043,7 @@ export const AssetLabelPrintModal: React.FC<AssetLabelPrintModalProps> = ({ isOp
             </div>
           </div>
         </div>
-      </div>
+      </BaseModal>
 
       {/* PDF PREVIEW MODAL */}
       <PdfPreviewModal

@@ -12,7 +12,13 @@ import {
   DollarSign,
   Calendar,
   Building,
-  Lock
+  Lock,
+  Search,
+  Filter,
+  FileDown,
+  Eye,
+  Activity,
+  FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
@@ -26,6 +32,9 @@ export const AssetDetail: React.FC = () => {
   const [activeTab, setActiveTab] = useState('general');
   const [isEditing, setIsEditing] = useState(false);
   const [editedName, setEditedName] = useState('');
+  const [logFilter, setLogFilter] = useState<'ALL' | 'ASSIGN' | 'RECALL' | 'IMPORT' | 'EDIT'>('ALL');
+  const [logSearch, setLogSearch] = useState('');
+  const [selectedRawEvent, setSelectedRawEvent] = useState<any>(null);
   const navigate = useNavigate();
 
   const fetchAsset = async () => {
@@ -316,38 +325,288 @@ export const AssetDetail: React.FC = () => {
              </div>
           )}
 
-          {activeTab === 'logs' && (
-             <div className="space-y-6 max-w-4xl">
-               {(!asset.auditLogs || asset.auditLogs.length === 0) ? (
-                 <p className="text-slate-400 italic">Chưa có lịch sử thay đổi từ hệ thống log mới.</p>
-               ) : (
-                 <div className="space-y-4">
-                   {asset.auditLogs.map((log: any) => (
-                     <div key={log.id} className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:border-primary-200 transition-colors">
-                       <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-                         <div className="flex items-center space-x-3">
-                           <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
-                             log.action === 'CREATE' ? 'bg-emerald-100 text-emerald-700' :
-                             log.action === 'UPDATE' ? 'bg-amber-100 text-amber-700' :
-                             'bg-slate-200 text-slate-700'
-                           }`}>
-                             {log.action}
-                           </span>
-                           <span className="text-sm font-bold text-slate-700">{log.performedBy}</span>
-                         </div>
-                         <span className="text-[11px] font-medium text-slate-400">
-                           {format(new Date(log.createdAt), 'dd/MM/yyyy HH:mm:ss')}
-                         </span>
-                       </div>
-                       <div className="p-4">
-                         {renderAuditDetails(log.details)}
-                       </div>
-                     </div>
-                   ))}
-                 </div>
-               )}
-             </div>
-          )}
+          {activeTab === 'logs' && (() => {
+            // Unify system audit logs
+            const systemEvents = (asset.auditLogs || []).map((log: any) => {
+              let fields: Record<string, { old: any; new: any }> = {};
+              let note = '';
+              try {
+                const parsed = JSON.parse(log.details);
+                if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                  if (parsed.message) note = parsed.message;
+                  if (parsed.updates) {
+                    Object.entries(parsed.updates).forEach(([k, v]) => {
+                      fields[k] = { old: asset[k], new: v };
+                    });
+                  } else {
+                    Object.entries(parsed).forEach(([k, v]) => {
+                      if (k !== 'message' && k !== 'reason') {
+                        const val = v as any;
+                        fields[k] = { old: val?.old, new: val?.new };
+                      }
+                    });
+                  }
+                }
+              } catch (e) {
+                note = log.details;
+              }
+
+              let title = 'Sửa thông tin tài sản';
+              if (log.action === 'CREATE') title = 'Nhập mới tài sản';
+              else if (fields.status) {
+                const nextStatus = fields.status.new;
+                if (nextStatus === 'ASSIGNED') title = 'Bàn giao tài sản';
+                else if (nextStatus === 'IN_STOCK') title = 'Thu hồi tài sản';
+                else title = 'Cập nhật trạng thái';
+              }
+
+              return {
+                id: `sys-${log.id}`,
+                time: new Date(log.createdAt),
+                title,
+                source: 'Hệ thống' as const,
+                actionType: log.action,
+                performedBy: log.performedBy || 'system',
+                details: fields,
+                note
+              };
+            });
+
+            // Unify imported histories
+            const importedEvents = (asset.histories || []).map((h: any) => {
+              const fields: Record<string, { old: any; new: any }> = {};
+              if (h.oldStatus !== h.newStatus) fields['Trạng thái'] = { old: h.oldStatus, new: h.newStatus };
+              if (h.oldUserName !== h.newUserName) fields['Người dùng'] = { old: h.oldUserName, new: h.newUserName };
+              if (h.oldDepartmentName !== h.newDepartmentName) fields['Phòng ban'] = { old: h.oldDepartmentName, new: h.newDepartmentName };
+              if (h.oldLocationName !== h.newLocationName) fields['Vị trí'] = { old: h.oldLocationName, new: h.newLocationName };
+              if (h.oldProjectName !== h.newProjectName) fields['Dự án'] = { old: h.oldProjectName, new: h.newProjectName };
+              if (h.oldCityName !== h.newCityName) fields['Thành phố'] = { old: h.oldCityName, new: h.newCityName };
+              if (h.oldNote !== h.newNote) fields['Ghi chú'] = { old: h.oldNote, new: h.newNote };
+
+              let title = 'Import lịch sử';
+              if (h.newStatus === 'ASSIGNED') title = 'Điều chuyển tài sản';
+              else if (h.newStatus === 'LOST') title = 'Báo mất tài sản';
+              else if (h.newStatus === 'BROKEN') title = 'Báo hỏng tài sản';
+              else if (h.newStatus === 'IN_STOCK' && h.oldStatus === 'ASSIGNED') title = 'Thu hồi tài sản';
+
+              return {
+                id: `imp-${h.id}`,
+                time: new Date(h.eventTime),
+                title,
+                source: 'Import Excel' as const,
+                actionType: h.actionType,
+                performedBy: h.importedById ? `User #${h.importedById}` : 'Excel Importer',
+                details: fields,
+                note: h.newNote || h.oldNote || '',
+                rawJson: h.rawImportJson
+              };
+            });
+
+            // Merge & Filter
+            const allEvents = [...systemEvents, ...importedEvents].sort(
+              (a, b) => b.time.getTime() - a.time.getTime()
+            );
+
+            const filteredEvents = allEvents.filter(ev => {
+              if (logFilter === 'ASSIGN' && !ev.title.includes('Bàn giao') && !ev.title.includes('Điều chuyển')) return false;
+              if (logFilter === 'RECALL' && !ev.title.includes('Thu hồi')) return false;
+              if (logFilter === 'IMPORT' && ev.source !== 'Import Excel') return false;
+              if (logFilter === 'EDIT' && (ev.title.includes('Bàn giao') || ev.title.includes('Điều chuyển') || ev.title.includes('Thu hồi'))) return false;
+
+              if (logSearch.trim()) {
+                const searchLower = logSearch.toLowerCase();
+                const noteMatch = ev.note?.toLowerCase().includes(searchLower);
+                const titleMatch = ev.title.toLowerCase().includes(searchLower);
+                const userMatch = ev.performedBy.toLowerCase().includes(searchLower);
+                if (!noteMatch && !titleMatch && !userMatch) return false;
+              }
+              return true;
+            });
+
+            const handleExportHistory = () => {
+              try {
+                const csvHeaders = ['Thời gian', 'Loại sự kiện', 'Nguồn', 'Người thực hiện', 'Thay đổi', 'Ghi chú'];
+                const csvRows = allEvents.map(ev => {
+                  const changesStr = Object.entries(ev.details)
+                    .map(([k, v]) => {
+                      const val = v as any;
+                      return `${k}: ${val.old || '-'} -> ${val.new || '-'}`;
+                    })
+                    .join('; ');
+                  return [
+                    format(ev.time, 'dd/MM/yyyy HH:mm:ss'),
+                    ev.title,
+                    ev.source,
+                    ev.performedBy,
+                    changesStr,
+                    ev.note || '-'
+                  ].map(val => `"${val.replace(/"/g, '""')}"`).join(',');
+                });
+
+                const BOM = '\uFEFF';
+                const csvContent = BOM + [csvHeaders.join(','), ...csvRows].join('\n');
+                const blob = new Blob([csvContent], { type: 'text/csv; charset=utf-8' });
+                const url = window.URL.createObjectURL(blob);
+                const link = document.createElement('a');
+                link.href = url;
+                link.setAttribute('download', `lich_su_${asset.assetCode}.csv`);
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+              } catch (e) {
+                toast.error("Lỗi khi xuất lịch sử");
+              }
+            };
+
+            return (
+              <div className="space-y-6 max-w-4xl">
+                {/* Search & Filters bar */}
+                <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                  <div className="flex flex-1 items-center space-x-2 bg-slate-50 border border-slate-200 px-3 py-2 rounded-xl">
+                    <Search className="h-4 w-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Tìm theo ghi chú, sự kiện, người dùng..."
+                      value={logSearch}
+                      onChange={(e) => setLogSearch(e.target.value)}
+                      className="bg-transparent border-0 text-sm focus:ring-0 w-full font-medium text-slate-800"
+                    />
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      value={logFilter}
+                      onChange={(e: any) => setLogFilter(e.target.value)}
+                      className="text-xs font-bold text-slate-600 bg-white border border-slate-200 rounded-xl px-3 py-2 focus:ring-0 shadow-sm"
+                    >
+                      <option value="ALL">Tất cả sự kiện</option>
+                      <option value="ASSIGN">Bàn giao & Điều chuyển</option>
+                      <option value="RECALL">Thu hồi tài sản</option>
+                      <option value="IMPORT">Import từ Excel</option>
+                      <option value="EDIT">Thay đổi thông tin</option>
+                    </select>
+
+                    <button
+                      onClick={handleExportHistory}
+                      className="flex items-center px-4 py-2 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-md hover:bg-slate-800 transition-all"
+                    >
+                      <FileDown className="mr-1.5 h-3.5 w-3.5" /> Xuất lịch sử tài sản
+                    </button>
+                  </div>
+                </div>
+
+                {filteredEvents.length === 0 ? (
+                  <p className="text-slate-400 italic text-center py-6">Chưa có lịch sử thay đổi phù hợp bộ lọc.</p>
+                ) : (
+                  <div className="relative border-l-2 border-slate-200 pl-6 ml-4 space-y-8">
+                    {filteredEvents.map((ev) => (
+                      <div key={ev.id} className="relative group">
+                        {/* Dot Indicator */}
+                        <div className="absolute -left-[33px] top-1.5 w-4 h-4 rounded-full border-2 border-white bg-primary-600 shadow-md group-hover:scale-125 transition-transform" />
+
+                        {/* Card Box */}
+                        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-md hover:border-primary-300 transition-all duration-200">
+                          <div className="p-4 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+                            <div className="flex items-center space-x-3">
+                              <span className="text-sm font-black text-slate-800 flex items-center">
+                                <Activity className="mr-1.5 h-4 w-4 text-primary-500" />
+                                {ev.title}
+                              </span>
+                              <span className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest ${
+                                ev.source === 'Import Excel' ? 'bg-indigo-50 text-indigo-700 border border-indigo-100' : 'bg-slate-100 text-slate-700'
+                              }`}>
+                                {ev.source}
+                              </span>
+                            </div>
+                            <span className="text-[11px] font-bold text-slate-400">
+                              {format(ev.time, 'dd/MM/yyyy HH:mm:ss')}
+                            </span>
+                          </div>
+
+                          <div className="p-4 space-y-4">
+                            {/* Comparison table */}
+                            {Object.keys(ev.details).length > 0 && (
+                              <table className="w-full text-left text-xs border-collapse">
+                                <thead>
+                                  <tr className="text-slate-400 font-mono text-[9px] uppercase tracking-wider">
+                                    <th className="pb-2 border-b border-slate-50 font-black w-24">Trường</th>
+                                    <th className="pb-2 border-b border-slate-50 font-black">Trước</th>
+                                    <th className="pb-2 border-b border-slate-50 font-black">Sau</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-50 font-medium">
+                                  {Object.entries(ev.details).map(([field, values]: [string, any]) => (
+                                    <tr key={field} className="hover:bg-slate-50/50">
+                                      <td className="py-2 text-slate-500 font-bold uppercase text-[10px] tracking-tight">{field}</td>
+                                      <td className="py-2 text-slate-400 line-through truncate max-w-[150px]">{values.old || '-'}</td>
+                                      <td className="py-2 text-emerald-600 font-bold truncate max-w-[150px]">{values.new || '-'}</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            )}
+
+                            {/* Perform by & Note */}
+                            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-t border-slate-50 pt-3 text-xs">
+                              <div className="flex items-center space-x-1 text-slate-500">
+                                <span className="font-medium">Người thực hiện:</span>
+                                <span className="font-bold text-slate-800">{ev.performedBy}</span>
+                              </div>
+                              {ev.note && (
+                                <div className="flex items-center space-x-1 text-slate-500 italic">
+                                  <span className="font-medium">Ghi chú:</span>
+                                  <span className="text-slate-700">{ev.note}</span>
+                                </div>
+                              )}
+                              {ev.rawJson && (
+                                <button
+                                  onClick={() => setSelectedRawEvent(ev)}
+                                  className="text-[10px] font-bold text-primary-600 hover:text-primary-800 transition-colors flex items-center"
+                                >
+                                  <Eye className="w-3.5 h-3.5 mr-1" /> Chi tiết raw JSON
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Raw JSON detail modal */}
+                {selectedRawEvent && (
+                  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 animate-in fade-in duration-200">
+                    <div className="bg-white rounded-3xl w-full max-w-lg p-6 shadow-2xl space-y-4">
+                      <div className="flex items-center justify-between pb-3 border-b border-slate-100">
+                        <h3 className="text-lg font-black text-slate-900 flex items-center">
+                          <FileSpreadsheet className="w-5 h-5 mr-2 text-primary-500" />
+                          Chi tiết raw Excel Record
+                        </h3>
+                        <button 
+                          onClick={() => setSelectedRawEvent(null)}
+                          className="text-slate-400 hover:text-slate-700 font-black text-lg p-1"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                      <div className="max-h-[350px] overflow-y-auto bg-slate-950 p-4 rounded-2xl text-[11px] font-mono text-emerald-400">
+                        <pre>{JSON.stringify(JSON.parse(selectedRawEvent.rawJson || '{}'), null, 2)}</pre>
+                      </div>
+                      <div className="flex justify-end pt-2">
+                        <button
+                          onClick={() => setSelectedRawEvent(null)}
+                          className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold shadow-md hover:bg-slate-800"
+                        >
+                          Đóng lại
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
         </div>
       </div>
     </div>

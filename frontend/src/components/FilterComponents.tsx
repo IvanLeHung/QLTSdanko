@@ -11,10 +11,24 @@ export const AutocompleteInput: React.FC<{
   icon?: React.ReactNode;
   className?: string;
 }> = ({ placeholder, value, onChange, endpoint, icon, className = '' }) => {
+  const [localValue, setLocalValue] = useState(value);
   const [suggestions, setSuggestions] = useState<string[]>([]);
   const [isOpen, setIsOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setLocalValue(value);
+  }, [value]);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (localValue !== value) {
+        onChange(localValue);
+      }
+    }, 450);
+    return () => clearTimeout(timer);
+  }, [localValue, value, onChange]);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -27,7 +41,7 @@ export const AutocompleteInput: React.FC<{
   }, []);
 
   useEffect(() => {
-    if (value.length < 2 || !isOpen) {
+    if (localValue.length < 2 || !isOpen) {
       setSuggestions([]);
       return;
     }
@@ -35,7 +49,7 @@ export const AutocompleteInput: React.FC<{
     const timer = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await api.get(endpoint, { params: { q: value } });
+        const res = await api.get(endpoint, { params: { q: localValue } });
         setSuggestions(res.data);
       } catch (err) {
         console.error(err);
@@ -45,7 +59,7 @@ export const AutocompleteInput: React.FC<{
     }, 300);
 
     return () => clearTimeout(timer);
-  }, [value, endpoint, isOpen]);
+  }, [localValue, endpoint, isOpen]);
 
   return (
     <div className={`relative ${className}`} ref={wrapperRef}>
@@ -53,9 +67,9 @@ export const AutocompleteInput: React.FC<{
         {icon && <div className="absolute left-3 top-2.5 text-slate-400">{icon}</div>}
         <input
           type="text"
-          value={value}
+          value={localValue}
           onChange={(e) => {
-            onChange(e.target.value);
+            setLocalValue(e.target.value);
             setIsOpen(true);
           }}
           onFocus={() => setIsOpen(true)}
