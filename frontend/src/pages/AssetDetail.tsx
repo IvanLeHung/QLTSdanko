@@ -17,12 +17,19 @@ import {
   Filter,
   FileDown,
   Eye,
+  EyeOff,
   Activity,
   FileSpreadsheet
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
+
+const isPublicCompany = (name?: string) => {
+  if (!name) return true;
+  const n = name.toLowerCase();
+  return n.includes('danko group') || n.includes('không có thông tin') || n.includes('khong co thong tin');
+};
 
 export const AssetDetail: React.FC = () => {
   const { hasPermission } = useAuth();
@@ -31,6 +38,7 @@ export const AssetDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('general');
   const [isEditing, setIsEditing] = useState(false);
+  const [isCompanyRevealed, setIsCompanyRevealed] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [logFilter, setLogFilter] = useState<'ALL' | 'ASSIGN' | 'RECALL' | 'IMPORT' | 'EDIT'>('ALL');
   const [logSearch, setLogSearch] = useState('');
@@ -139,7 +147,21 @@ export const AssetDetail: React.FC = () => {
 
               <div className="flex items-center mt-3 text-slate-400 text-sm font-medium">
                 <Building className="h-4 w-4 mr-2" />
-                {asset.companyName} ({asset.companyCode})
+                <span>
+                  {(!asset.companyName || isPublicCompany(asset.companyName) || isCompanyRevealed) 
+                    ? asset.companyName 
+                    : '*****'}
+                </span>
+                {asset.companyName && !isPublicCompany(asset.companyName) && (
+                  <button 
+                    onClick={() => setIsCompanyRevealed(!isCompanyRevealed)} 
+                    className="ml-2 p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                    title={isCompanyRevealed ? "Ẩn tên công ty" : "Xem tên công ty"}
+                  >
+                    {isCompanyRevealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                  </button>
+                )}
+                <span className="ml-1">({asset.companyCode})</span>
               </div>
             </div>
             <div className="flex flex-col items-end">

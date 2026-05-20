@@ -851,7 +851,7 @@ export const HandoverTransfer: React.FC = () => {
                     {viewingDoc.status === 'COMPLETED' ? 'Hoàn tất' : (viewingDoc.status === 'CANCELLED' ? 'Đã hủy' : (viewingDoc.status === 'DRAFT' ? 'Nháp' : 'Chờ xác nhận'))}
                   </span>
                 </div>
-                <p className="text-xs text-slate-500 mt-1">Khởi tạo bởi hệ thống ngày {format(new Date(viewingDoc.createdAt), 'dd/MM/yyyy')}</p>
+                <p className="text-xs text-slate-500 mt-1">Khởi tạo bởi hệ thống ngày {viewingDoc.createdAt ? format(new Date(viewingDoc.createdAt), 'dd/MM/yyyy') : '---'}</p>
               </div>
               <button onClick={() => setViewingDoc(null)} className="p-2 hover:bg-slate-200/50 rounded-full transition-all">
                 <X className="h-5 w-5 text-slate-400" />
@@ -897,7 +897,7 @@ export const HandoverTransfer: React.FC = () => {
                       <div className="text-slate-400 font-medium">Trạng thái hiện tại:</div>
                       <div className="font-extrabold text-slate-900 uppercase">{viewingDoc.status}</div>
                       <div className="text-slate-400 font-medium">Ngày lập:</div>
-                      <div className="font-bold text-slate-800">{format(new Date(viewingDoc.createdAt), 'dd/MM/yyyy')}</div>
+                      <div className="font-bold text-slate-800">{viewingDoc.createdAt ? format(new Date(viewingDoc.createdAt), 'dd/MM/yyyy') : '---'}</div>
                       <div className="text-slate-400 font-medium">Ngày xác nhận:</div>
                       <div className="font-bold text-slate-855">{viewingDoc.confirmedAt ? format(new Date(viewingDoc.confirmedAt), 'dd/MM/yyyy') : '---'}</div>
                     </div>

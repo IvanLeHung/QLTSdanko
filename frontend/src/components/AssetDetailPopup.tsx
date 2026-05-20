@@ -37,6 +37,7 @@ import {
   FilePlus,
   FileCheck,
   Eye,
+  EyeOff,
   FileUp,
   FileDown,
   QrCode as QrCodeIcon,
@@ -70,6 +71,12 @@ interface AssetDetailPopupProps {
 
 type TabType = 'info' | 'assignment' | 'inventory' | 'repair' | 'timeline' | 'documents';
 
+const isPublicCompany = (name?: string) => {
+  if (!name) return true;
+  const n = name.toLowerCase();
+  return n.includes('danko group') || n.includes('không có thông tin') || n.includes('khong co thong tin');
+};
+
 export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isOpen, onClose, onAction, initialTab = 'info' }) => {
   const { hasPermission } = useAuth();
   const [asset, setAsset] = useState<any>(null);
@@ -90,6 +97,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [companies, setCompanies] = useState<any[]>([]);
   const [selectedForm, setSelectedForm] = useState<{code: string, data?: any} | null>(null);
   const [updateAllSameName, setUpdateAllSameName] = useState(false);
+  const [isCompanyRevealed, setIsCompanyRevealed] = useState(false);
 
   useEffect(() => {
     if (isOpen && assetId) {
@@ -547,7 +555,22 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         {companies.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                       </select>
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.companyName}</p>
+                      <div className="flex items-center space-x-2">
+                        <p className="text-[15px] font-bold text-slate-800">
+                          {(!asset.companyName || isPublicCompany(asset.companyName) || isCompanyRevealed) 
+                            ? asset.companyName 
+                            : '*****'}
+                        </p>
+                        {asset.companyName && !isPublicCompany(asset.companyName) && (
+                          <button 
+                            onClick={() => setIsCompanyRevealed(!isCompanyRevealed)} 
+                            className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                            title={isCompanyRevealed ? "Ẩn tên công ty" : "Xem tên công ty"}
+                          >
+                            {isCompanyRevealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
 
