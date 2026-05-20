@@ -9,7 +9,7 @@
     "start:backend": "cd backend && npm run dev",
     "start:frontend": "cd frontend && npm run dev",
     "setup:db": "cd backend && npx prisma migrate dev && npm run seed",
-    "build": "cd frontend && npm install && npm run build && cd ../backend && npm install && npx prisma generate && npm run build",
+    "build": "cd frontend && npm install --include=dev && npm run build && cd ../backend && npm install --include=dev && npx prisma generate && npm run build",
     "start": "node backend/dist/src/server.js",
     "postinstall": "cd backend && npx prisma generate"
   }
