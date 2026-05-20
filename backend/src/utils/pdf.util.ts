@@ -1,0 +1,433 @@
+const pdfmake = require('pdfmake');
+import { TDocumentDefinitions } from 'pdfmake/interfaces';
+import path from 'path';
+import fs from 'fs';
+import prisma from './prisma';
+
+let fonts: any;
+try {
+  const regularPath = path.join(__dirname, '../../fonts/Roboto-Regular.ttf');
+  const mediumPath = path.join(__dirname, '../../fonts/Roboto-Medium.ttf');
+  const italicPath = path.join(__dirname, '../../fonts/Roboto-Italic.ttf');
+  const boldItalicPath = path.join(__dirname, '../../fonts/Roboto-MediumItalic.ttf');
+
+  const allExist = fs.existsSync(regularPath) && 
+                   fs.existsSync(mediumPath) && 
+                   fs.existsSync(italicPath) && 
+                   fs.existsSync(boldItalicPath);
+
+  if (allExist) {
+    fonts = {
+      Roboto: {
+        normal: regularPath,
+        bold: mediumPath,
+        italics: italicPath,
+        bolditalics: boldItalicPath
+      }
+    };
+  } else {
+    throw new Error('Some Roboto TrueType font files are missing.');
+  }
+} catch (error) {
+  console.error('PDF_FONT_LOAD_ERROR: Falling back to standard Helvetica.', error);
+  fonts = {
+    Roboto: {
+      normal: 'Helvetica',
+      bold: 'Helvetica-Bold',
+      italics: 'Helvetica-Oblique',
+      bolditalics: 'Helvetica-BoldOblique'
+    }
+  };
+}
+
+pdfmake.setFonts(fonts);
+
+export class PdfUtil {
+  static async generateHandoverPdf(
+    document: any, 
+    options: { configJson?: any, templateName?: string, templateCode?: string } = {}
+  ): Promise<Buffer> {
+    const assetIds = document.items.map((i: any) => i.assetId);
+    const assets = await prisma.asset.findMany({
+      where: { id: { in: assetIds } }
+    });
+    const assetMap = new Map(assets.map(a => [a.id, a]));
+
+    const docDate = document.confirmedAt ? new Date(document.confirmedAt) : new Date(document.createdAt);
+    const day = docDate.getDate().toString().padStart(2, '0');
+    const month = (docDate.getMonth() + 1).toString().padStart(2, '0');
+    const year = docDate.getFullYear();
+    
+    const location = document.newLocation || '................................';
+    const city = document.newCity || 'Hà Nội';
+
+    let titleText = options.templateName || 'BIÊN BẢN BÀN GIAO TÀI SẢN';
+    let senderRoleLabel = 'Đại diện bên giao';
+    let recipientRoleLabel = 'Đại diện bên nhận';
+
+    if (!options.templateName) {
+      if (document.type === 'TRANSFER') {
+        titleText = 'BIÊN BẢN ĐIỀU CHUYỂN TÀI SẢN';
+      } else if (document.type === 'RECALL') {
+        titleText = 'BIÊN BẢN THU HỒI TÀI SẢN';
+        senderRoleLabel = 'Đại diện bên bàn giao';
+        recipientRoleLabel = 'Đại diện đơn vị thu hồi';
+      }
+    } else {
+      if (options.templateName.includes('ĐIỀU CHUYỂN')) {
+        senderRoleLabel = 'Đại diện bên giao';
+        recipientRoleLabel = 'Đại diện bên nhận';
+      } else if (options.templateName.includes('THU HỒI')) {
+        senderRoleLabel = 'Đại diện bên bàn giao';
+        recipientRoleLabel = 'Đại diện đơn vị thu hồi';
+      } else if (options.templateName.includes('KIỂM KÊ')) {
+        senderRoleLabel = 'Trưởng Ban kiểm kê';
+        recipientRoleLabel = 'Thành viên Ban kiểm kê';
+      } else if (options.templateName.includes('THANH LÝ')) {
+        senderRoleLabel = 'Đại diện bên giao';
+        recipientRoleLabel = 'Đại diện Hội đồng thanh lý';
+      } else if (options.templateName.includes('TIÊU HỦY') || options.templateName.includes('BÁO MẤT')) {
+        senderRoleLabel = 'Đại diện bên giao';
+        recipientRoleLabel = 'Đại diện bên nhận tiêu hủy';
+      }
+    }
+
+    // Default configuration if no custom configJson is provided
+    const config = options.configJson || {
+      page: { size: 'A4', orientation: 'portrait', marginTop: 35, marginRight: 42, marginBottom: 55, marginLeft: 42 },
+      header: { showLogo: true, departmentText: 'BỘ PHẬN QLTS', showTemplateCode: true, showDocumentQr: true },
+      assetTable: { showAssetQr: true, assetQrSize: 50, repeatHeader: true, columns: ['index', 'assetCodeQr', 'assetName', 'specification', 'serial', 'unit', 'quantity', 'condition', 'note'] },
+      signature: { columns: ['sender', 'receiver', 'qlts'] },
+      footer: { showSupportLine: true, supportLine: 'CBNV có nhu cầu hỗ trợ về CNTT xin liên hệ: Lê Khánh Hùng – Phone/Viber: 0977131579', showPageNumber: true }
+    };
+
+    // Parse config settings
+    const pageSettings = config.page || {};
+    const headerSettings = config.header || {};
+    const tableSettings = config.assetTable || {};
+    const sigSettings = config.signature || {};
+    const footerSettings = config.footer || {};
+
+    const pageMargins = [
+      pageSettings.marginLeft !== undefined ? Number(pageSettings.marginLeft) : 42,
+      pageSettings.marginTop !== undefined ? Number(pageSettings.marginTop) : 35,
+      pageSettings.marginRight !== undefined ? Number(pageSettings.marginRight) : 42,
+      pageSettings.marginBottom !== undefined ? Number(pageSettings.marginBottom) : 55
+    ];
+
+    // Build Header columns
+    const headerColumns: any[] = [];
+    if (headerSettings.showLogo !== false) {
+      headerColumns.push({
+        stack: [
+          { text: headerSettings.companyName || 'DANKO GROUP', style: 'companyHeader' },
+          { text: headerSettings.departmentText || 'BỘ PHẬN QLTS', style: 'departmentHeader' }
+        ],
+        width: '*'
+      });
+    } else {
+      headerColumns.push({ text: '', width: '*' });
+    }
+
+    if (headerSettings.showDocumentQr !== false) {
+      headerColumns.push({
+        stack: [
+          { qr: document.documentNo, fit: 50, alignment: 'right' },
+          { text: 'Mã số biên bản', fontSize: 6.5, color: '#64748b', alignment: 'right', margin: [0, 3, 0, 0] }
+        ],
+        width: 'auto',
+        margin: [0, -10, 0, 0]
+      });
+    }
+
+    if (headerSettings.showTemplateCode !== false) {
+      headerColumns.push({
+        text: `Mẫu số: ${options.templateCode || config.code || 'BM02/QLTS'}`,
+        style: 'templateCodeHeader',
+        alignment: 'right',
+        width: 100
+      });
+    }
+
+    const content: any[] = [
+      {
+        columns: headerColumns,
+        columnGap: 10
+      },
+      { text: '\n\n' },
+      { text: titleText, style: 'documentTitle', alignment: 'center' },
+      { text: `Số: ${document.documentNo}`, style: 'documentSubNo', alignment: 'center' },
+      { text: '\n\n' },
+      { 
+        text: [
+          { text: 'Hôm nay', font: 'Roboto' },
+          `, ngày ${day} tháng ${month} năm ${year}, tại ${location}`
+        ],
+        style: 'normalText' 
+      },
+      { text: 'Chúng tôi gồm:', style: 'normalText', margin: [0, 5, 0, 10] },
+      { text: `1. ${senderRoleLabel}`, style: 'sectionHeader' },
+      {
+        columns: [
+          { text: `Ông/Bà: ${document.senderName || '................................'}`, style: 'normalText', width: '50%' },
+          { text: `Bộ phận: ${document.senderDepartment || '................................'}`, style: 'normalText', width: '50%' }
+        ],
+        margin: [0, 2, 0, 2]
+      },
+      { 
+        text: `Chức vụ: ${document.senderPosition || '................................'}`, 
+        style: 'normalText',
+        margin: [0, 2, 0, 10]
+      },
+      { text: `2. ${recipientRoleLabel}`, style: 'sectionHeader' },
+      {
+        columns: [
+          { 
+            text: `Ông/Bà: ${document.type === 'RECALL' ? (document.senderName || '................................') : (document.recipientName || '................................')}`, 
+            style: 'normalText', 
+            width: '50%' 
+          },
+          { 
+            text: `Bộ phận: ${document.type === 'RECALL' ? 'Bộ phận QLTS / HCNS / Kho' : (document.recipientDepartment || '................................')}`, 
+            style: 'normalText', 
+            width: '50%' 
+          }
+        ],
+        margin: [0, 2, 0, 2]
+      },
+      { 
+        text: `Chức vụ: ${document.type === 'RECALL' ? 'Cán bộ Bộ phận QLTS' : (document.recipientPosition || '................................')}`, 
+        style: 'normalText',
+        margin: [0, 2, 0, 15]
+      },
+      { text: 'Cùng giao/nhận tài sản như sau:', style: 'normalTextBold', margin: [0, 0, 0, 8] }
+    ];
+
+    // Build Asset Table Columns dynamically
+    const COLUMN_HEADERS: Record<string, any> = {
+      index: { text: 'STT', style: 'tableHeader', alignment: 'center' },
+      assetCode: { text: 'Mã tài sản', style: 'tableHeader', alignment: 'center' },
+      assetCodeQr: { text: 'Mã tài sản / QR', style: 'tableHeader', alignment: 'center' },
+      assetName: { text: 'Tên tài sản', style: 'tableHeader' },
+      specification: { text: 'Mô tả kỹ thuật', style: 'tableHeader' },
+      serial: { text: 'Serial', style: 'tableHeader' },
+      unit: { text: 'ĐVT', style: 'tableHeader', alignment: 'center' },
+      quantity: { text: 'SL', style: 'tableHeader', alignment: 'center' },
+      condition: { text: 'Tình trạng', style: 'tableHeader' },
+      note: { text: 'Ghi chú', style: 'tableHeader' },
+      purchasePriceExVat: { text: 'Đơn giá', style: 'tableHeader', alignment: 'right' }
+    };
+
+    const COLUMN_WIDTHS: Record<string, string | number> = {
+      index: 20,
+      assetCode: 70,
+      assetCodeQr: 85,
+      assetName: '*',
+      specification: '*',
+      serial: 60,
+      unit: 25,
+      quantity: 20,
+      condition: 50,
+      note: 45,
+      purchasePriceExVat: 55
+    };
+
+    const activeColumns: string[] = tableSettings.columns || ['index', 'assetCodeQr', 'assetName', 'specification', 'serial', 'unit', 'quantity', 'condition', 'note'];
+    
+    const widths = activeColumns.map(col => COLUMN_WIDTHS[col] || '*');
+    const headerRow = activeColumns.map(col => COLUMN_HEADERS[col] || { text: col, style: 'tableHeader' });
+
+    const showQrInTable = tableSettings.showAssetQr !== false;
+    const qrSize = tableSettings.assetQrSize !== undefined ? Number(tableSettings.assetQrSize) : 48;
+
+    const bodyRows = document.items.map((item: any, index: number) => {
+      const asset = assetMap.get(item.assetId);
+      const spec = asset?.usagePurpose || asset?.level4Name || '---';
+      const serial = asset?.serialNumber || '---';
+      const cond = asset?.status === 'ASSIGNED' ? 'Đang sử dụng' : (asset?.status === 'IN_STOCK' ? 'Trong kho' : (asset?.status === 'LOST' ? 'Mất' : 'Bình thường'));
+      const price = asset?.purchasePriceExVat ? asset.purchasePriceExVat.toLocaleString() : '---';
+
+      const vMargin = showQrInTable && activeColumns.includes('assetCodeQr') ? [0, 15, 0, 5] : [0, 4, 0, 4];
+
+      return activeColumns.map(col => {
+        switch (col) {
+          case 'index':
+            return { text: (index + 1).toString(), style: 'tableCell', alignment: 'center', margin: vMargin };
+          case 'assetCode':
+            return { text: item.assetCode, style: 'tableCellCode', alignment: 'center', margin: vMargin };
+          case 'assetCodeQr':
+            return {
+              stack: [
+                { text: item.assetCode, style: 'tableCellCode', alignment: 'center' },
+                ...(showQrInTable ? [{ qr: item.assetCode, fit: qrSize, alignment: 'center', margin: [0, 4, 0, 4] }] : [])
+              ]
+            };
+          case 'assetName':
+            return { text: item.assetName, style: 'tableCell', margin: vMargin };
+          case 'specification':
+            return { text: spec, style: 'tableCell', margin: vMargin };
+          case 'serial':
+            return { text: serial, style: 'tableCell', margin: vMargin };
+          case 'unit':
+            return { text: item.unit || 'Cái', style: 'tableCell', alignment: 'center', margin: vMargin };
+          case 'quantity':
+            return { text: '1', style: 'tableCell', alignment: 'center', margin: vMargin };
+          case 'condition':
+            return { text: cond, style: 'tableCell', margin: vMargin };
+          case 'note':
+            return { text: asset?.documentNote || '---', style: 'tableCell', margin: vMargin };
+          case 'purchasePriceExVat':
+            return { text: price, style: 'tableCell', alignment: 'right', margin: vMargin };
+          default:
+            return { text: '', style: 'tableCell', margin: vMargin };
+        }
+      });
+    });
+
+    content.push({
+      table: {
+        headerRows: 1,
+        dontBreakRows: true,
+        widths: widths,
+        body: [
+          headerRow,
+          ...bodyRows
+        ]
+      },
+      layout: {
+        hLineWidth: function (i: number, node: any) {
+          return (i === 0 || i === node.table.body.length) ? 1.5 : 0.8;
+        },
+        vLineWidth: function (i: number, node: any) {
+          const wLen = node.table.widths ? node.table.widths.length : 9;
+          return (i === 0 || i === wLen) ? 1.5 : 0.8;
+        },
+        hLineColor: function () { return '#475569'; },
+        vLineColor: function () { return '#475569'; }
+      }
+    });
+
+    content.push({ text: '\n' });
+
+    // Commitments / Terms
+    if (config.includeCommitment !== false) {
+      let commitmentContent = [
+        'Bên nhận đã kiểm tra đúng chủng loại, số lượng, tình trạng tài sản nêu trên và có trách nhiệm quản lý, sử dụng tài sản đúng mục đích công việc.',
+        'Hệ thống/cá nhân quản lý tài sản cập nhật trạng thái tài sản theo biên bản này sau khi các bên xác nhận.'
+      ];
+      if (config.commitmentText) {
+        if (typeof config.commitmentText === 'string') {
+          commitmentContent = config.commitmentText.split('\n').filter((l: string) => l.trim() !== '');
+        } else if (Array.isArray(config.commitmentText)) {
+          commitmentContent = config.commitmentText;
+        }
+      }
+
+      content.push({
+        stack: commitmentContent.map((text: string) => ({ text, style: 'commitmentText' })),
+        margin: [0, 5, 0, 15]
+      });
+    }
+
+    content.push(
+      {
+        text: `${city}, ngày ${day} tháng ${month} năm ${year}`,
+        style: 'normalTextItalic',
+        alignment: 'right',
+        margin: [0, 0, 0, 15]
+      }
+    );
+
+    // Build Signatures dinamically
+    const SIGNATURE_ROLES: Record<string, { title: string; subtitle: string }> = {
+      sender: { title: senderRoleLabel.toUpperCase(), subtitle: '(Ký, ghi rõ họ tên)' },
+      receiver: { title: recipientRoleLabel.toUpperCase(), subtitle: '(Ký, ghi rõ họ tên)' },
+      qlts: { title: 'CVTS / HCNS', subtitle: '(Ký, ghi rõ họ tên)' },
+      director: { title: 'GIÁM ĐỐC', subtitle: '(Ký, đóng dấu)' },
+      department: { title: 'TRƯỞNG PHÒNG', subtitle: '(Ký, ghi rõ họ tên)' },
+      inventory: { title: 'HỘI ĐỒNG KIỂM KÊ', subtitle: '(Ký, ghi rõ họ tên)' }
+    };
+
+    const sigCols = sigSettings.columns || ['sender', 'receiver', 'qlts'];
+    const numCols = sigCols.length;
+    const colWidth = `${(100 / numCols).toFixed(2)}%`;
+
+    const signatureColumns = sigCols.map((col: string) => {
+      const role = SIGNATURE_ROLES[col] || { title: col.toUpperCase(), subtitle: '(Ký, ghi rõ họ tên)' };
+      return {
+        stack: [
+          { text: role.title, style: 'signatureRole' },
+          { text: role.subtitle, style: 'signatureSubText' }
+        ],
+        alignment: 'center',
+        width: colWidth
+      };
+    });
+
+    content.push({
+      columns: signatureColumns,
+      margin: [0, 0, 0, 45]
+    });
+
+    const docDefinition: TDocumentDefinitions = {
+      pageSize: pageSettings.size || 'A4',
+      pageOrientation: pageSettings.orientation || 'portrait',
+      pageMargins: pageMargins as [number, number, number, number],
+      content: content,
+      footer: function (currentPage: number, pageCount: number) {
+        const footerElements: any[] = [];
+        
+        if (footerSettings.showSupportLine !== false) {
+          footerElements.push({ 
+            text: footerSettings.supportLine || 'CBNV có nhu cầu hỗ trợ về CNTT xin liên hệ: Lê Khánh Hùng – Phone/Viber: 0977131579', 
+            fontSize: 7.5, 
+            color: '#475569', 
+            alignment: 'center',
+            margin: [0, 0, 0, 8]
+          });
+        }
+
+        const footerCols: any[] = [];
+        if (footerSettings.showPageNumber !== false) {
+          footerCols.push({ text: `Trang ${currentPage}/${pageCount}`, fontSize: 8, color: '#64748b' });
+        } else {
+          footerCols.push({ text: '', fontSize: 8 });
+        }
+
+        footerCols.push({ text: `Mã hồ sơ: ${document.documentNo}`, fontSize: 8, color: '#64748b', alignment: 'right' });
+
+        footerElements.push({
+          columns: footerCols
+        });
+
+        return {
+          margin: [pageMargins[0], -15, pageMargins[2], 0],
+          stack: footerElements
+        };
+      },
+      styles: {
+        companyHeader: { fontSize: 10, bold: true, color: '#0f172a' },
+        departmentHeader: { fontSize: 8, bold: true, color: '#475569' },
+        templateCodeHeader: { fontSize: 9, bold: true, italics: true, color: '#334155' },
+        documentTitle: { fontSize: 14, bold: true, color: '#0f172a' },
+        documentSubNo: { fontSize: 10, bold: true, italics: true, color: '#334155' },
+        normalText: { fontSize: 9.5, color: '#0f172a' },
+        normalTextBold: { fontSize: 9.5, bold: true, color: '#0f172a' },
+        normalTextItalic: { fontSize: 9.5, italics: true, color: '#0f172a' },
+        sectionHeader: { fontSize: 10, bold: true, color: '#0f172a', margin: [0, 0, 0, 4] },
+        tableHeader: { fontSize: 8.5, bold: true, color: '#0f172a', margin: [0, 4, 0, 4] },
+        tableCell: { fontSize: 8.5, color: '#0f172a', margin: [0, 3, 0, 3] },
+        tableCellCode: { fontSize: 8, bold: true, color: '#0f172a', margin: [0, 3, 0, 3] },
+        commitmentText: { fontSize: 8.5, italics: true, color: '#334155', margin: [0, 2, 0, 2] },
+        signatureRole: { fontSize: 9.5, bold: true, color: '#0f172a' },
+        signatureSubText: { fontSize: 8, italics: true, color: '#475569', margin: [0, 2, 0, 0] }
+      },
+      defaultStyle: {
+        font: 'Roboto'
+      }
+    };
+
+    const pdfDoc = pdfmake.createPdf(docDefinition);
+    return await pdfDoc.getBuffer();
+  }
+}
