@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: qlts-danko
+    runtime: node
+    plan: free
+    buildCommand: npm run build
+    startCommand: cd backend && npx prisma db push && node dist/prisma/seed.js && cd .. && node backend/dist/src/server.js
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: qlts-postgres
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 3001
+
+databases:
+  - name: qlts-postgres
+    databaseName: qlts
+    plan: free

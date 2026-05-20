@@ -9,7 +9,8 @@
     "dev": "ts-node-dev --respawn src/server.ts",
     "build": "tsc",
     "prisma:migrate": "npx prisma migrate dev",
-    "prisma:seed": "npm run seed"
+    "prisma:seed": "npm run seed",
+    "clean-data": "ts-node -r dotenv/config src/scripts/clean-data.ts"
   },
   "keywords": [],
   "author": "",

@@ -1,16 +1,28 @@
 node_modules
 .env
 .env.local
-dist
-build
-.DS_Store
-*.log
+
+# Database files
 prisma/dev.db
 prisma/dev.db-journal
-frontend/node_modules
-backend/node_modules
-backend/*.js
-backend/*.ts
-!backend/src/**/*.ts
+*.db
+*.db-journal
+
+# Build artifacts (will be rebuilt on Render)
+frontend/dist
+backend/dist
+
+# Logs
+*.log
+import_errors.log
+
+# OS
+.DS_Store
+
+# Test artifacts
 frontend/test-results/
 frontend/playwright-report/
+
+# Scratch / temp files
+backend/list-tables.ts
+backend/scratch/

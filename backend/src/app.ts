@@ -61,6 +61,16 @@ protectedApi.use('/templates', templateRoutes);
 
 app.use('/api', protectedApi);
 
+// Serve React frontend static files in production
+if (process.env.NODE_ENV === 'production') {
+  const frontendDist = path.join(process.cwd(), 'frontend', 'dist');
+  app.use(express.static(frontendDist));
+  // SPA fallback: serve index.html for all non-API routes
+  app.get('/*splat', (_req, res) => {
+    res.sendFile(path.join(frontendDist, 'index.html'));
+  });
+}
+
 // Error handling middleware
 app.use((err: any, req: express.Request, res: express.Response, next: express.NextFunction) => {
   console.error(err.stack);
@@ -70,4 +80,4 @@ app.use((err: any, req: express.Request, res: express.Response, next: express.Ne
 });
 
 export default app;
- 
+
