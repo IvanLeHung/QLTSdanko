@@ -224,6 +224,14 @@ async function main() {
       .replace(/[\s-]+/g, '_');
   }
 
+  function normalizeCode(rawCode: string): string {
+    const num = parseInt(rawCode, 10);
+    if (!isNaN(num) && num >= 1 && num <= 99) {
+      return String(num).padStart(2, '0');
+    }
+    return rawCode.trim();
+  }
+
   console.log('Seeding 4-level asset categories...');
   const lines = rawCategoriesText.split('\n');
   const parentIdMap = new Map<string, number>();
@@ -280,7 +288,8 @@ async function main() {
       code = toSlug(name).substring(0, 15).toUpperCase();
     }
 
-    let sortOrder = parseInt(code, 10);
+    const normalizedCode = normalizeCode(code);
+    let sortOrder = parseInt(normalizedCode, 10);
     if (isNaN(sortOrder)) {
       sortOrder = 999;
     }
@@ -298,11 +307,11 @@ async function main() {
       }
     }
 
-    const key = `${level}_${code}_${parentKey || 'root'}`;
+    const key = `${level}_${normalizedCode}_${parentKey || 'root'}`;
 
     const existing = await prisma.assetCategory.findFirst({
       where: {
-        code,
+        code: { in: [code, normalizedCode] },
         level,
         parentId
       }
@@ -313,6 +322,7 @@ async function main() {
       const updated = await prisma.assetCategory.update({
         where: { id: existing.id },
         data: {
+          code: normalizedCode,
           name,
           slug,
           sortOrder,
@@ -323,7 +333,7 @@ async function main() {
     } else {
       const created = await prisma.assetCategory.create({
         data: {
-          code,
+          code: normalizedCode,
           name,
           slug,
           level,
@@ -336,7 +346,7 @@ async function main() {
     }
 
     parentIdMap.set(key, dbId);
-    parents[level] = { code, name, key };
+    parents[level] = { code: normalizedCode, name, key };
   }
   console.log('Finished seeding 4-level asset categories.');
 

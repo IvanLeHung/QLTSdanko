@@ -38,6 +38,32 @@ router.patch('/companies/:id', authenticateToken, async (req, res) => {
   res.json(company);
 });
 
+// Helper to sort categories by sortOrder then numeric code value
+function sortCategories(list: any[]) {
+  return list.sort((a, b) => {
+    const aOrder = a.sortOrder || 0;
+    const bOrder = b.sortOrder || 0;
+
+    if (aOrder !== bOrder && aOrder !== 0 && bOrder !== 0) {
+      return aOrder - bOrder;
+    }
+
+    const aNum = parseInt(a.code, 10);
+    const bNum = parseInt(b.code, 10);
+
+    const aIsNum = !isNaN(aNum);
+    const bIsNum = !isNaN(bNum);
+
+    if (aIsNum && bIsNum) {
+      return aNum - bNum;
+    }
+    if (aIsNum && !bIsNum) return -1;
+    if (!aIsNum && bIsNum) return 1;
+
+    return a.code.localeCompare(b.code, undefined, { numeric: true, sensitivity: 'base' });
+  });
+}
+
 // --- CATEGORY MANAGEMENT ---
 router.get('/categories', authenticateToken, async (req, res) => {
   const { level, parentId } = req.query;
@@ -46,26 +72,23 @@ router.get('/categories', authenticateToken, async (req, res) => {
   if (parentId) where.parentId = Number(parentId);
 
   const categories = await prisma.assetCategory.findMany({
-    where,
-    orderBy: [{ sortOrder: 'asc' }, { code: 'asc' }]
+    where
   });
-  res.json(categories);
+  res.json(sortCategories(categories));
 });
 
 router.get('/categories/roots', authenticateToken, async (req, res) => {
   const categories = await prisma.assetCategory.findMany({
-    where: { level: 1, parentId: null },
-    orderBy: { sortOrder: 'asc' }
+    where: { level: 1, parentId: null }
   });
-  res.json(categories);
+  res.json(sortCategories(categories));
 });
 
 router.get('/categories/children/:parentId', authenticateToken, async (req, res) => {
   const categories = await prisma.assetCategory.findMany({
-    where: { parentId: Number(req.params.parentId) },
-    orderBy: { sortOrder: 'asc' }
+    where: { parentId: Number(req.params.parentId) }
   });
-  res.json(categories);
+  res.json(sortCategories(categories));
 });
 
 router.post('/categories', authenticateToken, async (req, res) => {
@@ -74,9 +97,15 @@ router.post('/categories', authenticateToken, async (req, res) => {
     // Validation: Level rules
     if (level > 1 && !parentId) return res.status(400).json({ message: "Parent ID is required for level > 1" });
     
+    const normalizedCode = normalizeCode(code);
+
     // Check duplicate code under same parent
     const existing = await prisma.assetCategory.findFirst({
-      where: { code, level: Number(level), parentId: parentId ? Number(parentId) : null }
+      where: { 
+        code: { in: [code, normalizedCode] }, 
+        level: Number(level), 
+        parentId: parentId ? Number(parentId) : null 
+      }
     });
     if (existing) {
       return res.status(400).json({ message: "Mã này đã tồn tại trong cùng cấp cha." });
@@ -84,12 +113,12 @@ router.post('/categories', authenticateToken, async (req, res) => {
 
     const category = await prisma.assetCategory.create({
       data: { 
-        code, 
+        code: normalizedCode, 
         name, 
-        slug, 
+        slug: slug || toSlug(name), 
         level: Number(level), 
         parentId: parentId ? Number(parentId) : null, 
-        sortOrder: Number(sortOrder) || 0,
+        sortOrder: Number(sortOrder) || parseInt(normalizedCode, 10) || 999,
         isActive: isActive !== undefined ? isActive : true
       }
     });
@@ -104,10 +133,12 @@ router.patch('/categories/:id', authenticateToken, async (req, res) => {
   const categoryId = Number(req.params.id);
 
   try {
+    const normalizedCode = code ? normalizeCode(code) : undefined;
+
     // Check if code change is allowed (if code is provided)
-    if (code) {
+    if (normalizedCode) {
       const current = await prisma.assetCategory.findUnique({ where: { id: categoryId } });
-      if (current && current.code !== code) {
+      if (current && current.code !== normalizedCode) {
         // Check for usage in assets (pseudo-check, assuming Asset model tracking)
         const usageCount = await prisma.asset.count({
           where: {
@@ -124,7 +155,7 @@ router.patch('/categories/:id', authenticateToken, async (req, res) => {
         // Backend strictly checks for unique constraint again if code is changed
         const duplicate = await prisma.assetCategory.findFirst({
           where: { 
-            code, 
+            code: { in: [code, normalizedCode] }, 
             level: current.level, 
             parentId: current.parentId,
             id: { not: categoryId }
@@ -136,7 +167,13 @@ router.patch('/categories/:id', authenticateToken, async (req, res) => {
 
     const category = await prisma.assetCategory.update({
       where: { id: categoryId },
-      data: { code, name, slug, isActive, sortOrder: Number(sortOrder) }
+      data: { 
+        code: normalizedCode, 
+        name, 
+        slug, 
+        isActive, 
+        sortOrder: sortOrder !== undefined ? Number(sortOrder) : (normalizedCode ? (parseInt(normalizedCode, 10) || undefined) : undefined)
+      }
     });
     res.json(category);
   } catch (error: any) {
@@ -156,6 +193,14 @@ function toSlug(str: string): string {
     .replace(/[\s-]+/g, '_');
 }
 
+function normalizeCode(rawCode: string): string {
+  const num = parseInt(rawCode, 10);
+  if (!isNaN(num) && num >= 1 && num <= 99) {
+    return String(num).padStart(2, '0');
+  }
+  return rawCode.trim();
+}
+
 // --- EXCEL IMPORT ---
 router.post('/categories/import', authenticateToken, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No file uploaded" });
@@ -168,13 +213,14 @@ router.post('/categories/import', authenticateToken, upload.single('file'), asyn
   let created = 0, updated = 0, errors = [];
 
   async function upsertCategory(code: string, name: string, userSlug: string | undefined, level: number, parentId: number | null) {
+    const normalizedCode = normalizeCode(code);
     const slug = userSlug ? toSlug(userSlug) : toSlug(name);
-    let sortOrder = parseInt(code, 10);
+    let sortOrder = parseInt(normalizedCode, 10);
     if (isNaN(sortOrder)) sortOrder = 999;
 
     const existing = await prisma.assetCategory.findFirst({
       where: {
-        code,
+        code: { in: [code, normalizedCode] },
         level,
         parentId
       }
@@ -183,12 +229,12 @@ router.post('/categories/import', authenticateToken, upload.single('file'), asyn
     if (existing) {
       const updatedCat = await prisma.assetCategory.update({
         where: { id: existing.id },
-        data: { name, slug, sortOrder, isActive: true }
+        data: { code: normalizedCode, name, slug, sortOrder, isActive: true }
       });
       return { cat: updatedCat, isNew: false };
     } else {
       const createdCat = await prisma.assetCategory.create({
-        data: { code, name, slug, level, parentId, sortOrder, isActive: true }
+        data: { code: normalizedCode, name, slug, level, parentId, sortOrder, isActive: true }
       });
       return { cat: createdCat, isNew: true };
     }
