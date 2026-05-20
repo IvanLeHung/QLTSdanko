@@ -410,7 +410,4 @@ export const rawCategoriesText = `🌳 1 - Nhà cửa, vật kiến trúc
 🌳 6 - Quyền phát hành
 🌳 7 - Bản quyền, bằng sáng chế
 🌳 8 - Nhãn hiệu, tên thương mại
-🌳 9 - Giấy phép và giấy phép nhượng quyền
-      ├─  - Container văn phòng 40 feet hoán cải từ container đã qua sử dụng, khung gỗ cách nhiệt, ốp gỗ có 2 cửa sổ, quạt hút, hệ thống điện âm tường đầy đủ, sơn chống rỉ và sơn màu theo yêu cầu.
-         └─ Chi?c - Dùng chung
-🌳 Bất động sản - Nhà, công trình xây dựng`;
+🌳 9 - Giấy phép và giấy phép nhượng quyền`;
