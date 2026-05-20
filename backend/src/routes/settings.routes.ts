@@ -144,6 +144,18 @@ router.patch('/categories/:id', authenticateToken, async (req, res) => {
   }
 });
 
+// Helper for slug generation
+function toSlug(str: string): string {
+  return str
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/[^a-z0-9\s-]/g, '')
+    .trim()
+    .replace(/[\s-]+/g, '_');
+}
+
 // --- EXCEL IMPORT ---
 router.post('/categories/import', authenticateToken, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ message: "No file uploaded" });
@@ -155,51 +167,69 @@ router.post('/categories/import', authenticateToken, upload.single('file'), asyn
 
   let created = 0, updated = 0, errors = [];
 
+  async function upsertCategory(code: string, name: string, userSlug: string | undefined, level: number, parentId: number | null) {
+    const slug = userSlug ? toSlug(userSlug) : toSlug(name);
+    let sortOrder = parseInt(code, 10);
+    if (isNaN(sortOrder)) sortOrder = 999;
+
+    const existing = await prisma.assetCategory.findFirst({
+      where: {
+        code,
+        level,
+        parentId
+      }
+    });
+
+    if (existing) {
+      const updatedCat = await prisma.assetCategory.update({
+        where: { id: existing.id },
+        data: { name, slug, sortOrder, isActive: true }
+      });
+      return { cat: updatedCat, isNew: false };
+    } else {
+      const createdCat = await prisma.assetCategory.create({
+        data: { code, name, slug, level, parentId, sortOrder, isActive: true }
+      });
+      return { cat: createdCat, isNew: true };
+    }
+  }
+
   for (let i = 2; i <= worksheet.rowCount; i++) {
     const row = worksheet.getRow(i);
     const l1Code = row.getCell(1).text?.trim(); 
     const l1Name = row.getCell(2).text?.trim();
     const l1Slug = row.getCell(3).text?.trim();
 
-    if (!l1Code) continue;
+    if (!l1Code || !l1Name) continue;
 
     try {
-      let cat1 = await prisma.assetCategory.findFirst({ where: { code: l1Code, level: 1, parentId: null } });
-      if (!cat1) {
-        cat1 = await prisma.assetCategory.create({ data: { code: l1Code, name: l1Name, slug: l1Slug, level: 1 } });
-        created++;
-      }
+      const r1 = await upsertCategory(l1Code, l1Name, l1Slug, 1, null);
+      if (r1.isNew) created++; else updated++;
+      const cat1 = r1.cat;
 
       const l2Code = row.getCell(4).text?.trim();
       const l2Name = row.getCell(5).text?.trim();
       const l2Slug = row.getCell(6).text?.trim();
 
-      if (l2Code && cat1) {
-        let cat2 = await prisma.assetCategory.findFirst({ where: { code: l2Code, level: 2, parentId: cat1.id } });
-        if (!cat2) {
-          cat2 = await prisma.assetCategory.create({ data: { code: l2Code, name: l2Name, slug: l2Slug, level: 2, parentId: cat1.id } });
-          created++;
-        }
+      if (l2Code && l2Name && cat1) {
+        const r2 = await upsertCategory(l2Code, l2Name, l2Slug, 2, cat1.id);
+        if (r2.isNew) created++; else updated++;
+        const cat2 = r2.cat;
         
         const l3Code = row.getCell(7).text?.trim();
         const l3Name = row.getCell(8).text?.trim();
         const l3Slug = row.getCell(9).text?.trim();
-        if (l3Code && cat2) {
-          let cat3 = await prisma.assetCategory.findFirst({ where: { code: l3Code, level: 3, parentId: cat2.id } });
-          if (!cat3) {
-            cat3 = await prisma.assetCategory.create({ data: { code: l3Code, name: l3Name, slug: l3Slug, level: 3, parentId: cat2.id } });
-            created++;
-          }
+        if (l3Code && l3Name && cat2) {
+          const r3 = await upsertCategory(l3Code, l3Name, l3Slug, 3, cat2.id);
+          if (r3.isNew) created++; else updated++;
+          const cat3 = r3.cat;
 
           const l4Code = row.getCell(10).text?.trim();
           const l4Name = row.getCell(11).text?.trim();
           const l4Slug = row.getCell(12).text?.trim();
-          if (l4Code && cat3) {
-            let cat4 = await prisma.assetCategory.findFirst({ where: { code: l4Code, level: 4, parentId: cat3.id } });
-            if (!cat4) {
-              await prisma.assetCategory.create({ data: { code: l4Code, name: l4Name, slug: l4Slug, level: 4, parentId: cat3.id } });
-              created++;
-            }
+          if (l4Code && l4Name && cat3) {
+            const r4 = await upsertCategory(l4Code, l4Name, l4Slug, 4, cat3.id);
+            if (r4.isNew) created++; else updated++;
           }
         }
       }

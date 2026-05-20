@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 import dotenv from 'dotenv';
+import { rawCategoriesText } from './categories_data';
 
 dotenv.config();
 
@@ -211,26 +212,133 @@ async function main() {
     create: { userId: staffUser.id, scopeType: 'SELF' }
   });
 
-  // --- CATEGORIES (REUSED FROM PREVIOUS) ---
-  async function ensureCategory(data: { code: string, name: string, slug: string, level: number, parentId: number | null }) {
-    let cat = await prisma.assetCategory.findFirst({ where: { code: data.code, level: data.level, parentId: data.parentId } });
-    if (!cat) cat = await prisma.assetCategory.create({ data });
-    else cat = await prisma.assetCategory.update({ where: { id: cat.id }, data: { name: data.name, slug: data.slug } });
-    return cat;
+  // --- CATEGORIES SEED ---
+  function toSlug(str: string): string {
+    return str
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/[^a-z0-9\s-]/g, '')
+      .trim()
+      .replace(/[\s-]+/g, '_');
   }
 
-  const l1_01 = await ensureCategory({ code: '01', name: 'Nhà cửa, vật kiến trúc', slug: 'nha_cua_vat_kien_truc', level: 1, parentId: null });
-  const l1_02 = await ensureCategory({ code: '02', name: 'Phương tiện vận tải', slug: 'phuong_tien_van_tai', level: 1, parentId: null });
-  const l1_03 = await ensureCategory({ code: '03', name: 'Máy móc, thiết bị', slug: 'may_moc_thiet_bi', level: 1, parentId: null });
+  console.log('Seeding 4-level asset categories...');
+  const lines = rawCategoriesText.split('\n');
+  const parentIdMap = new Map<string, number>();
+  const parents: { [level: number]: { code: string; name: string; key: string } } = {};
 
-  const l2_01 = await ensureCategory({ code: '01', name: 'Máy móc, thiết bị văn phòng', slug: 'may_moc_thiet_bi_van_phong', level: 2, parentId: l1_03.id });
-  const l3_01_01 = await ensureCategory({ code: '01', name: 'Thiết thiết bị đầu cuối', slug: 'thiet_bi_dau_cuoi', level: 3, parentId: l2_01.id });
-  const l4s_01_01 = [
-    { code: '01', name: 'PC', slug: 'pc' }, 
-    { code: '02', name: 'Laptop', slug: 'laptop' }, 
-    { code: '05', name: 'Màn hình máy tính', slug: 'man_hinh_may_tinh' }
-  ];
-  for (const l4 of l4s_01_01) await ensureCategory({ ...l4, level: 4, parentId: l3_01_01.id });
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    const matchSpaces = line.match(/^(\s*)/);
+    const leadingSpaces = matchSpaces ? matchSpaces[1].length : 0;
+
+    let level = 1;
+    if (leadingSpaces >= 9) level = 4;
+    else if (leadingSpaces >= 6) level = 3;
+    else if (leadingSpaces >= 3) level = 2;
+
+    const content = trimmed.replace(/^[🌳├─└─\s]+/, '').trim();
+    if (!content) continue;
+
+    let code = '';
+    let name = '';
+
+    if (content.startsWith('-')) {
+      code = '';
+      name = content.replace(/^-\s*/, '').trim();
+    } else {
+      const dashIdx = content.indexOf(' - ');
+      if (dashIdx !== -1) {
+        code = content.substring(0, dashIdx).trim();
+        name = content.substring(dashIdx + 3).trim();
+      } else {
+        const dashIdx2 = content.indexOf(' – ');
+        const dashIdx3 = content.indexOf(' -');
+        const finalIdx = dashIdx2 !== -1 ? dashIdx2 : (dashIdx3 !== -1 ? dashIdx3 : content.indexOf('-'));
+        
+        if (finalIdx !== -1) {
+          code = content.substring(0, finalIdx).trim();
+          name = content.substring(finalIdx + 1).trim();
+          if (name.startsWith('-') || name.startsWith('–')) {
+            name = name.substring(1).trim();
+          }
+        } else {
+          code = toSlug(content).substring(0, 15).toUpperCase();
+          name = content;
+        }
+      }
+    }
+
+    code = code.trim();
+    name = name.trim();
+
+    if (!code) {
+      code = toSlug(name).substring(0, 15).toUpperCase();
+    }
+
+    let sortOrder = parseInt(code, 10);
+    if (isNaN(sortOrder)) {
+      sortOrder = 999;
+    }
+
+    const slug = toSlug(name);
+
+    let parentKey = null;
+    let parentId: number | null = null;
+
+    if (level > 1) {
+      const parent = parents[level - 1];
+      if (parent) {
+        parentKey = parent.key;
+        parentId = parentIdMap.get(parentKey) || null;
+      }
+    }
+
+    const key = `${level}_${code}_${parentKey || 'root'}`;
+
+    const existing = await prisma.assetCategory.findFirst({
+      where: {
+        code,
+        level,
+        parentId
+      }
+    });
+
+    let dbId: number;
+    if (existing) {
+      const updated = await prisma.assetCategory.update({
+        where: { id: existing.id },
+        data: {
+          name,
+          slug,
+          sortOrder,
+          isActive: true
+        }
+      });
+      dbId = updated.id;
+    } else {
+      const created = await prisma.assetCategory.create({
+        data: {
+          code,
+          name,
+          slug,
+          level,
+          parentId,
+          sortOrder,
+          isActive: true
+        }
+      });
+      dbId = created.id;
+    }
+
+    parentIdMap.set(key, dbId);
+    parents[level] = { code, name, key };
+  }
+  console.log('Finished seeding 4-level asset categories.');
 
   // --- TEMPLATES SEED ---
   const defaultConfig = {
