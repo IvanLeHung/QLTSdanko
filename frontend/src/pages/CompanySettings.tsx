@@ -1,12 +1,21 @@
 import React, { useState, useEffect } from 'react';
 import api from '../lib/api';
 import { toast } from 'react-toastify';
-import { Building2, Plus, Edit2, Power, PowerOff } from 'lucide-react';
+import { Building2, Plus, Edit2, Power, PowerOff, Eye, EyeOff } from 'lucide-react';
 
 export const CompanySettings: React.FC = () => {
   const [companies, setCompanies] = useState<any[]>([]);
+  const [revealedCompanies, setRevealedCompanies] = useState<number[]>([]);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formData, setFormData] = useState({ code: '', name: '' });
+
+  const toggleCompanyVisibility = (companyId: number) => {
+    setRevealedCompanies(prev => 
+      prev.includes(companyId) 
+        ? prev.filter(id => id !== companyId) 
+        : [...prev, companyId]
+    );
+  };
 
   const loadCompanies = async () => {
     try {
@@ -66,24 +75,43 @@ export const CompanySettings: React.FC = () => {
             </tr>
           </thead>
           <tbody className="divide-y divide-slate-100">
-            {companies.map(c => (
-              <tr key={c.id} className="hover:bg-slate-50/50">
-                <td className="px-6 py-4 font-mono font-bold text-primary-700">{c.code}</td>
-                <td className="px-6 py-4 text-slate-900">{c.name}</td>
-                <td className="px-6 py-4">
-                  <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
-                    c.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                  }`}>
-                    {c.isActive ? 'Active' : 'Inactive'}
-                  </span>
-                </td>
-                <td className="px-6 py-4 text-right">
-                  <button onClick={() => toggleStatus(c.id, c.isActive)} className="p-2 hover:bg-slate-100 rounded-lg">
-                    {c.isActive ? <PowerOff className="h-4 w-4 text-red-400" /> : <Power className="h-4 w-4 text-green-500" />}
-                  </button>
-                </td>
-              </tr>
-            ))}
+            {companies.map(c => {
+              const isPublicCompany = c.code === '00' || c.code === '01' || c.name.toLowerCase().includes('danko group') || c.name.toLowerCase().includes('khong co thong tin');
+              const isRevealed = revealedCompanies.includes(c.id);
+              const displayName = isPublicCompany || isRevealed ? c.name : '*****';
+
+              return (
+                <tr key={c.id} className="hover:bg-slate-50/50">
+                  <td className="px-6 py-4 font-mono font-bold text-primary-700">{c.code}</td>
+                  <td className="px-6 py-4">
+                    <div className="flex items-center space-x-3">
+                      <span className="text-slate-900 font-medium">{displayName}</span>
+                      {!isPublicCompany && (
+                        <button 
+                          onClick={() => toggleCompanyVisibility(c.id)} 
+                          className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                          title={isRevealed ? "Ẩn tên công ty" : "Xem tên công ty"}
+                        >
+                          {isRevealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-6 py-4">
+                    <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase ${
+                      c.isActive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
+                    }`}>
+                      {c.isActive ? 'Active' : 'Inactive'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => toggleStatus(c.id, c.isActive)} className="p-2 hover:bg-slate-100 rounded-lg">
+                      {c.isActive ? <PowerOff className="h-4 w-4 text-red-400" /> : <Power className="h-4 w-4 text-green-500" />}
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

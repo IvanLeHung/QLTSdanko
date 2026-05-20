@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import api from '../lib/api';
 import { toast } from 'react-toastify';
-import { Building2, Plus, ChevronRight, CheckCircle2, XCircle, Info, Hash, Type, Link as LinkIcon, SortAsc, Activity, AlertTriangle } from 'lucide-react';
+import { Building2, Plus, ChevronRight, CheckCircle2, XCircle, Info, Hash, Type, Link as LinkIcon, SortAsc, Activity, AlertTriangle, Eye, EyeOff } from 'lucide-react';
 
 interface PathItem {
   id: number;
@@ -14,6 +14,7 @@ export const ClassificationSettings: React.FC = () => {
   const [companies, setCompanies] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
   const [path, setPath] = useState<PathItem[]>([]);
+  const [revealedCompanies, setRevealedCompanies] = useState<number[]>([]);
   
   const [isCatModalOpen, setIsCatModalOpen] = useState(false);
   const [isEditMode, setIsEditMode] = useState(false);
@@ -161,6 +162,14 @@ export const ClassificationSettings: React.FC = () => {
     } catch (err) { toast.error("Update failed"); }
   };
 
+  const toggleCompanyVisibility = (companyId: number) => {
+    setRevealedCompanies(prev => 
+      prev.includes(companyId) 
+        ? prev.filter(id => id !== companyId) 
+        : [...prev, companyId]
+    );
+  };
+
   const getLevelName = (level: number) => {
     switch(level) {
       case 1: return "nhóm Cấp 1";
@@ -205,17 +214,34 @@ export const ClassificationSettings: React.FC = () => {
               </button>
             </div>
             <div className="space-y-3">
-              {companies.map(c => (
-                <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/30">
-                  <div>
-                    <p className="text-sm font-bold text-slate-900">{c.code}</p>
-                    <p className="text-xs text-slate-500">{c.name}</p>
+              {companies.map(c => {
+                const isPublicCompany = c.code === '00' || c.code === '01' || c.name.toLowerCase().includes('danko group') || c.name.toLowerCase().includes('khong co thong tin');
+                const isRevealed = revealedCompanies.includes(c.id);
+                const displayName = isPublicCompany || isRevealed ? c.name : '*****';
+
+                return (
+                  <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border border-slate-100 bg-slate-50/30">
+                    <div className="flex items-center space-x-3">
+                      <div>
+                        <p className="text-sm font-bold text-slate-900">{c.code}</p>
+                        <p className="text-xs text-slate-500 font-medium">{displayName}</p>
+                      </div>
+                      {!isPublicCompany && (
+                        <button 
+                          onClick={() => toggleCompanyVisibility(c.id)} 
+                          className="p-1 hover:bg-slate-100 rounded text-slate-400 hover:text-slate-600 transition-colors"
+                          title={isRevealed ? "Ẩn tên công ty" : "Xem tên công ty"}
+                        >
+                          {isRevealed ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                        </button>
+                      )}
+                    </div>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${c.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
+                      {c.isActive ? 'ACTIVE' : 'INACTIVE'}
+                    </span>
                   </div>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${c.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-400'}`}>
-                    {c.isActive ? 'ACTIVE' : 'INACTIVE'}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
