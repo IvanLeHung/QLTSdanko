@@ -160,7 +160,7 @@ async function main() {
   // --- ADMIN USER ---
   const adminUser = await prisma.user.upsert({
     where: { username: 'admin' },
-    update: { passwordHash },
+    update: {}, // Do not overwrite existing password hash on database seed runs
     create: { 
       username: 'admin', 
       passwordHash, 
@@ -188,7 +188,7 @@ async function main() {
   const staffRole = await prisma.role.findUnique({ where: { name: 'STAFF' } });
   const staffUser = await prisma.user.upsert({
     where: { username: 'staff1' },
-    update: { passwordHash },
+    update: {},
     create: { 
       username: 'staff1', 
       passwordHash, 
