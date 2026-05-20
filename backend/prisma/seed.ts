@@ -129,11 +129,18 @@ async function main() {
 
   // --- COMPANIES ---
   const companies = [
+    { code: '00', name: 'Không có thông tin' },
     { code: '01', name: 'Danko Group' },
-    { code: '02', name: 'Vestacons' },
+    { code: '02', name: 'VTC' },
     { code: '03', name: 'Summit' },
-    { code: '04', name: 'Danko City' },
-    { code: '05', name: 'Danko Avenue' },
+    { code: '04', name: 'Homevina' },
+    { code: '05', name: 'Bình Nguyên' },
+    { code: '06', name: 'TheLight' },
+    { code: '07', name: 'RH' },
+    { code: '08', name: 'Suntimes' },
+    { code: '09', name: 'Hà Thu' },
+    { code: '10', name: 'Tự chịu chi phí' },
+    { code: '11', name: 'SunVina' }
   ];
 
   for (const comp of companies) {
