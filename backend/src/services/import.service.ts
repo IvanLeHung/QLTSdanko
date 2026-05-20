@@ -125,6 +125,13 @@ export class ImportService {
             
             // Final check: if it's still an object (like error object), null it
             if (typeof value === 'object') value = null;
+
+            // Normalize codes
+            if (value && ['company_code', 'level1_code', 'level2_code', 'level3_code', 'level4_code'].includes(internalKey)) {
+                if (/^\d+$/.test(value)) {
+                    value = value.padStart(2, '0');
+                }
+            }
         }
 
         if (internalKey === 'status') {
@@ -225,17 +232,25 @@ export class ImportService {
     return isNaN(num) ? 0 : num;
   }
 
+  private static normalizeCode(code: string): string {
+    const trimmed = code.trim();
+    if (/^\d+$/.test(trimmed)) {
+      return trimmed.padStart(2, '0');
+    }
+    return trimmed;
+  }
+
   static async validateRow(row: any) {
     const errors: string[] = [];
     const warnings: string[] = [];
 
     const asset_code = row.asset_code || row.MTS;
     const asset_name = row.asset_name || row['Name Asset'];
-    const company_raw = String(row.company_code || row.MCTY || '00').trim();
-    const l1_raw = String(row.level1_code || row['Group LV1'] || '').trim();
-    const l2_raw = String(row.level2_code || row['Group LV2'] || '').trim();
-    const l3_raw = String(row.level3_code || row['Group LV3'] || '').trim();
-    const l4_raw = String(row.level4_code || row['Group LV4'] || '').trim();
+    const company_raw = this.normalizeCode(String(row.company_code || row.MCTY || '00'));
+    const l1_raw = this.normalizeCode(String(row.level1_code || row['Group LV1'] || ''));
+    const l2_raw = this.normalizeCode(String(row.level2_code || row['Group LV2'] || ''));
+    const l3_raw = this.normalizeCode(String(row.level3_code || row['Group LV3'] || ''));
+    const l4_raw = this.normalizeCode(String(row.level4_code || row['Group LV4'] || ''));
 
     // Standardize row object with raw input (no padding)
     row.company_code = company_raw;

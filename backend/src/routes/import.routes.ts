@@ -288,8 +288,17 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     companyCache.set(row.company_code, company);
                 }
 
+                const normalizeCode = (c: string): string => {
+                    const trimmed = c.trim();
+                    if (/^\d+$/.test(trimmed)) {
+                        return trimmed.padStart(2, '0');
+                    }
+                    return trimmed;
+                };
+
                 // 2. Get/Create Categories (Cached)
-                const getOrCreateCat = async (code: string, name: string | undefined, level: number, parentId: number | null) => {
+                const getOrCreateCat = async (rawCode: string, name: string | undefined, level: number, parentId: number | null) => {
+                    const code = normalizeCode(rawCode);
                     const cacheKey = `${level}-${parentId}-${code}`;
                     let cat = categoryCache.get(cacheKey);
                     if (cat) return cat;
@@ -343,16 +352,12 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     projectName: row.projectName || row['Dự án'] || row['Project'] || '',
                     level1Code: c1.code,
                     level1Name: c1.name,
-                    level1Slug: c1.slug,
                     level2Code: c2.code,
                     level2Name: c2.name,
-                    level2Slug: c2.slug,
                     level3Code: c3.code,
                     level3Name: c3.name,
-                    level3Slug: c3.slug,
                     level4Code: c4.code,
                     level4Name: c4.name,
-                    level4Slug: c4.slug,
                     runningNo,
                     runningNoText,
                     unit: row.unit || 'Cái',
@@ -367,7 +372,6 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     purchaseDate: row.purchase_date ? new Date(row.purchase_date) : null,
                     handoverDate: row.handover_date ? new Date(row.handover_date) : null,
                     depreciationEndDate: row.depreciation_end_date ? new Date(row.depreciation_end_date) : null,
-                    note: row.note,
                     documentNote: row.document_note,
                     supplierName: row.supplier_name
                 };

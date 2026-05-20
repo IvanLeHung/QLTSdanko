@@ -58,8 +58,13 @@ export const ImportAssets: React.FC = () => {
     const formData = new FormData();
     formData.append('file', file);
     try {
-      await api.post('/import/assets/excel', formData);
-      toast.success("Import dữ liệu thành công!");
+      const res = await api.post('/import/assets/excel', formData);
+      const data = res.data;
+      if (data.failedCount > 0) {
+        toast.warning(`Import hoàn tất: ${data.successCount} thành công, ${data.failedCount} thất bại! Vui lòng kiểm tra lại log.`, { autoClose: 10000 });
+      } else {
+        toast.success(`Import thành công toàn bộ ${data.successCount} tài sản!`);
+      }
       setPreviewData(null);
       setFile(null);
     } catch (err: any) {
