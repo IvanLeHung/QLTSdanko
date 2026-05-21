@@ -50,9 +50,11 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
   const fetchTemplates = async () => {
     try {
       const res = await api.get('/templates');
-      setTemplates(res.data.data || res.data || []);
+      const data = res.data?.data || res.data || [];
+      setTemplates(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
+      setTemplates([]);
     } finally {
       setLoading(false);
     }
@@ -61,9 +63,10 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
   const fetchGeneratedDocs = async () => {
     try {
       const res = await api.get(`/documents/entity/Asset/${asset.id}`);
-      setGeneratedDocs(res.data || []);
+      setGeneratedDocs(Array.isArray(res.data) ? res.data : []);
     } catch (err) {
       console.error(err);
+      setGeneratedDocs([]);
     }
   };
 
@@ -112,14 +115,20 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
   };
 
   const statusMap = getTemplatesByStatus(asset.status);
-  const requiredTemplates = templates.filter(t => statusMap.required.some(code => t.code.startsWith(code)));
-  const otherTemplates = templates.filter(t => statusMap.others.some(code => t.code.startsWith(code)));
+  const requiredTemplates = Array.isArray(templates)
+    ? templates.filter(t => t && t.code && statusMap.required.some(code => t.code.startsWith(code)))
+    : [];
+  const otherTemplates = Array.isArray(templates)
+    ? templates.filter(t => t && t.code && statusMap.others.some(code => t.code.startsWith(code)))
+    : [];
 
   const renderFormCard = (t: any) => {
-    const generated = generatedDocs.find(d => {
-      const docCode = d.templateCode || d.template?.templateCode;
-      return docCode && t.code.startsWith(docCode);
-    });
+    const generated = Array.isArray(generatedDocs)
+      ? generatedDocs.find(d => {
+          const docCode = d.templateCode || d.template?.templateCode;
+          return docCode && t.code && t.code.startsWith(docCode);
+        })
+      : undefined;
     const status = generated ? (generated.status === 'COMPLETED' ? 'Đã tạo' : 'Nháp') : 'Chưa tạo';
     
     return (
@@ -205,17 +214,24 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
 
   const getAttachments = () => {
     if (!asset.attachments) return [];
+    let parsed = [];
     if (typeof asset.attachments === 'string') {
-      try { return JSON.parse(asset.attachments); } catch(e) { return []; }
+      try {
+        parsed = JSON.parse(asset.attachments);
+      } catch (e) {
+        parsed = [];
+      }
+    } else {
+      parsed = asset.attachments;
     }
-    return asset.attachments;
+    return Array.isArray(parsed) ? parsed : [];
   };
   const attachments = getAttachments();
   const groupedAttachments = {
-    'Ảnh tài sản': attachments.filter((f: any) => f.group === 'Ảnh tài sản' || f.type?.includes('image')),
-    'Chứng từ mua sắm': attachments.filter((f: any) => f.group === 'Chứng từ mua sắm'),
-    'Biên bản ký tay': attachments.filter((f: any) => f.group === 'Biên bản ký tay'),
-    'Tem tài sản': attachments.filter((f: any) => f.group === 'Tem tài sản' || f.name?.includes('tem'))
+    'Ảnh tài sản': attachments.filter((f: any) => f && (f.group === 'Ảnh tài sản' || f.type?.includes('image'))),
+    'Chứng từ mua sắm': attachments.filter((f: any) => f && f.group === 'Chứng từ mua sắm'),
+    'Biên bản ký tay': attachments.filter((f: any) => f && f.group === 'Biên bản ký tay'),
+    'Tem tài sản': attachments.filter((f: any) => f && (f.group === 'Tem tài sản' || f.name?.includes('tem')))
   };
 
   return (
@@ -298,14 +314,14 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
           <History className="mr-2 h-3.5 w-3.5" /> Lịch sử hồ sơ
         </h4>
         <div className="space-y-2 px-2">
-           {generatedDocs.map(doc => (
+           {Array.isArray(generatedDocs) && generatedDocs.map(doc => (
              <div key={doc.id} className="text-[11px] text-slate-500 flex items-center">
                 <div className="w-1.5 h-1.5 rounded-full bg-slate-200 mr-3"></div>
-                <span className="font-bold mr-2">{format(new Date(doc.createdAt), 'dd/MM/yyyy')}</span>
-                <span>Tạo {doc.template?.templateCode} bởi <span className="text-slate-700 font-bold">{doc.createdBy}</span></span>
+                <span className="font-bold mr-2">{doc.createdAt ? format(new Date(doc.createdAt), 'dd/MM/yyyy') : ''}</span>
+                <span>Tạo {doc.template?.templateCode || doc.templateCode} bởi <span className="text-slate-700 font-bold">{doc.createdBy}</span></span>
              </div>
            ))}
-           {generatedDocs.length === 0 && (
+           {(!Array.isArray(generatedDocs) || generatedDocs.length === 0) && (
               <p className="text-[11px] text-slate-400 italic">Chưa ghi nhận lịch sử hồ sơ.</p>
            )}
         </div>
