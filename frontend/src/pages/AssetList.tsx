@@ -174,6 +174,7 @@ export const AssetList: React.FC = () => {
     switch (status) {
       case 'IN_STOCK': return { label: 'Trong kho', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
       case 'ASSIGNED': return { label: 'Đang sử dụng', color: 'bg-blue-50 text-blue-700 border-blue-100' };
+      case 'RETIRED': return { label: 'Đã thu hồi', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' };
       case 'UNDER_REPAIR': return { label: 'Đang sửa chữa', color: 'bg-amber-50 text-amber-700 border-amber-100' };
       case 'PENDING_DISPOSAL': return { label: 'Chờ thanh lý', color: 'bg-orange-50 text-orange-700 border-orange-100' };
       case 'DISPOSED': return { label: 'Đã thanh lý', color: 'bg-slate-50 text-slate-700 border-slate-100' };
@@ -395,6 +396,7 @@ export const AssetList: React.FC = () => {
       switch (p) {
         case 'IN_STOCK': return 'Trong kho';
         case 'ASSIGNED': return 'Đang sử dụng';
+        case 'RETIRED': return 'Đã thu hồi';
         case 'UNDER_REPAIR': return 'Đang sửa chữa';
         case 'PENDING_DISPOSAL': return 'Chờ thanh lý';
         case 'DISPOSED': return 'Đã thanh lý';
@@ -505,6 +507,7 @@ export const AssetList: React.FC = () => {
                   options={[
                     {label: 'Trong kho', value: 'IN_STOCK'},
                     {label: 'Đang sử dụng', value: 'ASSIGNED'},
+                    {label: 'Đã thu hồi', value: 'RETIRED'},
                     {label: 'Đang sửa chữa', value: 'UNDER_REPAIR'},
                     {label: 'Chờ thanh lý', value: 'PENDING_DISPOSAL'},
                     {label: 'Đã thanh lý', value: 'DISPOSED'},
@@ -753,12 +756,16 @@ export const AssetList: React.FC = () => {
                               <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-[#E2E8F0] z-40 p-2 animate-in fade-in zoom-in duration-150 text-left">
                                  <Can permission="ASSET_VIEW"><ActionItem label="Xem chi tiết" icon={<Eye className="h-4 w-4" />} onClick={() => handleAssetAction('view', asset)} /></Can>
                                  
-                                 {asset.status === 'ASSIGNED' ? (
+                                 {asset.status === 'ASSIGNED' && (
                                    <>
                                      <Can permission="TRANSFER_CREATE"><ActionItem label="Điều chuyển tài sản" icon={<ArrowRightLeft className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} /></Can>
                                      <Can permission="TRANSFER_CREATE"><ActionItem label="Thu hồi về kho" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} /></Can>
                                    </>
-                                 ) : (
+                                 )}
+                                 {asset.status === 'RETIRED' && (
+                                   <Can permission="TRANSFER_CREATE"><ActionItem label="Thu hồi về kho" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} /></Can>
+                                 )}
+                                 {asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && (
                                    <Can permission="TRANSFER_CREATE"><ActionItem label="Cấp phát / Bàn giao" icon={<UserPlus className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} /></Can>
                                  )}
 

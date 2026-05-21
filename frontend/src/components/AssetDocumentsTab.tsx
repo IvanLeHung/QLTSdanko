@@ -49,8 +49,8 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
 
   const fetchTemplates = async () => {
     try {
-      const res = await api.get('/settings/templates');
-      setTemplates(res.data);
+      const res = await api.get('/templates');
+      setTemplates(res.data.data || res.data || []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -61,7 +61,7 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
   const fetchGeneratedDocs = async () => {
     try {
       const res = await api.get(`/documents/entity/Asset/${asset.id}`);
-      setGeneratedDocs(res.data);
+      setGeneratedDocs(res.data || []);
     } catch (err) {
       console.error(err);
     }
@@ -78,6 +78,11 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
         return {
           required: ['BM02', 'BM12'],
           others: ['BM06', 'BM09', 'BM10', 'BM03', 'BM07']
+        };
+      case 'RETIRED':
+        return {
+          required: ['BM09', 'BM04'],
+          others: ['BM08']
         };
       case 'UNDER_REPAIR':
       case 'DAMAGED':
@@ -107,11 +112,14 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
   };
 
   const statusMap = getTemplatesByStatus(asset.status);
-  const requiredTemplates = templates.filter(t => statusMap.required.includes(t.templateCode));
-  const otherTemplates = templates.filter(t => statusMap.others.includes(t.templateCode));
+  const requiredTemplates = templates.filter(t => statusMap.required.some(code => t.code.startsWith(code)));
+  const otherTemplates = templates.filter(t => statusMap.others.some(code => t.code.startsWith(code)));
 
   const renderFormCard = (t: any) => {
-    const generated = generatedDocs.find(d => d.templateId === t.id);
+    const generated = generatedDocs.find(d => {
+      const docCode = d.templateCode || d.template?.templateCode;
+      return docCode && t.code.startsWith(docCode);
+    });
     const status = generated ? (generated.status === 'COMPLETED' ? 'Đã tạo' : 'Nháp') : 'Chưa tạo';
     
     return (
@@ -125,7 +133,7 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
               <FileText className="h-5 w-5" />
             </div>
             <div>
-              <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{t.templateCode} - {t.templateName}</p>
+              <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{t.code} - {t.name}</p>
               <p className="text-[10px] text-slate-400 font-medium">{t.description}</p>
             </div>
           </div>
@@ -146,7 +154,7 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
            <div className="flex space-x-1">
               {!generated ? (
                 <button 
-                  onClick={() => onSelectForm(t.templateCode)}
+                  onClick={() => onSelectForm(t.code)}
                   className="flex items-center px-3 py-1.5 bg-primary-600 text-white rounded-lg font-black text-[9px] uppercase tracking-widest hover:bg-primary-700 transition-all"
                 >
                   <Plus className="h-3 w-3 mr-1.5" /> Tạo
@@ -154,7 +162,7 @@ export const AssetDocumentsTab: React.FC<AssetDocumentsTabProps> = ({ asset, onR
               ) : (
                 <>
                   <button 
-                    onClick={() => onSelectForm(t.templateCode, { ...generated, isCompleted: generated.status === 'COMPLETED' })}
+                    onClick={() => onSelectForm(t.code, { ...generated, isCompleted: generated.status === 'COMPLETED' })}
                     className="p-2 hover:bg-slate-100 rounded-lg text-slate-600 transition-colors" 
                     title="Xem"
                   >

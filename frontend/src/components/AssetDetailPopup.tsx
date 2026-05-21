@@ -145,6 +145,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     switch (status) {
       case 'IN_STOCK': return { label: 'TRONG KHO', color: 'bg-emerald-100 text-emerald-700 border-emerald-200' };
       case 'ASSIGNED': return { label: 'ĐANG SỬ DỤNG', color: 'bg-blue-100 text-blue-700 border-blue-200' };
+      case 'RETIRED': return { label: 'ĐÃ THU HỒI', color: 'bg-indigo-100 text-indigo-700 border-indigo-200' };
       case 'UNDER_REPAIR': return { label: 'ĐANG SỬA CHỮA', color: 'bg-amber-100 text-amber-700 border-amber-200' };
       case 'DAMAGED': return { label: 'BÁO HỎNG', color: 'bg-rose-100 text-rose-700 border-rose-200' };
       case 'LOST': return { label: 'BÁO MẤT', color: 'bg-slate-800 text-white border-slate-700' };
@@ -944,12 +945,25 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                 </>
               ) : (
                 <>
-                  <button 
-                    onClick={() => onAction('handover', asset.id)}
-                    className="flex-1 bg-primary-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center justify-center"
-                  >
-                    <ArrowRightLeft className="mr-2 h-4 w-4" /> Bàn giao / Điều chuyển
-                  </button>
+                  {asset.status === 'RETIRED' ? (
+                    hasPermission('TRANSFER_CREATE') && (
+                      <button 
+                        onClick={() => onAction('revoke', asset.id)}
+                        className="flex-1 bg-indigo-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center"
+                      >
+                        <RotateCcw className="mr-2 h-4 w-4" /> Thu hồi về kho
+                      </button>
+                    )
+                  ) : (
+                    hasPermission('TRANSFER_CREATE') && (
+                      <button 
+                        onClick={() => onAction('handover', asset.id)}
+                        className="flex-1 bg-primary-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center justify-center"
+                      >
+                        <ArrowRightLeft className="mr-2 h-4 w-4" /> Bàn giao / Điều chuyển
+                      </button>
+                    )
+                  )}
                   <button 
                     onClick={() => onAction('inventory', asset.id)}
                     className="flex-1 bg-white border border-slate-200 text-slate-700 h-14 rounded-2xl font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center justify-center shadow-sm"
@@ -969,6 +983,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       <div className="absolute bottom-full right-0 mb-4 w-56 bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden z-20 animate-in zoom-in slide-in-from-bottom-4 duration-200">
                         <div className="p-2 space-y-1">
                           {[
+                            ...(asset.status === 'ASSIGNED' && hasPermission('TRANSFER_CREATE') ? [{ id: 'revoke', label: 'Thu hồi về kho', icon: RotateCcw, color: 'text-indigo-600' }] : []),
                             { id: 'lost', label: 'Báo mất tài sản', icon: ShieldAlert, color: 'text-slate-900', onClick: () => setSelectedForm({ code: 'BM13' }) },
                             { id: 'liquidate', label: 'Thanh lý tài sản', icon: Trash2, color: 'text-rose-600', onClick: () => setSelectedForm({ code: 'BM04' }) },
                           ].map((act) => (

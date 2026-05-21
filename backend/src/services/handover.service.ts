@@ -71,8 +71,11 @@ export class HandoverService {
             if (data.type === 'HANDOVER' && asset.status !== 'IN_STOCK') {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không còn ở trong kho để bàn giao.`);
             }
-            if ((data.type === 'TRANSFER' || data.type === 'RECALL') && asset.status !== 'ASSIGNED') {
+            if (data.type === 'TRANSFER' && asset.status !== 'ASSIGNED') {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng để luân chuyển.`);
+            }
+            if (data.type === 'RECALL' && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED') {
+              throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng hoặc đã thu hồi để thu hồi.`);
             }
           }
 
