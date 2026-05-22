@@ -4,29 +4,60 @@ import path from 'path';
 import fs from 'fs';
 import prisma from './prisma';
 
+// NFC normalize all Vietnamese text to prevent broken diacritical marks in PDF
+function nfc(text: any): string {
+  if (text === null || text === undefined) return '';
+  return String(text).normalize('NFC');
+}
+
 let fonts: any;
 try {
-  const regularPath = path.join(__dirname, '../../fonts/Roboto-Regular.ttf');
-  const mediumPath = path.join(__dirname, '../../fonts/Roboto-Medium.ttf');
-  const italicPath = path.join(__dirname, '../../fonts/Roboto-Italic.ttf');
-  const boldItalicPath = path.join(__dirname, '../../fonts/Roboto-MediumItalic.ttf');
+  // Prefer Noto Sans (full Vietnamese support)
+  const notoRegular = path.join(__dirname, '../../fonts/NotoSans-Regular.ttf');
+  const notoMedium = path.join(__dirname, '../../fonts/NotoSans-Medium.ttf');
+  const notoItalic = path.join(__dirname, '../../fonts/NotoSans-Italic.ttf');
+  const notoMediumItalic = path.join(__dirname, '../../fonts/NotoSans-MediumItalic.ttf');
 
-  const allExist = fs.existsSync(regularPath) && 
-                   fs.existsSync(mediumPath) && 
-                   fs.existsSync(italicPath) && 
-                   fs.existsSync(boldItalicPath);
+  const notoExists = fs.existsSync(notoRegular) && 
+                     fs.existsSync(notoMedium) && 
+                     fs.existsSync(notoItalic) && 
+                     fs.existsSync(notoMediumItalic);
 
-  if (allExist) {
+  if (notoExists) {
+    console.log('[PDF] Using Noto Sans fonts (Vietnamese support)');
     fonts = {
       Roboto: {
-        normal: regularPath,
-        bold: mediumPath,
-        italics: italicPath,
-        bolditalics: boldItalicPath
+        normal: notoRegular,
+        bold: notoMedium,
+        italics: notoItalic,
+        bolditalics: notoMediumItalic
       }
     };
   } else {
-    throw new Error('Some Roboto TrueType font files are missing.');
+    // Fallback to old Roboto fonts
+    const regularPath = path.join(__dirname, '../../fonts/Roboto-Regular.ttf');
+    const mediumPath = path.join(__dirname, '../../fonts/Roboto-Medium.ttf');
+    const italicPath = path.join(__dirname, '../../fonts/Roboto-Italic.ttf');
+    const boldItalicPath = path.join(__dirname, '../../fonts/Roboto-MediumItalic.ttf');
+
+    const allExist = fs.existsSync(regularPath) && 
+                     fs.existsSync(mediumPath) && 
+                     fs.existsSync(italicPath) && 
+                     fs.existsSync(boldItalicPath);
+
+    if (allExist) {
+      console.log('[PDF] Using Roboto fonts (fallback)');
+      fonts = {
+        Roboto: {
+          normal: regularPath,
+          bold: mediumPath,
+          italics: italicPath,
+          bolditalics: boldItalicPath
+        }
+      };
+    } else {
+      throw new Error('No TrueType font files found.');
+    }
   }
 } catch (error) {
   console.error('PDF_FONT_LOAD_ERROR: Falling back to standard Helvetica.', error);
@@ -58,10 +89,10 @@ export class PdfUtil {
     const month = (docDate.getMonth() + 1).toString().padStart(2, '0');
     const year = docDate.getFullYear();
     
-    const location = document.newLocation || '................................';
-    const city = document.newCity || 'Hà Nội';
+    const location = nfc(document.newLocation) || '................................';
+    const city = nfc(document.newCity) || 'Hà Nội';
 
-    let titleText = options.templateName || 'BIÊN BẢN BÀN GIAO TÀI SẢN';
+    let titleText = nfc(options.templateName) || 'BIÊN BẢN BÀN GIAO TÀI SẢN';
     let senderRoleLabel = 'Đại diện bên giao';
     let recipientRoleLabel = 'Đại diện bên nhận';
 
@@ -120,8 +151,8 @@ export class PdfUtil {
     if (headerSettings.showLogo !== false) {
       headerColumns.push({
         stack: [
-          { text: headerSettings.companyName || 'DANKO GROUP', style: 'companyHeader' },
-          { text: headerSettings.departmentText || 'BỘ PHẬN QLTS', style: 'departmentHeader' }
+          { text: nfc(headerSettings.companyName) || 'DANKO GROUP', style: 'companyHeader' },
+          { text: nfc(headerSettings.departmentText) || 'BỘ PHẬN QLTS', style: 'departmentHeader' }
         ],
         width: '*'
       });
@@ -142,7 +173,7 @@ export class PdfUtil {
 
     if (headerSettings.showTemplateCode !== false) {
       headerColumns.push({
-        text: `Mẫu số: ${options.templateCode || config.code || 'BM02/QLTS'}`,
+        text: nfc(`Mẫu số: ${options.templateCode || config.code || 'BM02/QLTS'}`),
         style: 'templateCodeHeader',
         alignment: 'right',
         width: 100
@@ -155,40 +186,40 @@ export class PdfUtil {
         columnGap: 10
       },
       { text: '\n\n' },
-      { text: titleText, style: 'documentTitle', alignment: 'center' },
-      { text: `Số: ${document.documentNo}`, style: 'documentSubNo', alignment: 'center' },
+      { text: nfc(titleText), style: 'documentTitle', alignment: 'center' },
+      { text: nfc(`Số: ${document.documentNo}`), style: 'documentSubNo', alignment: 'center' },
       { text: '\n\n' },
       { 
         text: [
           { text: 'Hôm nay', font: 'Roboto' },
-          `, ngày ${day} tháng ${month} năm ${year}, tại ${location}`
+          nfc(`, ngày ${day} tháng ${month} năm ${year}, tại ${location}`)
         ],
         style: 'normalText' 
       },
-      { text: 'Chúng tôi gồm:', style: 'normalText', margin: [0, 5, 0, 10] },
-      { text: `1. ${senderRoleLabel}`, style: 'sectionHeader' },
+      { text: nfc('Chúng tôi gồm:'), style: 'normalText', margin: [0, 5, 0, 10] },
+      { text: nfc(`1. ${senderRoleLabel}`), style: 'sectionHeader' },
       {
         columns: [
-          { text: `Ông/Bà: ${document.senderName || '................................'}`, style: 'normalText', width: '50%' },
-          { text: `Bộ phận: ${document.senderDepartment || '................................'}`, style: 'normalText', width: '50%' }
+          { text: nfc(`Ông/Bà: ${nfc(document.senderName) || '................................'}`), style: 'normalText', width: '50%' },
+          { text: nfc(`Bộ phận: ${nfc(document.senderDepartment) || '................................'}`), style: 'normalText', width: '50%' }
         ],
         margin: [0, 2, 0, 2]
       },
       { 
-        text: `Chức vụ: ${document.senderPosition || '................................'}`, 
+        text: nfc(`Chức vụ: ${nfc(document.senderPosition) || '................................'}`), 
         style: 'normalText',
         margin: [0, 2, 0, 10]
       },
-      { text: `2. ${recipientRoleLabel}`, style: 'sectionHeader' },
+      { text: nfc(`2. ${recipientRoleLabel}`), style: 'sectionHeader' },
       {
         columns: [
           { 
-            text: `Ông/Bà: ${document.type === 'RECALL' ? (document.senderName || '................................') : (document.recipientName || '................................')}`, 
+            text: nfc(`Ông/Bà: ${document.type === 'RECALL' ? (nfc(document.senderName) || '................................') : (nfc(document.recipientName) || '................................')}`), 
             style: 'normalText', 
             width: '50%' 
           },
           { 
-            text: `Bộ phận: ${document.type === 'RECALL' ? 'Bộ phận QLTS / HCNS / Kho' : (document.recipientDepartment || '................................')}`, 
+            text: nfc(`Bộ phận: ${document.type === 'RECALL' ? 'Bộ phận QLTS / HCNS / Kho' : (nfc(document.recipientDepartment) || '................................')}`), 
             style: 'normalText', 
             width: '50%' 
           }
@@ -196,26 +227,26 @@ export class PdfUtil {
         margin: [0, 2, 0, 2]
       },
       { 
-        text: `Chức vụ: ${document.type === 'RECALL' ? 'Cán bộ Bộ phận QLTS' : (document.recipientPosition || '................................')}`, 
+        text: nfc(`Chức vụ: ${document.type === 'RECALL' ? 'Cán bộ Bộ phận QLTS' : (nfc(document.recipientPosition) || '................................')}`), 
         style: 'normalText',
         margin: [0, 2, 0, 15]
       },
-      { text: 'Cùng giao/nhận tài sản như sau:', style: 'normalTextBold', margin: [0, 0, 0, 8] }
+      { text: nfc('Cùng giao/nhận tài sản như sau:'), style: 'normalTextBold', margin: [0, 0, 0, 8] }
     ];
 
     // Build Asset Table Columns dynamically
     const COLUMN_HEADERS: Record<string, any> = {
       index: { text: 'STT', style: 'tableHeader', alignment: 'center' },
-      assetCode: { text: 'Mã tài sản', style: 'tableHeader', alignment: 'center' },
-      assetCodeQr: { text: 'Mã tài sản / QR', style: 'tableHeader', alignment: 'center' },
-      assetName: { text: 'Tên tài sản', style: 'tableHeader' },
-      specification: { text: 'Mô tả kỹ thuật', style: 'tableHeader' },
+      assetCode: { text: nfc('Mã tài sản'), style: 'tableHeader', alignment: 'center' },
+      assetCodeQr: { text: nfc('Mã tài sản / QR'), style: 'tableHeader', alignment: 'center' },
+      assetName: { text: nfc('Tên tài sản'), style: 'tableHeader' },
+      specification: { text: nfc('Mô tả kỹ thuật'), style: 'tableHeader' },
       serial: { text: 'Serial', style: 'tableHeader' },
-      unit: { text: 'ĐVT', style: 'tableHeader', alignment: 'center' },
+      unit: { text: nfc('ĐVT'), style: 'tableHeader', alignment: 'center' },
       quantity: { text: 'SL', style: 'tableHeader', alignment: 'center' },
-      condition: { text: 'Tình trạng', style: 'tableHeader' },
-      note: { text: 'Ghi chú', style: 'tableHeader' },
-      purchasePriceExVat: { text: 'Đơn giá', style: 'tableHeader', alignment: 'right' }
+      condition: { text: nfc('Tình trạng'), style: 'tableHeader' },
+      note: { text: nfc('Ghi chú'), style: 'tableHeader' },
+      purchasePriceExVat: { text: nfc('Đơn giá'), style: 'tableHeader', alignment: 'right' }
     };
 
     const COLUMN_WIDTHS: Record<string, string | number> = {
@@ -242,9 +273,9 @@ export class PdfUtil {
 
     const bodyRows = document.items.map((item: any, index: number) => {
       const asset = assetMap.get(item.assetId);
-      const spec = asset?.usagePurpose || asset?.level4Name || '---';
-      const serial = asset?.serialNumber || '---';
-      const cond = asset?.status === 'ASSIGNED' ? 'Đang sử dụng' : (asset?.status === 'IN_STOCK' ? 'Trong kho' : (asset?.status === 'LOST' ? 'Mất' : 'Bình thường'));
+      const spec = nfc(asset?.usagePurpose || asset?.level4Name) || '---';
+      const serial = nfc(asset?.serialNumber) || '---';
+      const cond = asset?.status === 'ASSIGNED' ? nfc('Đang sử dụng') : (asset?.status === 'IN_STOCK' ? nfc('Trong kho') : (asset?.status === 'LOST' ? nfc('Mất') : nfc('Bình thường')));
       const price = asset?.purchasePriceExVat ? asset.purchasePriceExVat.toLocaleString() : '---';
 
       const vMargin = showQrInTable && activeColumns.includes('assetCodeQr') ? [0, 15, 0, 5] : [0, 4, 0, 4];
@@ -263,19 +294,19 @@ export class PdfUtil {
               ]
             };
           case 'assetName':
-            return { text: item.assetName, style: 'tableCell', margin: vMargin };
+            return { text: nfc(item.assetName), style: 'tableCell', margin: vMargin };
           case 'specification':
-            return { text: spec, style: 'tableCell', margin: vMargin };
+            return { text: nfc(spec), style: 'tableCell', margin: vMargin };
           case 'serial':
-            return { text: serial, style: 'tableCell', margin: vMargin };
+            return { text: nfc(serial), style: 'tableCell', margin: vMargin };
           case 'unit':
-            return { text: item.unit || 'Cái', style: 'tableCell', alignment: 'center', margin: vMargin };
+            return { text: nfc(item.unit) || nfc('Cái'), style: 'tableCell', alignment: 'center', margin: vMargin };
           case 'quantity':
             return { text: '1', style: 'tableCell', alignment: 'center', margin: vMargin };
           case 'condition':
-            return { text: cond, style: 'tableCell', margin: vMargin };
+            return { text: nfc(cond), style: 'tableCell', margin: vMargin };
           case 'note':
-            return { text: asset?.documentNote || '---', style: 'tableCell', margin: vMargin };
+            return { text: nfc(asset?.documentNote) || '---', style: 'tableCell', margin: vMargin };
           case 'purchasePriceExVat':
             return { text: price, style: 'tableCell', alignment: 'right', margin: vMargin };
           default:
@@ -324,14 +355,14 @@ export class PdfUtil {
       }
 
       content.push({
-        stack: commitmentContent.map((text: string) => ({ text, style: 'commitmentText' })),
+        stack: commitmentContent.map((text: string) => ({ text: nfc(text), style: 'commitmentText' })),
         margin: [0, 5, 0, 15]
       });
     }
 
     content.push(
       {
-        text: `${city}, ngày ${day} tháng ${month} năm ${year}`,
+        text: nfc(`${city}, ngày ${day} tháng ${month} năm ${year}`),
         style: 'normalTextItalic',
         alignment: 'right',
         margin: [0, 0, 0, 15]
@@ -340,12 +371,12 @@ export class PdfUtil {
 
     // Build Signatures dinamically
     const SIGNATURE_ROLES: Record<string, { title: string; subtitle: string }> = {
-      sender: { title: senderRoleLabel.toUpperCase(), subtitle: '(Ký, ghi rõ họ tên)' },
-      receiver: { title: recipientRoleLabel.toUpperCase(), subtitle: '(Ký, ghi rõ họ tên)' },
-      qlts: { title: 'CVTS / HCNS', subtitle: '(Ký, ghi rõ họ tên)' },
-      director: { title: 'GIÁM ĐỐC', subtitle: '(Ký, đóng dấu)' },
-      department: { title: 'TRƯỞNG PHÒNG', subtitle: '(Ký, ghi rõ họ tên)' },
-      inventory: { title: 'HỘI ĐỒNG KIỂM KÊ', subtitle: '(Ký, ghi rõ họ tên)' }
+      sender: { title: nfc(senderRoleLabel.toUpperCase()), subtitle: nfc('(Ký, ghi rõ họ tên)') },
+      receiver: { title: nfc(recipientRoleLabel.toUpperCase()), subtitle: nfc('(Ký, ghi rõ họ tên)') },
+      qlts: { title: nfc('CVTS / HCNS'), subtitle: nfc('(Ký, ghi rõ họ tên)') },
+      director: { title: nfc('GIÁM ĐỐC'), subtitle: nfc('(Ký, đóng dấu)') },
+      department: { title: nfc('TRƯỞNG PHÒNG'), subtitle: nfc('(Ký, ghi rõ họ tên)') },
+      inventory: { title: nfc('HỘI ĐỒNG KIỂM KÊ'), subtitle: nfc('(Ký, ghi rõ họ tên)') }
     };
 
     const sigCols = sigSettings.columns || ['sender', 'receiver', 'qlts'];
@@ -356,8 +387,8 @@ export class PdfUtil {
       const role = SIGNATURE_ROLES[col] || { title: col.toUpperCase(), subtitle: '(Ký, ghi rõ họ tên)' };
       return {
         stack: [
-          { text: role.title, style: 'signatureRole' },
-          { text: role.subtitle, style: 'signatureSubText' }
+          { text: nfc(role.title), style: 'signatureRole' },
+          { text: nfc(role.subtitle), style: 'signatureSubText' }
         ],
         alignment: 'center',
         width: colWidth
@@ -379,7 +410,7 @@ export class PdfUtil {
         
         if (footerSettings.showSupportLine !== false) {
           footerElements.push({ 
-            text: footerSettings.supportLine || 'CBNV có nhu cầu hỗ trợ về CNTT xin liên hệ: Lê Khánh Hùng – Phone/Viber: 0977131579', 
+            text: nfc(footerSettings.supportLine || 'CBNV có nhu cầu hỗ trợ về CNTT xin liên hệ: Lê Khánh Hùng – Phone/Viber: 0977131579'), 
             fontSize: 7.5, 
             color: '#475569', 
             alignment: 'center',
@@ -389,12 +420,12 @@ export class PdfUtil {
 
         const footerCols: any[] = [];
         if (footerSettings.showPageNumber !== false) {
-          footerCols.push({ text: `Trang ${currentPage}/${pageCount}`, fontSize: 8, color: '#64748b' });
+          footerCols.push({ text: nfc(`Trang ${currentPage}/${pageCount}`), fontSize: 8, color: '#64748b' });
         } else {
           footerCols.push({ text: '', fontSize: 8 });
         }
 
-        footerCols.push({ text: `Mã hồ sơ: ${document.documentNo}`, fontSize: 8, color: '#64748b', alignment: 'right' });
+        footerCols.push({ text: nfc(`Mã hồ sơ: ${document.documentNo}`), fontSize: 8, color: '#64748b', alignment: 'right' });
 
         footerElements.push({
           columns: footerCols
