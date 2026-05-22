@@ -1,9 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
+import { DateRangeModal } from '../components/DateRangeModal';
 import { 
   ClipboardCheck, 
   Plus, 
+  Download,
   Calendar, 
   Tag, 
   ChevronRight, 
@@ -31,6 +33,28 @@ export const InventoryList: React.FC = () => {
     scopeType: 'ALL',
     scopeValue: ''
   });
+
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  const handleExportInventory = async (startDate: string, endDate: string) => {
+    try {
+      const response = await api.get('/inventory/export-by-time', {
+        params: { startDate, endDate },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `bao_cao_kiem_ke_${startDate}_to_${endDate}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Tải báo cáo kiểm kê tài sản thành công!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi tải báo cáo kiểm kê tài sản");
+    }
+  };
 
   const fetchChecks = async () => {
     try {
@@ -71,12 +95,21 @@ export const InventoryList: React.FC = () => {
           <h1 className="text-[40px] font-[900] text-[#0F172A] tracking-tighter leading-none mb-2">Kiểm kê tài sản</h1>
           <p className="text-slate-500 font-medium text-lg">Quản lý và theo dõi các đợt đối soát tài sản thực tế.</p>
         </div>
-        <button 
-          onClick={() => setShowCreateModal(true)}
-          className="bg-primary-600 text-white px-8 py-5 rounded-[2rem] font-[800] text-sm uppercase tracking-widest hover:bg-primary-700 transition-all flex items-center shadow-2xl shadow-primary-200"
-        >
-          <Plus className="mr-2 h-6 w-6" /> Tạo đợt kiểm kê mới
-        </button>
+        <div className="flex gap-3">
+          <button 
+            type="button"
+            onClick={() => setIsExportModalOpen(true)}
+            className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-5 rounded-[2rem] font-[800] text-sm uppercase tracking-widest transition-all flex items-center"
+          >
+            <Download className="mr-2 h-6 w-6" /> Tải báo cáo
+          </button>
+          <button 
+            onClick={() => setShowCreateModal(true)}
+            className="bg-primary-600 text-white px-8 py-5 rounded-[2rem] font-[800] text-sm uppercase tracking-widest hover:bg-primary-700 transition-all flex items-center shadow-2xl shadow-primary-200"
+          >
+            <Plus className="mr-2 h-6 w-6" /> Tạo đợt kiểm kê mới
+          </button>
+        </div>
       </div>
 
       {/* QUICK STATS */}
@@ -233,6 +266,14 @@ export const InventoryList: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* EXPORT MODAL */}
+      <DateRangeModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirm={handleExportInventory}
+        title="Tải báo cáo kiểm kê tài sản"
+      />
     </div>
   );
 };

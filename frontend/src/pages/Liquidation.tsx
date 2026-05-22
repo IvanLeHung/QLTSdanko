@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
+import { DateRangeModal } from '../components/DateRangeModal';
 import { 
   Trash2, 
   Plus, 
+  Download,
   Search, 
   X,
   ChevronRight,
@@ -40,9 +42,27 @@ export const Liquidation: React.FC = () => {
   const fromDate = searchParams.get('fromDate');
   const toDate = searchParams.get('toDate');
 
-  useEffect(() => {
-    fetchReports();
-  }, [fromDate, toDate]);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  const handleExportLiquidated = async (startDate: string, endDate: string) => {
+    try {
+      const response = await api.get('/assets/export-liquidated', {
+        params: { startDate, endDate },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `bao_cao_thanh_ly_${startDate}_to_${endDate}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Tải báo cáo thanh lý thành công!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi tải báo cáo thanh lý");
+    }
+  };
 
   const fetchReports = async () => {
     try {
@@ -60,6 +80,10 @@ export const Liquidation: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchReports();
+  }, [fromDate, toDate]);
 
   const searchAssets = async (val: string) => {
     setAssetSearch(val);
@@ -112,12 +136,20 @@ export const Liquidation: React.FC = () => {
           </h1>
           <p className="text-slate-500 font-medium">Hoàn tất vòng đời tài sản (Bán, Hủy, Cho tặng, Trả NCC).</p>
         </div>
-        <button 
-          onClick={() => setShowCreate(true)}
-          className="bg-slate-900 text-white h-12 px-6 rounded-2xl font-bold flex items-center shadow-lg shadow-slate-200 hover:bg-black transition-all"
-        >
-          <Plus className="mr-2 h-5 w-5" /> Tạo hồ sơ thanh lý
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setIsExportModalOpen(true)}
+            className="border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 h-12 px-5 rounded-2xl font-bold flex items-center gap-2 shadow-sm transition-all"
+          >
+            <Download className="h-5 w-5 text-slate-500" /> Tải báo cáo
+          </button>
+          <button 
+            onClick={() => setShowCreate(true)}
+            className="bg-slate-900 text-white h-12 px-6 rounded-2xl font-bold flex items-center shadow-lg shadow-slate-200 hover:bg-black transition-all"
+          >
+            <Plus className="mr-2 h-5 w-5" /> Tạo hồ sơ thanh lý
+          </button>
+        </div>
       </div>
 
       {/* LIQUIDATED ASSETS LIST */}
@@ -314,6 +346,14 @@ export const Liquidation: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* EXPORT MODAL */}
+      <DateRangeModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirm={handleExportLiquidated}
+        title="Tải báo cáo Thanh lý tài sản"
+      />
     </div>
   );
 };

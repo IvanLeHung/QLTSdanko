@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { DateRangeModal } from '../components/DateRangeModal';
 import { 
   ShieldAlert, 
   Plus, 
+  Download,
   Search, 
   CheckCircle2, 
   Clock, 
@@ -40,9 +42,27 @@ export const LostReport: React.FC = () => {
   const fromDate = searchParams.get('fromDate');
   const toDate = searchParams.get('toDate');
 
-  useEffect(() => {
-    fetchReports();
-  }, [filterStatus, fromDate, toDate]);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  const handleExportByTime = async (startDate: string, endDate: string) => {
+    try {
+      const response = await api.get('/lost/export-by-time', {
+        params: { startDate, endDate },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `bao_cao_bao_mat_tai_san_${startDate}_to_${endDate}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Tải báo cáo báo mất tài sản thành công!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi tải báo cáo báo mất tài sản");
+    }
+  };
 
   const fetchReports = async () => {
     setLoading(true);
@@ -62,6 +82,10 @@ export const LostReport: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchReports();
+  }, [filterStatus, fromDate, toDate]);
 
   const getStatusInfo = (status: string) => {
     switch (status) {
@@ -94,12 +118,20 @@ export const LostReport: React.FC = () => {
           </h1>
           <p className="text-slate-500 font-medium text-lg">Ghi nhận và truy vết tài sản bị thất thoát, mất mát trong hệ thống.</p>
         </div>
-        <button 
-          onClick={() => setShowCreate(true)}
-          className="h-14 px-8 bg-rose-600 text-white rounded-2xl font-black text-[13px] uppercase tracking-widest shadow-xl shadow-rose-200 hover:bg-rose-700 transition-all flex items-center"
-        >
-          <Plus className="mr-2 h-5 w-5" /> Ghi nhận mất tài sản
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setIsExportModalOpen(true)}
+            className="h-14 px-6 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 rounded-2xl font-black text-[13px] uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm"
+          >
+            <Download className="h-5 w-5 text-slate-500" /> Tải báo cáo
+          </button>
+          <button 
+            onClick={() => setShowCreate(true)}
+            className="h-14 px-8 bg-rose-600 text-white rounded-2xl font-black text-[13px] uppercase tracking-widest shadow-xl shadow-rose-200 hover:bg-rose-700 transition-all flex items-center"
+          >
+            <Plus className="mr-2 h-5 w-5" /> Ghi nhận mất tài sản
+          </button>
+        </div>
       </div>
 
       {/* STATS SUMMARY */}
@@ -269,6 +301,12 @@ export const LostReport: React.FC = () => {
            onSuccess={() => { setSelectedReportId(null); fetchReports(); }}
         />
       )}
+      <DateRangeModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirm={handleExportByTime}
+        title="Tải báo cáo Báo mất tài sản"
+      />
     </div>
   );
 };

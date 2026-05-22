@@ -3,6 +3,8 @@ import { HandoverService } from '../services/handover.service';
 import { authenticateToken, AuthRequest, requirePermission } from '../middleware/auth.middleware';
 import { PdfUtil } from '../utils/pdf.util';
 import { buildDataScopeWhere } from '../utils/data-scope.util';
+import prisma from '../utils/prisma';
+import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
 
 const router = Router();
 
@@ -212,6 +214,137 @@ router.get('/:id/pdf', authenticateToken, requirePermission('TRANSFER_PRINT_PDF'
     res.send(pdfBuffer);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /export-by-time - Bàn giao / Điều chuyển / Thu hồi (Handover & Transfer Documents by Date Range)
+router.get('/export-by-time', authenticateToken, requirePermission('TRANSFER_VIEW'), async (req: AuthRequest, res) => {
+  const { startDate, endDate } = req.query;
+  const where: any = {};
+
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) where.createdAt.gte = new Date(String(startDate));
+    if (endDate) {
+      const end = new Date(String(endDate));
+      end.setHours(23, 59, 59, 999);
+      where.createdAt.lte = end;
+    }
+  }
+
+  // Data Scope
+  const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+    company: 'dummy',
+    department: 'dummy',
+    warehouse: 'newLocation',
+    user: 'recipientName'
+  });
+  if (Object.keys(scopeWhere).length > 0) {
+    if (scopeWhere.id === -1) {
+      const workbook = buildExcelWorkbook('DANH SÁCH BÀN GIAO - ĐIỀU CHUYỂN', 'Không tìm thấy dữ liệu', [], [], 'Bàn giao');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoBanGiao.xlsx');
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
+    const orConds = [];
+    if (scopeWhere.recipientName) orConds.push({ recipientName: scopeWhere.recipientName });
+    if (scopeWhere.newLocation) orConds.push({ newLocation: scopeWhere.newLocation });
+    if (orConds.length > 0) {
+      where.OR = orConds;
+    }
+  }
+
+  try {
+    const documents = await prisma.handoverDocument.findMany({
+      where,
+      include: {
+        items: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    const headers = [
+      'Số biên bản', 'Loại hồ sơ', 'Trạng thái', 'Người giao', 'Phòng ban giao',
+      'Người nhận', 'Phòng ban nhận', 'Nơi nhận mới', 'Lý do', 'Ghi chú',
+      'Ngày tạo', 'Ngày xác nhận', 'Mã tài sản bàn giao', 'Tên tài sản bàn giao',
+      'Đơn vị tính', 'Trạng thái trước', 'Trạng thái sau'
+    ];
+
+    const rows: any[][] = [];
+    documents.forEach(doc => {
+      const docType = doc.type === 'HANDOVER' ? 'Bàn giao' :
+                      doc.type === 'TRANSFER' ? 'Điều chuyển' :
+                      doc.type === 'REVOKE' || doc.type === 'RECALL' ? 'Thu hồi' : doc.type;
+
+      const docStatus = doc.status === 'DRAFT' ? 'Nháp' :
+                        doc.status === 'PENDING_CONFIRMATION' ? 'Chờ xác nhận' :
+                        doc.status === 'COMPLETED' ? 'Hoàn thành' :
+                        doc.status === 'CANCELLED' ? 'Đã hủy' : doc.status;
+
+      if (doc.items && doc.items.length > 0) {
+        doc.items.forEach(item => {
+          rows.push([
+            doc.documentNo,
+            docType,
+            docStatus,
+            doc.senderName || '',
+            doc.senderDepartment || '',
+            doc.recipientName,
+            doc.recipientDepartment || '',
+            doc.newLocation || '',
+            doc.reason || '',
+            doc.note || '',
+            formatDate(doc.createdAt),
+            formatDate(doc.confirmedAt),
+            item.assetCode,
+            item.assetName,
+            item.unit || 'Cái',
+            item.oldStatus === 'IN_STOCK' ? 'Trong kho' : item.oldStatus || '',
+            item.newStatus === 'ASSIGNED' ? 'Đã cấp phát' : item.newStatus || ''
+          ]);
+        });
+      } else {
+        rows.push([
+          doc.documentNo,
+          docType,
+          docStatus,
+          doc.senderName || '',
+          doc.senderDepartment || '',
+          doc.recipientName,
+          doc.recipientDepartment || '',
+          doc.newLocation || '',
+          doc.reason || '',
+          doc.note || '',
+          formatDate(doc.createdAt),
+          formatDate(doc.confirmedAt),
+          '',
+          '',
+          '',
+          '',
+          ''
+        ]);
+      }
+    });
+
+    const dateRangeStr = startDate && endDate ? `Từ ${startDate} đến ${endDate}` : 'Tất cả thời gian';
+    const userStr = req.user?.fullName || req.user?.username || 'Admin';
+    const workbook = buildExcelWorkbook(
+      'BÁO CÁO TỔNG HỢP BÀN GIAO / ĐIỀU CHUYỂN TÀI SẢN',
+      `Khoảng thời gian: ${dateRangeStr} | Người xuất: ${userStr}`,
+      headers,
+      rows,
+      'Bàn giao Điều chuyển'
+    );
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoBanGiaoDieuChuyen.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi xuất Excel: ' + error.message });
   }
 });
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { toast } from 'react-toastify';
+import { DateRangeModal } from '../components/DateRangeModal';
 import { 
   ArrowLeft, 
   Save, 
@@ -103,6 +104,27 @@ export const CreateAsset: React.FC = () => {
   // Paste Quick Import Modal State
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  const handleExportCreated = async (startDate: string, endDate: string) => {
+    try {
+      const response = await api.get('/assets/export-created', {
+        params: { startDate, endDate },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `bao_cao_cap_moi_${startDate}_to_${endDate}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Tải báo cáo cấp mới/nhập lô thành công!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi tải báo cáo cấp mới/nhập lô");
+    }
+  };
 
   // Load Metadata
   useEffect(() => {
@@ -563,6 +585,12 @@ export const CreateAsset: React.FC = () => {
         </div>
 
         <div className="flex gap-3">
+          <button 
+            onClick={() => setIsExportModalOpen(true)}
+            className="flex items-center gap-2 px-4 py-2 border.5 border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
+          >
+            <Download className="h-4 w-4 text-primary-500" /> Tải báo cáo tổng hợp
+          </button>
           <button 
             onClick={handleDownloadTemplate}
             className="flex items-center gap-2 px-4 py-2 border.5 border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
@@ -1239,6 +1267,12 @@ export const CreateAsset: React.FC = () => {
           </div>
         </div>
       )}
+      <DateRangeModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirm={handleExportCreated}
+        title="Tải báo cáo Cấp mới / Nhập lô"
+      />
     </div>
   );
 };

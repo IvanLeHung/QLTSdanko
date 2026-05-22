@@ -6,6 +6,8 @@ import multer from 'multer';
 import { InvoiceParserService } from '../services/invoice-parser.service';
 import { InvoicePostService } from '../services/invoice-post.service';
 import { buildDataScopeWhere } from '../utils/data-scope.util';
+import ExcelJS from 'exceljs';
+import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -621,6 +623,442 @@ router.get('/import-invoice/template', async (req, res) => {
     res.send(csvContent);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /export-excel - Sổ tài sản (Asset Register Snapshot with filters)
+router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
+  const { 
+    search = '', 
+    sortBy = 'createdAt', 
+    sortOrder = 'desc',
+    status,
+    companyCode,
+    currentUserName,
+    departmentName,
+    locationQuery,
+    cityName,
+    projectName,
+    level4Code,
+    priceMin,
+    priceMax,
+    purchaseDateFrom,
+    purchaseDateTo,
+    handoverDateFrom,
+    handoverDateTo,
+    depreciationEndDateFrom,
+    depreciationEndDateTo,
+    supplierName,
+    hasSerial,
+    hasDocuments,
+    lastInventoryFrom,
+    lastInventoryTo,
+    inventoryStatus,
+    createdFrom,
+    createdTo
+  } = req.query;
+
+  const where: any = { isDeleted: false };
+  const andClauses: any[] = [];
+
+  // Data Scope
+  const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+    company: 'companyCode',
+    department: 'departmentName',
+    warehouse: 'locationName',
+    user: 'currentUserName'
+  });
+  
+  if (Object.keys(scopeWhere).length > 0) {
+    if (scopeWhere.id === -1) {
+      const workbook = buildExcelWorkbook('DANH SÁCH SỔ TÀI SẢN', 'Không tìm thấy dữ liệu', [], [], 'Sổ tài sản');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=SoTaiSan.xlsx');
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
+    andClauses.push(scopeWhere);
+  }
+
+  // Advanced Search
+  if (search) {
+    const searchString = String(search);
+    andClauses.push({
+      OR: [
+        { assetCode: { contains: searchString } },
+        { assetName: { contains: searchString } },
+        { assetNameShort: { contains: searchString } },
+        { serialNumber: { contains: searchString } },
+        { companyCode: { contains: searchString } },
+        { companyName: { contains: searchString } },
+        { projectName: { contains: searchString } },
+        { level1Code: { contains: searchString } },
+        { level1Name: { contains: searchString } },
+        { level2Code: { contains: searchString } },
+        { level2Name: { contains: searchString } },
+        { level3Code: { contains: searchString } },
+        { level3Name: { contains: searchString } },
+        { level4Code: { contains: searchString } },
+        { level4Name: { contains: searchString } },
+        { runningNoText: { contains: searchString } },
+        { status: { contains: searchString } },
+        { unit: { contains: searchString } },
+        { usagePurpose: { contains: searchString } },
+        { supplierName: { contains: searchString } },
+        { currentUserName: { contains: searchString } },
+        { currentPosition: { contains: searchString } },
+        { departmentName: { contains: searchString } },
+        { locationName: { contains: searchString } },
+        { cityName: { contains: searchString } },
+        { documentNote: { contains: searchString } },
+        { lastInventoryStatus: { contains: searchString } }
+      ]
+    });
+  }
+
+  if (status) {
+    const statusArray = String(status).split(',').filter(Boolean);
+    if (statusArray.length > 0) {
+      const mappedStatuses: string[] = [];
+      for (const s of statusArray) {
+        if (s === 'BROKEN') {
+          mappedStatuses.push('DAMAGED');
+          mappedStatuses.push('BROKEN');
+        } else if (s === 'LIQUIDATED') {
+          mappedStatuses.push('LIQUIDATED');
+          mappedStatuses.push('DISPOSED');
+        } else {
+          mappedStatuses.push(s);
+        }
+      }
+      where.status = { in: mappedStatuses };
+    }
+  }
+
+  if (companyCode) where.companyCode = String(companyCode);
+  if (currentUserName) where.currentUserName = { contains: String(currentUserName) };
+  if (departmentName) where.departmentName = { contains: String(departmentName) };
+  if (level4Code) where.level4Code = String(level4Code);
+  if (cityName) where.cityName = { contains: String(cityName) };
+  if (projectName) where.projectName = { contains: String(projectName) };
+  if (locationQuery) {
+    andClauses.push({
+      OR: [
+        { locationName: { contains: String(locationQuery) } },
+        { cityName: { contains: String(locationQuery) } },
+        { projectName: { contains: String(locationQuery) } }
+      ]
+    });
+  }
+
+  if (priceMin || priceMax) {
+    where.purchasePriceExVat = {};
+    if (priceMin) where.purchasePriceExVat.gte = Number(priceMin);
+    if (priceMax) where.purchasePriceExVat.lte = Number(priceMax);
+  }
+
+  if (purchaseDateFrom || purchaseDateTo) {
+    where.purchaseDate = {};
+    if (purchaseDateFrom) where.purchaseDate.gte = new Date(String(purchaseDateFrom));
+    if (purchaseDateTo) where.purchaseDate.lte = new Date(String(purchaseDateTo));
+  }
+  
+  if (handoverDateFrom || handoverDateTo) {
+    where.handoverDate = {};
+    if (handoverDateFrom) where.handoverDate.gte = new Date(String(handoverDateFrom));
+    if (handoverDateTo) where.handoverDate.lte = new Date(String(handoverDateTo));
+  }
+
+  if (depreciationEndDateFrom || depreciationEndDateTo) {
+    where.depreciationEndDate = {};
+    if (depreciationEndDateFrom) where.depreciationEndDate.gte = new Date(String(depreciationEndDateFrom));
+    if (depreciationEndDateTo) where.depreciationEndDate.lte = new Date(String(depreciationEndDateTo));
+  }
+
+  if (lastInventoryFrom || lastInventoryTo) {
+    where.lastInventoryDate = {};
+    if (lastInventoryFrom) where.lastInventoryDate.gte = new Date(String(lastInventoryFrom));
+    if (lastInventoryTo) where.lastInventoryDate.lte = new Date(String(lastInventoryTo));
+  }
+
+  if (createdFrom || createdTo) {
+    where.createdAt = {};
+    if (createdFrom) where.createdAt.gte = new Date(String(createdFrom));
+    if (createdTo) {
+      const end = new Date(String(createdTo));
+      end.setHours(23, 59, 59, 999);
+      where.createdAt.lte = end;
+    }
+  }
+
+  if (supplierName) where.supplierName = { contains: String(supplierName) };
+  if (inventoryStatus) where.lastInventoryStatus = String(inventoryStatus);
+  if (hasSerial === 'true') where.serialNumber = { not: null, notIn: ['', 'N/A', 'n/a'] };
+  if (hasSerial === 'false') where.serialNumber = { in: [null, '', 'N/A', 'n/a'] };
+  if (hasDocuments === 'true') where.documentNote = { not: null, notIn: ['', 'N/A', 'n/a'] };
+  if (hasDocuments === 'false') where.documentNote = { in: [null, '', 'N/A', 'n/a'] };
+
+  if (andClauses.length > 0) {
+    where.AND = andClauses;
+  }
+
+  try {
+    const assets = await prisma.asset.findMany({
+      where,
+      orderBy: { [String(sortBy)]: sortOrder }
+    });
+
+    const hasPricePermission = req.user?.roles?.includes('SUPER_ADMIN') || req.user?.permissions?.includes('ASSET_VIEW_PRICE');
+
+    const headers = [
+      'Mã tài sản', 'Tên tài sản', 'Tên rút gọn', 'Số Serial', 'Mã công ty', 'Tên công ty', 'Dự án',
+      'Nhóm LV1', 'Nhóm LV2', 'Nhóm LV3', 'Nhóm LV4', 'Trạng thái', 'Đơn vị tính',
+      ...(hasPricePermission ? ['Giá mua (Ex VAT)'] : []),
+      'Ngày mua', 'Người sử dụng', 'Chức vụ', 'Bộ phận', 'Vị trí', 'Tỉnh/Thành phố', 'Ngày bàn giao', 'Nhà cung cấp', 'Hạn khấu hao', 'Ghi chú tài liệu'
+    ];
+
+    const rows = assets.map(a => [
+      a.assetCode,
+      a.assetName,
+      a.assetNameShort || '',
+      a.serialNumber || '',
+      a.companyCode,
+      a.companyName,
+      a.projectName || '',
+      a.level1Name,
+      a.level2Name,
+      a.level3Name,
+      a.level4Name,
+      a.status === 'IN_STOCK' ? 'Trong kho' :
+      a.status === 'ASSIGNED' ? 'Đã cấp phát' :
+      a.status === 'UNDER_REPAIR' ? 'Đang sửa chữa' :
+      a.status === 'DAMAGED' ? 'Bị hỏng' :
+      a.status === 'LOST' ? 'Bị mất' :
+      a.status === 'LIQUIDATED' ? 'Đã thanh lý' : a.status,
+      a.unit || 'Cái',
+      ...(hasPricePermission ? [a.purchasePriceExVat] : []),
+      formatDate(a.purchaseDate),
+      a.currentUserName || '',
+      a.currentPosition || '',
+      a.departmentName || '',
+      a.locationName || '',
+      a.cityName || '',
+      formatDate(a.handoverDate),
+      a.supplierName || '',
+      formatDate(a.depreciationEndDate),
+      a.documentNote || ''
+    ]);
+
+    const userStr = req.user?.fullName || req.user?.username || 'Admin';
+    const workbook = buildExcelWorkbook(
+      'BÁO CÁO CHI TIẾT SỔ TÀI SẢN',
+      `Thời gian xuất: ${new Date().toLocaleString('vi-VN')} | Người xuất: ${userStr}`,
+      headers,
+      rows,
+      'Sổ tài sản'
+    );
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoSoTaiSan.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi xuất Excel: ' + error.message });
+  }
+});
+
+// GET /export-created - Cấp mới / Nhập lô (New Assignment / Batch Import by Date Range)
+router.get('/export-created', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
+  const { startDate, endDate } = req.query;
+  const where: any = { isDeleted: false };
+
+  if (startDate || endDate) {
+    where.createdAt = {};
+    if (startDate) where.createdAt.gte = new Date(String(startDate));
+    if (endDate) {
+      const end = new Date(String(endDate));
+      end.setHours(23, 59, 59, 999);
+      where.createdAt.lte = end;
+    }
+  }
+
+  // Data Scope
+  const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+    company: 'companyCode',
+    department: 'departmentName',
+    warehouse: 'locationName',
+    user: 'currentUserName'
+  });
+  if (Object.keys(scopeWhere).length > 0) {
+    if (scopeWhere.id === -1) {
+      const workbook = buildExcelWorkbook('DANH SÁCH CẤP MỚI - NHẬP LÔ TÀI SẢN', 'Không tìm thấy dữ liệu', [], [], 'Nhập lô');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoNhapLo.xlsx');
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
+    where.AND = [scopeWhere];
+  }
+
+  try {
+    const assets = await prisma.asset.findMany({
+      where,
+      include: {
+        creationBatch: true
+      },
+      orderBy: {
+        createdAt: 'desc'
+      }
+    });
+
+    const assetIds = assets.map(a => a.id);
+    const auditLogs = await prisma.auditLog.findMany({
+      where: {
+        entityType: 'ASSET',
+        entityId: { in: assetIds },
+        action: 'CREATE'
+      }
+    });
+    const auditLogMap = new Map(auditLogs.map(log => [log.entityId, log.performedBy]));
+
+    const hasPricePermission = req.user?.roles?.includes('SUPER_ADMIN') || req.user?.permissions?.includes('ASSET_VIEW_PRICE');
+
+    const headers = [
+      'Mã đợt nhập', 'Ngày nhập lô', 'Người thực hiện', 'Nhà cung cấp', 'Số chứng từ/Hóa đơn',
+      'Mã tài sản', 'Tên tài sản', 'Loại phân mục (Cấp 4)', 'Số Serial', 'Đơn vị tính',
+      ...(hasPricePermission ? ['Nguyên giá'] : []),
+      'Trạng thái tài sản ban đầu', 'Ghi chú đợt'
+    ];
+
+    const rows = assets.map(a => {
+      const creator = auditLogMap.get(a.id) || 'system';
+      return [
+        a.creationBatch?.batchCode || 'Cá lẻ (Không đợt)',
+        a.creationBatch?.batchDate ? formatDate(a.creationBatch.batchDate) : formatDate(a.createdAt),
+        creator,
+        a.supplierName || a.creationBatch?.supplierName || '',
+        a.creationBatch?.documentNo || '',
+        a.assetCode,
+        a.assetName,
+        `${a.level4Code} - ${a.level4Name}`,
+        a.serialNumber || '',
+        a.unit || 'Cái',
+        ...(hasPricePermission ? [a.purchasePriceExVat] : []),
+        a.status === 'IN_STOCK' ? 'Trong kho' :
+        a.status === 'ASSIGNED' ? 'Đã cấp phát' : a.status,
+        a.creationBatch?.note || ''
+      ];
+    });
+
+    const dateRangeStr = startDate && endDate ? `Từ ${startDate} đến ${endDate}` : 'Tất cả thời gian';
+    const userStr = req.user?.fullName || req.user?.username || 'Admin';
+    const workbook = buildExcelWorkbook(
+      'BÁO CÁO TỔNG HỢP CẤP MỚI / NHẬP LÔ TÀI SẢN',
+      `Khoảng thời gian: ${dateRangeStr} | Người xuất: ${userStr}`,
+      headers,
+      rows,
+      'Cấp mới nhập lô'
+    );
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoNhapLoTaiSan.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi xuất Excel: ' + error.message });
+  }
+});
+
+// GET /export-liquidated - Thanh lý tài sản (Liquidation records by Date Range)
+router.get('/export-liquidated', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
+  const { startDate, endDate } = req.query;
+  const where: any = {};
+
+  if (startDate || endDate) {
+    where.liquidationRecord = {
+      liquidationDate: {}
+    };
+    if (startDate) where.liquidationRecord.liquidationDate.gte = new Date(String(startDate));
+    if (endDate) {
+      const end = new Date(String(endDate));
+      end.setHours(23, 59, 59, 999);
+      where.liquidationRecord.liquidationDate.lte = end;
+    }
+  }
+
+  // Data Scope
+  const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+    company: 'companyCode',
+    department: 'departmentName',
+    warehouse: 'locationName',
+    user: 'currentUserName'
+  });
+  if (Object.keys(scopeWhere).length > 0) {
+    if (scopeWhere.id === -1) {
+      const workbook = buildExcelWorkbook('DANH SÁCH THANH LÝ TÀI SẢN', 'Không tìm thấy dữ liệu', [], [], 'Thanh lý');
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoThanhLy.xlsx');
+      await workbook.xlsx.write(res);
+      return res.end();
+    }
+    where.asset = scopeWhere;
+  }
+
+  try {
+    const items = await prisma.liquidationItem.findMany({
+      where,
+      include: {
+        liquidationRecord: true,
+        asset: true
+      },
+      orderBy: {
+        liquidationRecord: {
+          liquidationDate: 'desc'
+        }
+      }
+    });
+
+    const hasPricePermission = req.user?.roles?.includes('SUPER_ADMIN') || req.user?.permissions?.includes('ASSET_VIEW_PRICE');
+
+    const headers = [
+      'Mã hồ sơ thanh lý', 'Ngày thanh lý', 'Loại thanh lý', 'Số chứng từ/Hợp đồng',
+      'Đối tác mua/nhận', 'Lý do thanh lý', 'Mã tài sản', 'Tên tài sản',
+      ...(hasPricePermission ? ['Nguyên giá tài sản', 'Giá trị thanh lý'] : []),
+      'Ghi chú hồ sơ'
+    ];
+
+    const rows = items.map(item => [
+      item.liquidationRecord.liquidationCode,
+      formatDate(item.liquidationRecord.liquidationDate),
+      item.liquidationRecord.liquidationType === 'SELL' ? 'Bán thanh lý' :
+      item.liquidationRecord.liquidationType === 'DESTROY' ? 'Hủy bỏ' :
+      item.liquidationRecord.liquidationType === 'GIVE' ? 'Cho tặng' :
+      item.liquidationRecord.liquidationType === 'RETURN_SUPPLIER' ? 'Trả NCC' : item.liquidationRecord.liquidationType || '',
+      item.liquidationRecord.documentNo || '',
+      item.liquidationRecord.buyerName || '',
+      item.liquidationRecord.reason || '',
+      item.asset.assetCode,
+      item.asset.assetName,
+      ...(hasPricePermission ? [item.asset.purchasePriceExVat, item.assetValue] : []),
+      item.liquidationRecord.note || ''
+    ]);
+
+    const dateRangeStr = startDate && endDate ? `Từ ${startDate} đến ${endDate}` : 'Tất cả thời gian';
+    const userStr = req.user?.fullName || req.user?.username || 'Admin';
+    const workbook = buildExcelWorkbook(
+      'BÁO CÁO TỔNG HỢP THANH LÝ TÀI SẢN',
+      `Khoảng thời gian: ${dateRangeStr} | Người xuất: ${userStr}`,
+      headers,
+      rows,
+      'Thanh lý tài sản'
+    );
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoThanhLyTaiSan.xlsx');
+    await workbook.xlsx.write(res);
+    res.end();
+  } catch (error: any) {
+    res.status(500).json({ message: 'Lỗi xuất Excel: ' + error.message });
   }
 });
 

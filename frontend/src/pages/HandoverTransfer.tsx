@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../lib/api';
+import { DateRangeModal } from '../components/DateRangeModal';
 import { 
   UserPlus, 
   Plus, 
@@ -247,6 +248,26 @@ export const HandoverTransfer: React.FC = () => {
       }
     });
   };
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  const handleExportByTime = async (startDate: string, endDate: string) => {
+    try {
+      const res = await api.get('/handover/export-by-time', {
+        params: { startDate, endDate },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([res.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `bao_cao_ban_giao_dieu_chuyen_${startDate}_to_${endDate}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success('Tải báo cáo thành công!');
+    } catch (err) {
+      toast.error('Không thể tải báo cáo bàn giao điều chuyển.');
+    }
+  };
 
   const handleBulkExport = async () => {
     try {
@@ -460,6 +481,14 @@ export const HandoverTransfer: React.FC = () => {
               className="h-9 px-3 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors"
             >
               Làm mới
+            </button>
+
+            <button 
+              onClick={() => setIsExportModalOpen(true)}
+              className="h-9 px-3 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-bold text-slate-600 hover:bg-slate-50 transition-colors flex items-center gap-1.5"
+            >
+              <Download className="h-3.5 w-3.5" />
+              Tải báo cáo
             </button>
             
             <button 
@@ -1121,6 +1150,14 @@ export const HandoverTransfer: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* EXPORT MODAL */}
+      <DateRangeModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirm={handleExportByTime}
+        title="Tải báo cáo Bàn giao / Điều chuyển"
+      />
     </div>
   );
 };

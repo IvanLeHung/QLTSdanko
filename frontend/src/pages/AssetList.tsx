@@ -303,6 +303,26 @@ export const AssetList: React.FC = () => {
     }
   };
 
+  const handleExportExcel = async () => {
+    try {
+      const params = Object.fromEntries(searchParams.entries());
+      delete params.page;
+      delete params.limit;
+      const response = await api.get('/assets/export-excel', { params, responseType: 'blob' });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `so_tai_san_snapshot_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Tải báo cáo sổ tài sản (snapshot) thành công!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi tải báo cáo sổ tài sản");
+    }
+  };
+
   const handleExportSelected = () => {
     if (selectedAssets.length === 0) return;
     
@@ -533,6 +553,15 @@ export const AssetList: React.FC = () => {
                   className="h-[32px] px-3 flex items-center text-[11px] font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap"
                 >
                   <Download className="mr-1.5 h-3.5 w-3.5" /> Export
+                </button>
+              </Can>
+
+              <Can permission="ASSET_VIEW">
+                <button 
+                  onClick={handleExportExcel}
+                  className="h-[32px] px-3 flex items-center text-[11px] font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap"
+                >
+                  <Download className="mr-1.5 h-3.5 w-3.5" /> Tải báo cáo
                 </button>
               </Can>
               

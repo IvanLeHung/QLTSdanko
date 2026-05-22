@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
+import { DateRangeModal } from '../components/DateRangeModal';
 import { 
   AlertTriangle, 
   Plus, 
@@ -8,6 +9,7 @@ import {
   Clock, 
   Wrench, 
   X,
+  Download,
   ChevronRight,
   Package,
   History,
@@ -49,9 +51,27 @@ export const DamageReport: React.FC = () => {
     setFilterStatus(statusParam);
   }, [searchParams]);
 
-  useEffect(() => {
-    fetchTickets();
-  }, [filterStatus, fromDate, toDate]);
+  const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+
+  const handleExportByTime = async (startDate: string, endDate: string) => {
+    try {
+      const response = await api.get('/repairs/export-by-time', {
+        params: { startDate, endDate },
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `bao_cao_bao_hong_sua_chua_${startDate}_to_${endDate}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Tải báo cáo báo hỏng/sửa chữa thành công!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi tải báo cáo báo hỏng/sửa chữa");
+    }
+  };
 
   const fetchTickets = async () => {
     setLoading(true);
@@ -71,6 +91,10 @@ export const DamageReport: React.FC = () => {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    fetchTickets();
+  }, [filterStatus, fromDate, toDate]);
 
   const getStatusInfo = (status: string) => {
     switch (status) {
@@ -109,12 +133,20 @@ export const DamageReport: React.FC = () => {
           </h1>
           <p className="text-slate-500 font-medium text-lg">Trung tâm điều phối & theo dõi tình trạng sửa chữa tài sản toàn hệ thống.</p>
         </div>
-        <button 
-          onClick={() => setShowCreate(true)}
-          className="h-14 px-8 bg-primary-600 text-white rounded-2xl font-black text-[13px] uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center"
-        >
-          <Plus className="mr-2 h-5 w-5" /> Ghi nhận báo hỏng
-        </button>
+        <div className="flex gap-3">
+          <button 
+            onClick={() => setIsExportModalOpen(true)}
+            className="h-14 px-6 border border-slate-200 text-slate-700 bg-white hover:bg-slate-50 rounded-2xl font-black text-[13px] uppercase tracking-widest transition-all flex items-center gap-2 shadow-sm"
+          >
+            <Download className="h-5 w-5 text-slate-500" /> Tải báo cáo
+          </button>
+          <button 
+            onClick={() => setShowCreate(true)}
+            className="h-14 px-8 bg-primary-600 text-white rounded-2xl font-black text-[13px] uppercase tracking-widest shadow-xl shadow-primary-200 hover:bg-primary-700 transition-all flex items-center"
+          >
+            <Plus className="mr-2 h-5 w-5" /> Ghi nhận báo hỏng
+          </button>
+        </div>
       </div>
 
       {/* STATS SUMMARY */}
@@ -284,6 +316,14 @@ export const DamageReport: React.FC = () => {
             onSuccess={() => { setShowCreate(false); fetchTickets(); }}
          />
       )}
+
+      {/* EXPORT MODAL */}
+      <DateRangeModal
+        isOpen={isExportModalOpen}
+        onClose={() => setIsExportModalOpen(false)}
+        onConfirm={handleExportByTime}
+        title="Tải báo cáo Báo hỏng / Sửa chữa"
+      />
     </div>
   );
 };
