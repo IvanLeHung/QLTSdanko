@@ -12,11 +12,16 @@ function nfc(text: any): string {
 
 let fonts: any;
 try {
-  // Prefer Noto Sans (full Vietnamese support)
-  const notoRegular = path.join(__dirname, '../../fonts/NotoSans-Regular.ttf');
-  const notoMedium = path.join(__dirname, '../../fonts/NotoSans-Medium.ttf');
-  const notoItalic = path.join(__dirname, '../../fonts/NotoSans-Italic.ttf');
-  const notoMediumItalic = path.join(__dirname, '../../fonts/NotoSans-MediumItalic.ttf');
+  // Find the fonts directory dynamically (supports both dev and prod/dist mode)
+  let fontsDir = path.join(__dirname, '../../fonts');
+  if (!fs.existsSync(path.join(fontsDir, 'NotoSans-Regular.ttf'))) {
+    fontsDir = path.join(__dirname, '../../../fonts');
+  }
+
+  const notoRegular = path.join(fontsDir, 'NotoSans-Regular.ttf');
+  const notoMedium = path.join(fontsDir, 'NotoSans-Medium.ttf');
+  const notoItalic = path.join(fontsDir, 'NotoSans-Italic.ttf');
+  const notoMediumItalic = path.join(fontsDir, 'NotoSans-MediumItalic.ttf');
 
   const notoExists = fs.existsSync(notoRegular) && 
                      fs.existsSync(notoMedium) && 
@@ -24,7 +29,7 @@ try {
                      fs.existsSync(notoMediumItalic);
 
   if (notoExists) {
-    console.log('[PDF] Using Noto Sans fonts (Vietnamese support)');
+    console.log('[PDF] Using Noto Sans fonts (Vietnamese support) from:', fontsDir);
     fonts = {
       Roboto: {
         normal: notoRegular,
@@ -35,10 +40,10 @@ try {
     };
   } else {
     // Fallback to old Roboto fonts
-    const regularPath = path.join(__dirname, '../../fonts/Roboto-Regular.ttf');
-    const mediumPath = path.join(__dirname, '../../fonts/Roboto-Medium.ttf');
-    const italicPath = path.join(__dirname, '../../fonts/Roboto-Italic.ttf');
-    const boldItalicPath = path.join(__dirname, '../../fonts/Roboto-MediumItalic.ttf');
+    const regularPath = path.join(fontsDir, 'Roboto-Regular.ttf');
+    const mediumPath = path.join(fontsDir, 'Roboto-Medium.ttf');
+    const italicPath = path.join(fontsDir, 'Roboto-Italic.ttf');
+    const boldItalicPath = path.join(fontsDir, 'Roboto-MediumItalic.ttf');
 
     const allExist = fs.existsSync(regularPath) && 
                      fs.existsSync(mediumPath) && 
@@ -46,7 +51,7 @@ try {
                      fs.existsSync(boldItalicPath);
 
     if (allExist) {
-      console.log('[PDF] Using Roboto fonts (fallback)');
+      console.log('[PDF] Using Roboto fonts (fallback) from:', fontsDir);
       fonts = {
         Roboto: {
           normal: regularPath,
@@ -56,7 +61,7 @@ try {
         }
       };
     } else {
-      throw new Error('No TrueType font files found.');
+      throw new Error(`No TrueType font files found in ${fontsDir}`);
     }
   }
 } catch (error) {
