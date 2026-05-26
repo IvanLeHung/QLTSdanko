@@ -728,11 +728,178 @@ async function getActivityStats(req: any) {
   };
 }
 
+function buildEmptyActivityStats() {
+  return {
+    createdAssets: 0,
+    transferredAssets: 0,
+    handedOverAssets: 0,
+    recalledAssets: 0,
+    brokenReportedAssets: 0,
+    lostReportedAssets: 0,
+    liquidatedAssets: 0
+  };
+}
+
+function getActivityDateRange(req: any) {
+  const start = cleanFilterValue(req.query.startDate);
+  const end = cleanFilterValue(req.query.endDate);
+
+  let fromDate = start ? new Date(start) : undefined;
+  let toDate = end ? new Date(end) : undefined;
+
+  if (!fromDate || !toDate) {
+    const now = new Date();
+    if (!fromDate) {
+      fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    if (!toDate) {
+      toDate = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+    }
+  } else {
+    toDate.setHours(23, 59, 59, 999);
+  }
+
+  fromDate.setHours(0, 0, 0, 0);
+  return { fromDate, toDate };
+}
+
+function formatDateKey(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function addActivityCount(
+  bucket: Record<string, ReturnType<typeof buildEmptyActivityStats>>,
+  date: Date | null,
+  key: keyof ReturnType<typeof buildEmptyActivityStats>
+) {
+  if (!date) return;
+  const dateKey = formatDateKey(new Date(date));
+  if (!bucket[dateKey]) {
+    bucket[dateKey] = buildEmptyActivityStats();
+  }
+  bucket[dateKey][key] += 1;
+}
+
 // GET /api/dashboard/activity-stats
 router.get('/activity-stats', authenticateToken, async (req: any, res) => {
   try {
     const stats = await getActivityStats(req);
     res.json(stats);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/dashboard/activity-daily-stats
+router.get('/activity-daily-stats', authenticateToken, async (req: any, res) => {
+  try {
+    const { fromDate, toDate } = getActivityDateRange(req);
+    const assetWhere = buildAssetWhere(req, true);
+
+    if (assetWhere.id === -1) {
+      return res.json([]);
+    }
+
+    const matchingAssets = await prisma.asset.findMany({
+      where: assetWhere,
+      select: { id: true }
+    });
+    const assetIds = matchingAssets.map(a => a.id);
+
+    const bucket: Record<string, ReturnType<typeof buildEmptyActivityStats>> = {};
+
+    const [
+      createdAssets,
+      handoverItems,
+      repairTickets,
+      lostReports,
+      liquidationItems
+    ] = await Promise.all([
+      prisma.asset.findMany({
+        where: {
+          ...assetWhere,
+          createdAt: { gte: fromDate, lte: toDate }
+        },
+        select: { createdAt: true }
+      }),
+      prisma.handoverItem.findMany({
+        where: {
+          assetId: { in: assetIds },
+          handoverDocument: {
+            type: { in: ['HANDOVER', 'TRANSFER', 'RECALL'] },
+            status: 'COMPLETED',
+            confirmedAt: { gte: fromDate, lte: toDate }
+          }
+        },
+        select: {
+          handoverDocument: {
+            select: {
+              type: true,
+              confirmedAt: true
+            }
+          }
+        }
+      }),
+      prisma.assetRepairTicket.findMany({
+        where: {
+          reportedDate: { gte: fromDate, lte: toDate },
+          asset: assetWhere
+        },
+        select: { reportedDate: true }
+      }),
+      prisma.lostReport.findMany({
+        where: {
+          reportedDate: { gte: fromDate, lte: toDate },
+          asset: assetWhere
+        },
+        select: { reportedDate: true }
+      }),
+      prisma.liquidationItem.findMany({
+        where: {
+          liquidationRecord: {
+            status: 'COMPLETED',
+            liquidationDate: { gte: fromDate, lte: toDate }
+          },
+          asset: assetWhere
+        },
+        select: {
+          liquidationRecord: {
+            select: { liquidationDate: true }
+          }
+        }
+      })
+    ]);
+
+    createdAssets.forEach(asset => addActivityCount(bucket, asset.createdAt, 'createdAssets'));
+    handoverItems.forEach(item => {
+      const doc = item.handoverDocument;
+      if (doc.type === 'HANDOVER') addActivityCount(bucket, doc.confirmedAt, 'handedOverAssets');
+      if (doc.type === 'TRANSFER') addActivityCount(bucket, doc.confirmedAt, 'transferredAssets');
+      if (doc.type === 'RECALL') addActivityCount(bucket, doc.confirmedAt, 'recalledAssets');
+    });
+    repairTickets.forEach(ticket => addActivityCount(bucket, ticket.reportedDate, 'brokenReportedAssets'));
+    lostReports.forEach(report => addActivityCount(bucket, report.reportedDate, 'lostReportedAssets'));
+    liquidationItems.forEach(item => addActivityCount(bucket, item.liquidationRecord.liquidationDate, 'liquidatedAssets'));
+
+    const result = Object.entries(bucket)
+      .map(([date, stats]) => ({
+        date,
+        ...stats,
+        total:
+          stats.createdAssets +
+          stats.transferredAssets +
+          stats.handedOverAssets +
+          stats.recalledAssets +
+          stats.brokenReportedAssets +
+          stats.lostReportedAssets +
+          stats.liquidatedAssets
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date));
+
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }

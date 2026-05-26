@@ -118,6 +118,7 @@ export const Dashboard: React.FC = () => {
   // API Data States
   const [summary, setSummary] = useState<any>(null);
   const [activityStats, setActivityStats] = useState<any>(null);
+  const [dailyStats, setDailyStats] = useState<any[]>([]);
   const [actionItems, setActionItems] = useState<any>(null);
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -152,15 +153,17 @@ export const Dashboard: React.FC = () => {
         endDate: filters.endDate || undefined
       };
 
-      const [summaryRes, statsRes, actionItemsRes, activitiesRes] = await Promise.all([
+      const [summaryRes, statsRes, dailyStatsRes, actionItemsRes, activitiesRes] = await Promise.all([
         api.get('/dashboard/summary', { params }).catch(err => { console.error(err); return { data: null }; }),
         api.get('/dashboard/activity-stats', { params }).catch(err => { console.error(err); return { data: null }; }),
+        api.get('/dashboard/activity-daily-stats', { params }).catch(err => { console.error(err); return { data: [] }; }),
         api.get('/dashboard/action-items', { params }).catch(err => { console.error(err); return { data: null }; }),
         api.get('/dashboard/recent-activities', { params }).catch(err => { console.error(err); return { data: [] }; })
       ]);
 
       if (summaryRes.data) setSummary(summaryRes.data);
       if (statsRes.data) setActivityStats(statsRes.data);
+      if (dailyStatsRes.data) setDailyStats(dailyStatsRes.data);
       if (actionItemsRes.data) setActionItems(actionItemsRes.data);
       if (activitiesRes.data) setActivities(activitiesRes.data);
     } catch (err) {
@@ -429,6 +432,18 @@ export const Dashboard: React.FC = () => {
       params: { fromDate: filters.startDate, toDate: filters.endDate }
     }
   ];
+
+  const dailyStatColumns = [
+    { key: 'createdAssets', label: 'Tạo mới', color: 'text-primary-600' },
+    { key: 'handedOverAssets', label: 'Bàn giao', color: 'text-emerald-600' },
+    { key: 'transferredAssets', label: 'Điều chuyển', color: 'text-indigo-600' },
+    { key: 'recalledAssets', label: 'Thu hồi', color: 'text-amber-600' },
+    { key: 'brokenReportedAssets', label: 'Báo hỏng', color: 'text-orange-600' },
+    { key: 'lostReportedAssets', label: 'Mất', color: 'text-rose-600' },
+    { key: 'liquidatedAssets', label: 'Thanh lý', color: 'text-slate-600' }
+  ];
+
+  const maxDailyTotal = Math.max(...dailyStats.map((item) => item.total || 0), 1);
 
   // Action Items Helper Mapping
   const actionList = [
@@ -761,6 +776,78 @@ export const Dashboard: React.FC = () => {
             </div>
           ))}
         </div>
+      </div>
+
+      {/* DAILY ACTIVITY BREAKDOWN */}
+      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-md shadow-slate-100/50 overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <div className="flex items-center space-x-2">
+            <Calendar className="h-5 w-5 text-indigo-600" />
+            <div>
+              <h2 className="text-lg font-[800] text-slate-800 tracking-tight">Thống kê phát sinh theo ngày</h2>
+              <p className="text-xs font-medium text-slate-400">
+                Chỉ hiển thị các ngày có phát sinh trong kỳ đã chọn
+              </p>
+            </div>
+          </div>
+          <div className="text-[11px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5">
+            {dailyStats.length} ngày có dữ liệu
+          </div>
+        </div>
+
+        {dailyStats.length > 0 ? (
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px] text-left">
+              <thead>
+                <tr className="bg-slate-50/80 border-b border-slate-100">
+                  <th className="px-6 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày</th>
+                  <th className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tổng</th>
+                  {dailyStatColumns.map((col) => (
+                    <th key={col.key} className="px-4 py-3 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      {col.label}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {dailyStats.map((item) => (
+                  <tr key={item.date} className="hover:bg-slate-50/70 transition-colors">
+                    <td className="px-6 py-3">
+                      <div className="flex items-center gap-3">
+                        <div className="h-8 w-8 rounded-xl bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                          <Calendar className="h-4 w-4" />
+                        </div>
+                        <span className="text-sm font-black text-slate-800">
+                          {format(new Date(item.date), 'dd/MM/yyyy')}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center gap-3">
+                        <span className="text-base font-black text-slate-900 min-w-8">{item.total}</span>
+                        <div className="h-2 w-24 bg-slate-100 rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-indigo-500 rounded-full"
+                            style={{ width: `${Math.max(6, (item.total / maxDailyTotal) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    </td>
+                    {dailyStatColumns.map((col) => (
+                      <td key={col.key} className={`px-4 py-3 text-sm font-black ${col.color}`}>
+                        {item[col.key]?.toLocaleString() || 0}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="px-6 py-10 text-center">
+            <p className="text-sm font-bold text-slate-400">Không có phát sinh trong khoảng ngày đã chọn.</p>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
