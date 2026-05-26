@@ -77,7 +77,7 @@ export const AssetList: React.FC = () => {
     supplierName: searchParams.get('supplierName') || '',
     hasSerial: searchParams.get('hasSerial') || '',
     hasDocuments: searchParams.get('hasDocuments') || '',
-    level4Code: searchParams.get('level4Code') || '',
+    level4Name: searchParams.get('level4Name') || '',
     isAssigned: searchParams.get('isAssigned') || '',
     hasPrinted: searchParams.get('hasPrinted') || '',
     isChecked: searchParams.get('isChecked') || '',
@@ -102,7 +102,7 @@ export const AssetList: React.FC = () => {
   const [tempProject, setTempProject] = useState('');
   const [tempLocation, setTempLocation] = useState('');
 
-  const [tempLv4Code, setTempLv4Code] = useState<string[]>([]);
+  const [tempLv4Name, setTempLv4Name] = useState<string[]>([]);
   const [lv4Search, setLv4Search] = useState('');
 
   // Drawer advanced filters
@@ -140,7 +140,7 @@ export const AssetList: React.FC = () => {
     setTempProject(filters.projectName || '');
     setTempLocation(filters.locationQuery || '');
 
-    setTempLv4Code(filters.level4Code ? filters.level4Code.split(',') : []);
+    setTempLv4Name(filters.level4Name ? filters.level4Name.split(',') : []);
 
     setTempCompanyCode(filters.companyCode || '');
     setTempPriceMin(filters.priceMin || '');
@@ -227,12 +227,12 @@ export const AssetList: React.FC = () => {
   };
 
   const applyLv4Filter = () => {
-    updateParam('level4Code', tempLv4Code.join(','));
+    updateParam('level4Name', tempLv4Name.join(','));
   };
 
   const clearLv4Filter = () => {
-    setTempLv4Code([]);
-    updateParam('level4Code', null);
+    setTempLv4Name([]);
+    updateParam('level4Name', null);
   };
 
   const applyAdvancedFilters = () => {
@@ -728,15 +728,15 @@ export const AssetList: React.FC = () => {
       });
     }
 
-    if (filters.level4Code) {
-      const parts = filters.level4Code.split(',').filter(Boolean);
+    if (filters.level4Name) {
+      const parts = filters.level4Name.split(',').filter(Boolean);
       parts.forEach((p: string) => {
         list.push({
           label: 'Nhóm LV4',
-          value: lv4Categories.find(c => c.code === p)?.name || p,
+          value: p,
           onClear: () => {
             const next = parts.filter((x: string) => x !== p);
-            updateParam('level4Code', next.length > 0 ? next.join(',') : null);
+            updateParam('level4Name', next.length > 0 ? next.join(',') : null);
           }
         });
       });
@@ -850,11 +850,11 @@ export const AssetList: React.FC = () => {
     : 'Vị trí';
 
   // Level 4 Category label calculation
-  const lv4Active = tempLv4Code.length > 0;
+  const lv4Active = tempLv4Name.length > 0;
   const lv4Label = lv4Active
-    ? tempLv4Code.length === 1
-      ? `Nhóm: ${lv4Categories.find(c => c.code === tempLv4Code[0])?.name || tempLv4Code[0]}`
-      : `Nhóm tài sản: ${tempLv4Code.length}`
+    ? tempLv4Name.length === 1
+      ? `Nhóm: ${tempLv4Name[0]}`
+      : `Nhóm tài sản: ${tempLv4Name.length}`
     : 'Nhóm tài sản';
 
   // Advanced filters activity
@@ -1131,7 +1131,7 @@ export const AssetList: React.FC = () => {
                     {lv4Categories
                       .filter(c => !lv4Search || c.name.toLowerCase().includes(lv4Search.toLowerCase()) || c.code.toLowerCase().includes(lv4Search.toLowerCase()))
                       .map((cat) => {
-                        const checked = tempLv4Code.includes(cat.code);
+                        const checked = tempLv4Name.includes(cat.name);
                         return (
                           <label key={cat.id} className="flex items-center space-x-2.5 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer select-none">
                             <input
@@ -1139,9 +1139,9 @@ export const AssetList: React.FC = () => {
                               checked={checked}
                               onChange={() => {
                                 if (checked) {
-                                  setTempLv4Code(tempLv4Code.filter(x => x !== cat.code));
+                                  setTempLv4Name(tempLv4Name.filter(x => x !== cat.name));
                                 } else {
-                                  setTempLv4Code([...tempLv4Code, cat.code]);
+                                  setTempLv4Name([...tempLv4Name, cat.name]);
                                 }
                               }}
                               className="rounded border-slate-350 text-primary-600 focus:ring-primary-500 h-4 w-4"

@@ -173,6 +173,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     cityName,
     projectName,
     level4Code,
+    level4Name,
     
     // Price Range
     priceMin,
@@ -281,7 +282,12 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
   }
   if (departmentName) where.departmentName = { contains: String(departmentName) };
   
-  if (level4Code) {
+  if (level4Name) {
+    const nameArray = String(level4Name).split(',').filter(Boolean);
+    if (nameArray.length > 0) {
+      where.level4Name = { in: nameArray };
+    }
+  } else if (level4Code) {
     const codeArray = String(level4Code).split(',').filter(Boolean);
     if (codeArray.length > 0) {
       where.level4Code = { in: codeArray };
