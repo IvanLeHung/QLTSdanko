@@ -163,7 +163,7 @@ export const Dashboard: React.FC = () => {
 
       if (summaryRes.data) setSummary(summaryRes.data);
       if (statsRes.data) setActivityStats(statsRes.data);
-      if (dailyStatsRes.data) setDailyStats(dailyStatsRes.data);
+      setDailyStats(Array.isArray(dailyStatsRes.data) ? dailyStatsRes.data : []);
       if (actionItemsRes.data) setActionItems(actionItemsRes.data);
       if (activitiesRes.data) setActivities(activitiesRes.data);
     } catch (err) {
