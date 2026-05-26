@@ -227,3 +227,88 @@ export const FilterChip: React.FC<{
     </button>
   </div>
 );
+
+// --- 5. CHIP POPOVER FILTER ---
+export const ChipPopoverFilter: React.FC<{
+  label: string;
+  isActive: boolean;
+  onClear?: () => void;
+  onApply: () => void;
+  onReset: () => void;
+  children: React.ReactNode;
+}> = ({ label, isActive, onClear, onApply, onReset, children }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="relative" ref={wrapperRef}>
+      <div 
+        className={`flex items-center bg-white border rounded-full text-[13px] font-[600] transition-all h-[36px] shadow-sm select-none ${
+          isActive 
+            ? 'border-primary-500 text-primary-700 bg-primary-50/10' 
+            : 'border-slate-200 text-slate-600 hover:border-slate-300'
+        }`}
+      >
+        <button
+          onClick={() => setIsOpen(!isOpen)}
+          className="flex items-center px-4 py-2 h-full focus:outline-none"
+        >
+          <span>{label}</span>
+          <ChevronDown className={`ml-2 h-3.5 w-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+        {isActive && onClear && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onClear();
+              setIsOpen(false);
+            }}
+            className="mr-3 p-0.5 hover:bg-primary-100 rounded-full text-primary-600 hover:text-red-500 transition-colors"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {isOpen && (
+        <div className="absolute top-full left-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] p-5 animate-in zoom-in-95 duration-100 min-w-[280px]">
+          <div className="max-h-64 overflow-y-auto custom-scrollbar">
+            {children}
+          </div>
+          <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between gap-3">
+            <button 
+              type="button"
+              onClick={() => {
+                onReset();
+                setIsOpen(false);
+              }}
+              className="px-4 py-2 bg-slate-50 hover:bg-slate-100 text-slate-600 rounded-xl text-[12px] font-[800] transition-colors border"
+            >
+              Đặt lại
+            </button>
+            <button 
+              type="button"
+              onClick={() => {
+                onApply();
+                setIsOpen(false);
+              }}
+              className="px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-[12px] font-[800] transition-colors shadow-md shadow-slate-200"
+            >
+              Áp dụng
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+

@@ -29,11 +29,12 @@ import {
   Activity,
   ChevronDown,
   Trash,
-  Loader2
+  Loader2,
+  Filter
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { AutocompleteInput, MultiSelect, PopoverFilter, FilterChip } from '../components/FilterComponents';
+import { AutocompleteInput, MultiSelect, PopoverFilter, FilterChip, ChipPopoverFilter } from '../components/FilterComponents';
 import { Can } from '../components/Can';
 import { useAuth } from '../context/AuthContext';
 import { useModal } from '../context/ModalContext';
@@ -77,10 +78,221 @@ export const AssetList: React.FC = () => {
     hasSerial: searchParams.get('hasSerial') || '',
     hasDocuments: searchParams.get('hasDocuments') || '',
     level4Code: searchParams.get('level4Code') || '',
+    isAssigned: searchParams.get('isAssigned') || '',
+    hasPrinted: searchParams.get('hasPrinted') || '',
+    isChecked: searchParams.get('isChecked') || '',
   };
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [localSearch, setLocalSearch] = useState(search);
+
+  // Compact Filters States
+  const [lv4Categories, setLv4Categories] = useState<any[]>([]);
+  const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState(false);
+
+  // Sync temporary states with URL filters
+  const [tempStatus, setTempStatus] = useState<string[]>([]);
+  const [tempUserName, setTempUserName] = useState('');
+  const [tempDeptName, setTempDeptName] = useState('');
+  const [tempAllocation, setTempAllocation] = useState(''); // '', 'ASSIGNED', 'UNASSIGNED'
+  const [tempHandoverFrom, setTempHandoverFrom] = useState('');
+  const [tempHandoverTo, setTempHandoverTo] = useState('');
+
+  const [tempCity, setTempCity] = useState('');
+  const [tempProject, setTempProject] = useState('');
+  const [tempLocation, setTempLocation] = useState('');
+
+  const [tempLv4Code, setTempLv4Code] = useState<string[]>([]);
+  const [lv4Search, setLv4Search] = useState('');
+
+  // Drawer advanced filters
+  const [tempCompanyCode, setTempCompanyCode] = useState('');
+  const [tempPriceMin, setTempPriceMin] = useState('');
+  const [tempPriceMax, setTempPriceMax] = useState('');
+  const [tempPurchaseFrom, setTempPurchaseFrom] = useState('');
+  const [tempPurchaseTo, setTempPurchaseTo] = useState('');
+  const [tempSupplierName, setTempSupplierName] = useState('');
+  const [tempHasSerial, setTempHasSerial] = useState('');
+  const [tempHasDocuments, setTempHasDocuments] = useState('');
+
+  useEffect(() => {
+    const fetchLv4Categories = async () => {
+      try {
+        const res = await api.get('/assets/categories/active/all');
+        const lv4 = res.data.filter((c: any) => c.level === 4);
+        setLv4Categories(lv4);
+      } catch (err) {
+        console.error("Failed to fetch categories", err);
+      }
+    };
+    fetchLv4Categories();
+  }, []);
+
+  useEffect(() => {
+    setTempStatus(filters.status ? filters.status.split(',') : []);
+    setTempUserName(filters.currentUserName || '');
+    setTempDeptName(filters.departmentName || '');
+    setTempAllocation(filters.isAssigned === 'true' ? 'ASSIGNED' : filters.isAssigned === 'false' ? 'UNASSIGNED' : '');
+    setTempHandoverFrom(filters.handoverDateFrom || '');
+    setTempHandoverTo(filters.handoverDateTo || '');
+
+    setTempCity(filters.cityName || '');
+    setTempProject(filters.projectName || '');
+    setTempLocation(filters.locationQuery || '');
+
+    setTempLv4Code(filters.level4Code ? filters.level4Code.split(',') : []);
+
+    setTempCompanyCode(filters.companyCode || '');
+    setTempPriceMin(filters.priceMin || '');
+    setTempPriceMax(filters.priceMax || '');
+    setTempPurchaseFrom(filters.purchaseDateFrom || '');
+    setTempPurchaseTo(filters.purchaseDateTo || '');
+    setTempSupplierName(filters.supplierName || '');
+    setTempHasSerial(filters.hasSerial || '');
+    setTempHasDocuments(filters.hasDocuments || '');
+  }, [searchParams]);
+
+  const applyStatusFilter = () => {
+    updateParam('status', tempStatus.join(','));
+  };
+
+  const clearStatusFilter = () => {
+    setTempStatus([]);
+    updateParam('status', null);
+  };
+
+  const applyAllocationFilter = () => {
+    const newParams = new URLSearchParams(searchParams);
+    if (tempUserName) newParams.set('currentUserName', tempUserName);
+    else newParams.delete('currentUserName');
+
+    if (tempDeptName) newParams.set('departmentName', tempDeptName);
+    else newParams.delete('departmentName');
+
+    if (tempAllocation === 'ASSIGNED') newParams.set('isAssigned', 'true');
+    else if (tempAllocation === 'UNASSIGNED') newParams.set('isAssigned', 'false');
+    else newParams.delete('isAssigned');
+
+    if (tempHandoverFrom) newParams.set('handoverDateFrom', tempHandoverFrom);
+    else newParams.delete('handoverDateFrom');
+
+    if (tempHandoverTo) newParams.set('handoverDateTo', tempHandoverTo);
+    else newParams.delete('handoverDateTo');
+
+    newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
+
+  const clearAllocationFilter = () => {
+    setTempUserName('');
+    setTempDeptName('');
+    setTempAllocation('');
+    setTempHandoverFrom('');
+    setTempHandoverTo('');
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('currentUserName');
+    newParams.delete('departmentName');
+    newParams.delete('isAssigned');
+    newParams.delete('handoverDateFrom');
+    newParams.delete('handoverDateTo');
+    newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
+
+  const applyLocationFilter = () => {
+    const newParams = new URLSearchParams(searchParams);
+    if (tempCity) newParams.set('cityName', tempCity);
+    else newParams.delete('cityName');
+
+    if (tempProject) newParams.set('projectName', tempProject);
+    else newParams.delete('projectName');
+
+    if (tempLocation) newParams.set('locationQuery', tempLocation);
+    else newParams.delete('locationQuery');
+
+    newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
+
+  const clearLocationFilter = () => {
+    setTempCity('');
+    setTempProject('');
+    setTempLocation('');
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('cityName');
+    newParams.delete('projectName');
+    newParams.delete('locationQuery');
+    newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
+
+  const applyLv4Filter = () => {
+    updateParam('level4Code', tempLv4Code.join(','));
+  };
+
+  const clearLv4Filter = () => {
+    setTempLv4Code([]);
+    updateParam('level4Code', null);
+  };
+
+  const applyAdvancedFilters = () => {
+    const newParams = new URLSearchParams(searchParams);
+    if (tempCompanyCode) newParams.set('companyCode', tempCompanyCode);
+    else newParams.delete('companyCode');
+
+    if (tempPriceMin) newParams.set('priceMin', tempPriceMin);
+    else newParams.delete('priceMin');
+
+    if (tempPriceMax) newParams.set('priceMax', tempPriceMax);
+    else newParams.delete('priceMax');
+
+    if (tempPurchaseFrom) newParams.set('purchaseDateFrom', tempPurchaseFrom);
+    else newParams.delete('purchaseDateFrom');
+
+    if (tempPurchaseTo) newParams.set('purchaseDateTo', tempPurchaseTo);
+    else newParams.delete('purchaseDateTo');
+
+    if (tempSupplierName) newParams.set('supplierName', tempSupplierName);
+    else newParams.delete('supplierName');
+
+    if (tempHasSerial) newParams.set('hasSerial', tempHasSerial);
+    else newParams.delete('hasSerial');
+
+    if (tempHasDocuments) newParams.set('hasDocuments', tempHasDocuments);
+    else newParams.delete('hasDocuments');
+
+    newParams.set('page', '1');
+    setSearchParams(newParams);
+    setIsAdvancedFilterOpen(false);
+  };
+
+  const clearAdvancedFilters = () => {
+    setTempCompanyCode('');
+    setTempPriceMin('');
+    setTempPriceMax('');
+    setTempPurchaseFrom('');
+    setTempPurchaseTo('');
+    setTempSupplierName('');
+    setTempHasSerial('');
+    setTempHasDocuments('');
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('companyCode');
+    newParams.delete('priceMin');
+    newParams.delete('priceMax');
+    newParams.delete('purchaseDateFrom');
+    newParams.delete('purchaseDateTo');
+    newParams.delete('supplierName');
+    newParams.delete('hasSerial');
+    newParams.delete('hasDocuments');
+    newParams.set('page', '1');
+    setSearchParams(newParams);
+    setIsAdvancedFilterOpen(false);
+  };
+
+  const clearAllFilters = () => {
+    setLocalSearch('');
+    setSearchParams({});
+  };
 
   // Sync localSearch with search query param when it changes externally
   useEffect(() => {
@@ -429,6 +641,234 @@ export const AssetList: React.FC = () => {
 
   const selectedAssets = useMemo(() => assets.filter(a => selectedIds.includes(a.id)), [assets, selectedIds]);
 
+  const handleSortSelection = (key: string, order: string, isFilter: boolean = false, filterKey?: string, filterValue?: string) => {
+    const newParams = new URLSearchParams(searchParams);
+    if (isFilter && filterKey) {
+      if (newParams.get(filterKey) === filterValue) {
+        newParams.delete(filterKey);
+      } else {
+        newParams.set(filterKey, filterValue || '');
+      }
+    } else {
+      newParams.set('sortBy', key);
+      newParams.set('sortOrder', order);
+    }
+    newParams.set('page', '1');
+    setSearchParams(newParams);
+  };
+
+  const activeFilterChips = useMemo(() => {
+    const list: { label: string; value: string; onClear: () => void }[] = [];
+    
+    if (filters.status) {
+      const parts = filters.status.split(',').filter(Boolean);
+      parts.forEach((p: string) => {
+        list.push({
+          label: 'Trạng thái',
+          value: getStatusLabel(p).label,
+          onClear: () => {
+            const next = parts.filter((x: string) => x !== p);
+            updateParam('status', next.length > 0 ? next.join(',') : null);
+          }
+        });
+      });
+    }
+
+    if (filters.cityName) {
+      list.push({
+        label: 'Thành phố',
+        value: filters.cityName,
+        onClear: () => updateParam('cityName', null)
+      });
+    }
+
+    if (filters.projectName) {
+      list.push({
+        label: 'Dự án',
+        value: filters.projectName,
+        onClear: () => updateParam('projectName', null)
+      });
+    }
+
+    if (filters.locationQuery) {
+      list.push({
+        label: 'Vị trí',
+        value: filters.locationQuery,
+        onClear: () => updateParam('locationQuery', null)
+      });
+    }
+
+    if (filters.currentUserName) {
+      list.push({
+        label: 'Người dùng',
+        value: filters.currentUserName,
+        onClear: () => updateParam('currentUserName', null)
+      });
+    }
+
+    if (filters.departmentName) {
+      list.push({
+        label: 'Phòng ban',
+        value: filters.departmentName,
+        onClear: () => updateParam('departmentName', null)
+      });
+    }
+
+    if (filters.isAssigned === 'true') {
+      list.push({
+        label: 'Phân bổ',
+        value: 'Đã cấp phát',
+        onClear: () => updateParam('isAssigned', null)
+      });
+    } else if (filters.isAssigned === 'false') {
+      list.push({
+        label: 'Phân bổ',
+        value: 'Chưa cấp phát',
+        onClear: () => updateParam('isAssigned', null)
+      });
+    }
+
+    if (filters.level4Code) {
+      const parts = filters.level4Code.split(',').filter(Boolean);
+      parts.forEach((p: string) => {
+        list.push({
+          label: 'Nhóm LV4',
+          value: lv4Categories.find(c => c.code === p)?.name || p,
+          onClear: () => {
+            const next = parts.filter((x: string) => x !== p);
+            updateParam('level4Code', next.length > 0 ? next.join(',') : null);
+          }
+        });
+      });
+    }
+
+    if (filters.companyCode) {
+      list.push({
+        label: 'Công ty',
+        value: filters.companyCode,
+        onClear: () => updateParam('companyCode', null)
+      });
+    }
+
+    if (filters.supplierName) {
+      list.push({
+        label: 'Nhà cung cấp',
+        value: filters.supplierName,
+        onClear: () => updateParam('supplierName', null)
+      });
+    }
+
+    if (filters.hasSerial === 'true') {
+      list.push({
+        label: 'Số Serial',
+        value: 'Có Serial',
+        onClear: () => updateParam('hasSerial', null)
+      });
+    } else if (filters.hasSerial === 'false') {
+      list.push({
+        label: 'Số Serial',
+        value: 'Thiếu Serial',
+        onClear: () => updateParam('hasSerial', null)
+      });
+    }
+
+    if (filters.hasDocuments === 'true') {
+      list.push({
+        label: 'Hồ sơ',
+        value: 'Có tài liệu',
+        onClear: () => updateParam('hasDocuments', null)
+      });
+    } else if (filters.hasDocuments === 'false') {
+      list.push({
+        label: 'Hồ sơ',
+        value: 'Thiếu tài liệu',
+        onClear: () => updateParam('hasDocuments', null)
+      });
+    }
+
+    if (filters.hasPrinted === 'true') {
+      list.push({
+        label: 'Tem in',
+        value: 'Đã in tem',
+        onClear: () => updateParam('hasPrinted', null)
+      });
+    } else if (filters.hasPrinted === 'false') {
+      list.push({
+        label: 'Tem in',
+        value: 'Chưa in tem',
+        onClear: () => updateParam('hasPrinted', null)
+      });
+    }
+
+    if (filters.isChecked === 'true') {
+      list.push({
+        label: 'Kiểm kê',
+        value: 'Đã kiểm kê',
+        onClear: () => updateParam('isChecked', null)
+      });
+    } else if (filters.isChecked === 'false') {
+      list.push({
+        label: 'Kiểm kê',
+        value: 'Chưa kiểm kê',
+        onClear: () => updateParam('isChecked', null)
+      });
+    }
+
+    return list;
+  }, [filters, lv4Categories]);
+
+  // Status label calculation
+  const statusActive = tempStatus.length > 0;
+  const statusLabel = statusActive
+    ? tempStatus.length === 1
+      ? `Trạng thái: ${getStatusLabel(tempStatus[0]).label}`
+      : `Trạng thái: ${tempStatus.length}`
+    : 'Trạng thái';
+
+  // Allocation label calculation
+  const allocationActive = !!(filters.currentUserName || filters.departmentName || filters.isAssigned || filters.handoverDateFrom || filters.handoverDateTo);
+  const allocationLabel = allocationActive
+    ? filters.departmentName
+      ? `Phân bổ: ${filters.departmentName}`
+      : filters.currentUserName
+        ? `Phân bổ: ${filters.currentUserName}`
+        : filters.isAssigned === 'true'
+          ? 'Phân bổ: Đã cấp phát'
+          : filters.isAssigned === 'false'
+            ? 'Phân bổ: Chưa cấp phát'
+            : 'Phân bổ: Đang lọc'
+    : 'Phân bổ';
+
+  // Location label calculation
+  const locationActive = !!(filters.cityName || filters.projectName || filters.locationQuery);
+  const locationLabel = locationActive
+    ? filters.cityName
+      ? `Vị trí: ${filters.cityName}`
+      : filters.projectName
+        ? `Vị trí: ${filters.projectName}`
+        : `Vị trí: ${filters.locationQuery}`
+    : 'Vị trí';
+
+  // Level 4 Category label calculation
+  const lv4Active = tempLv4Code.length > 0;
+  const lv4Label = lv4Active
+    ? tempLv4Code.length === 1
+      ? `Nhóm: ${lv4Categories.find(c => c.code === tempLv4Code[0])?.name || tempLv4Code[0]}`
+      : `Nhóm tài sản: ${tempLv4Code.length}`
+    : 'Nhóm tài sản';
+
+  // Advanced filters activity
+  const isAdvancedActive = !!(
+    filters.companyCode ||
+    filters.priceMin ||
+    filters.priceMax ||
+    filters.purchaseDateFrom ||
+    filters.purchaseDateTo ||
+    filters.supplierName ||
+    filters.hasSerial ||
+    filters.hasDocuments
+  );
+
   return (
     <div className="h-screen flex flex-col overflow-hidden bg-[#f8fafc]">
       {/* COLLAPSIBLE HEADER */}
@@ -476,101 +916,374 @@ export const AssetList: React.FC = () => {
                     );
                   })}
                 </div>
-                {filters.status && (
-                  <div className="flex items-center gap-2 mt-3 px-1 animate-in fade-in slide-in-from-top-1">
-                    <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                      Đang lọc:
-                    </span>
-                    <span className="inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-900 text-white shadow-sm">
-                      {getStatusLabelText(filters.status)}
-                      <button 
-                        onClick={() => updateParam('status', '')}
-                        className="ml-2 text-slate-400 hover:text-white transition-colors"
-                        title="Xóa bộ lọc"
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </span>
-                    <button 
-                      onClick={() => updateParam('status', '')}
-                      className="text-[10px] font-black text-rose-600 hover:text-rose-700 uppercase tracking-widest ml-3 transition-colors hover:underline"
-                    >
-                      Xóa lọc
-                    </button>
-                  </div>
-                )}
               </div>
             )}
           </div>
 
           {/* Toolbar Section — Always visible */}
           <div className={cn(
-            "flex items-center gap-2 transition-all duration-500 flex-wrap",
+            "flex items-center gap-3 transition-all duration-500 justify-between flex-wrap",
             isCompact ? "mt-1 py-1" : "mt-3"
           )}>
-              <div className="relative flex-1 min-w-[240px]">
-                <Search className="absolute left-3 top-2 h-3.5 w-3.5 text-slate-400" />
+            {/* Left side: Search & Chip filters */}
+            <div className="flex items-center gap-2.5 flex-1 min-w-[280px] flex-wrap">
+              {/* Main Search Input */}
+              <div className="relative flex-1 max-w-md min-w-[220px]">
+                <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input 
                   type="text" 
-                  placeholder="Tìm theo mã, tên, serial..." 
-                  className="w-full pl-9 pr-3 py-1 bg-slate-50 border border-slate-100 rounded-lg focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 transition-all text-xs text-slate-900 placeholder:text-slate-400 h-[32px]"
+                  placeholder="Tìm mã, tên, serial, người dùng, phòng ban, vị trí..." 
+                  className="w-full pl-9 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 transition-all text-xs text-slate-900 placeholder:text-slate-400 h-[36px]"
                   value={localSearch}
                   onChange={(e) => setLocalSearch(e.target.value)}
                 />
               </div>
-              
-              <div className="flex flex-wrap items-center gap-2">
-                <MultiSelect 
-                  label="Trạng thái" 
-                  selected={filters.status ? filters.status.split(',') : []}
-                  onChange={(vals) => updateParam('status', vals.join(','))}
-                  options={[
-                    {label: 'Trong kho', value: 'IN_STOCK'},
+
+              {/* Advanced Filter Drawer Trigger */}
+              <button
+                type="button"
+                onClick={() => setIsAdvancedFilterOpen(true)}
+                className={`flex items-center px-4 py-2 bg-white border rounded-full text-[13px] font-[800] transition-all h-[36px] shadow-sm gap-2 ${
+                  isAdvancedActive 
+                    ? 'border-primary-500 text-primary-700 bg-primary-50/10' 
+                    : 'border-slate-200 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                <Filter className="h-4 w-4" />
+                <span>Bộ lọc</span>
+              </button>
+
+              {/* Trạng thái filter chip */}
+              <ChipPopoverFilter
+                label={statusLabel}
+                isActive={statusActive}
+                onClear={clearStatusFilter}
+                onApply={applyStatusFilter}
+                onReset={clearStatusFilter}
+              >
+                <div className="space-y-2 py-1">
+                  {[
                     {label: 'Đang sử dụng', value: 'ASSIGNED'},
-                    {label: 'Đã thu hồi', value: 'RETIRED'},
+                    {label: 'Trong kho', value: 'IN_STOCK'},
+                    {label: 'Chưa sử dụng', value: 'RETIRED'},
                     {label: 'Đang sửa chữa', value: 'UNDER_REPAIR'},
+                    {label: 'Hỏng', value: 'DAMAGED'},
+                    {label: 'Mất', value: 'LOST'},
                     {label: 'Chờ thanh lý', value: 'PENDING_DISPOSAL'},
                     {label: 'Đã thanh lý', value: 'DISPOSED'},
-                    {label: 'Mất', value: 'LOST'},
-                    {label: 'Hỏng', value: 'DAMAGED'},
-                  ]}
-                />
-                <AutocompleteInput placeholder="Phòng ban" value={filters.departmentName} onChange={(v) => updateParam('departmentName', v)} endpoint="/assets/filter-options/departments" icon={<Search className="h-3 w-3" />} />
-                <AutocompleteInput placeholder="Thành phố" value={filters.cityName} onChange={(v) => updateParam('cityName', v)} endpoint="/assets/filter-options/cities" icon={<MapPin className="h-3 w-3" />} />
-                <AutocompleteInput placeholder="Dự án" value={filters.projectName} onChange={(v) => updateParam('projectName', v)} endpoint="/assets/filter-options/projects" icon={<Box className="h-3 w-3" />} />
-                <AutocompleteInput placeholder="Vị trí" value={filters.locationQuery} onChange={(v) => updateParam('locationQuery', v)} endpoint="/assets/filter-options/locations" icon={<MapPin className="h-3 w-3" />} />
-              </div>
+                  ].map((opt) => {
+                    const checked = tempStatus.includes(opt.value);
+                    return (
+                      <label key={opt.value} className="flex items-center space-x-2.5 px-1 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => {
+                            if (checked) {
+                              setTempStatus(tempStatus.filter(x => x !== opt.value));
+                            } else {
+                              setTempStatus([...tempStatus, opt.value]);
+                            }
+                          }}
+                          className="rounded border-slate-355 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                        />
+                        <span className={`text-[13px] ${checked ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>{opt.label}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </ChipPopoverFilter>
 
-              <button onClick={() => setSearchParams({})} className="p-1.5 text-slate-400 hover:text-rose-500 transition-colors" title="Làm mới">
-                <RotateCcw className="h-3.5 w-3.5" />
-              </button>
-              
-              <div className="h-5 w-px bg-slate-100 mx-1"></div>
-              
+              {/* Phân bổ filter chip */}
+              <ChipPopoverFilter
+                label={allocationLabel}
+                isActive={allocationActive}
+                onClear={clearAllocationFilter}
+                onApply={applyAllocationFilter}
+                onReset={clearAllocationFilter}
+              >
+                <div className="space-y-4 py-2 w-64">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Người sử dụng</label>
+                    <AutocompleteInput 
+                      placeholder="Nhập tên..." 
+                      value={tempUserName} 
+                      onChange={setTempUserName} 
+                      endpoint="/assets/filter-options/users" 
+                      icon={<Search className="h-3 w-3" />}
+                      className="w-full"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Phòng ban</label>
+                    <AutocompleteInput 
+                      placeholder="Chọn bộ phận..." 
+                      value={tempDeptName} 
+                      onChange={setTempDeptName} 
+                      endpoint="/assets/filter-options/departments" 
+                      icon={<Search className="h-3 w-3" />}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Trạng thái phân bổ</label>
+                    <select 
+                      value={tempAllocation} 
+                      onChange={(e) => setTempAllocation(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-[13px] font-[600] text-slate-700 focus:outline-none focus:ring-4 focus:ring-primary-50/50 focus:border-primary-500 h-[38px] transition-all shadow-sm"
+                    >
+                      <option value="">Tất cả</option>
+                      <option value="ASSIGNED">Đã cấp phát (Đang sử dụng)</option>
+                      <option value="UNASSIGNED">Chưa cấp phát (Trong kho)</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Ngày bàn giao</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <input
+                        type="date"
+                        value={tempHandoverFrom}
+                        onChange={(e) => setTempHandoverFrom(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-2 py-1 text-[11px] font-semibold text-slate-650 focus:outline-none focus:border-primary-500 h-[34px]"
+                      />
+                      <input
+                        type="date"
+                        value={tempHandoverTo}
+                        onChange={(e) => setTempHandoverTo(e.target.value)}
+                        className="w-full border border-slate-200 rounded-xl px-2 py-1 text-[11px] font-semibold text-slate-650 focus:outline-none focus:border-primary-500 h-[34px]"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </ChipPopoverFilter>
+
+              {/* Vị trí filter chip */}
+              <ChipPopoverFilter
+                label={locationLabel}
+                isActive={locationActive}
+                onClear={clearLocationFilter}
+                onApply={applyLocationFilter}
+                onReset={clearLocationFilter}
+              >
+                <div className="space-y-4 py-2 w-64">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Tỉnh / Thành phố</label>
+                    <AutocompleteInput 
+                      placeholder="Chọn thành phố..." 
+                      value={tempCity} 
+                      onChange={setTempCity} 
+                      endpoint="/assets/filter-options/cities" 
+                      icon={<MapPin className="h-3 w-3" />}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Dự án</label>
+                    <AutocompleteInput 
+                      placeholder="Chọn dự án..." 
+                      value={tempProject} 
+                      onChange={setTempProject} 
+                      endpoint="/assets/filter-options/projects" 
+                      icon={<Box className="h-3 w-3" />}
+                      className="w-full"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Vị trí chi tiết</label>
+                    <AutocompleteInput 
+                      placeholder="Nhập vị trí..." 
+                      value={tempLocation} 
+                      onChange={setTempLocation} 
+                      endpoint="/assets/filter-options/locations" 
+                      icon={<MapPin className="h-3 w-3" />}
+                      className="w-full"
+                    />
+                  </div>
+                </div>
+              </ChipPopoverFilter>
+
+              {/* Nhóm tài sản filter chip (LV4) */}
+              <ChipPopoverFilter
+                label={lv4Label}
+                isActive={lv4Active}
+                onClear={clearLv4Filter}
+                onApply={applyLv4Filter}
+                onReset={clearLv4Filter}
+              >
+                <div className="space-y-3 py-1 w-64">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Tìm nhóm tài sản (LV4)..."
+                      value={lv4Search}
+                      onChange={(e) => setLv4Search(e.target.value)}
+                      className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-50 text-[12px] font-bold text-slate-700 h-[34px]"
+                    />
+                  </div>
+                  
+                  <div className="space-y-1 max-h-52 overflow-y-auto custom-scrollbar">
+                    {lv4Categories
+                      .filter(c => !lv4Search || c.name.toLowerCase().includes(lv4Search.toLowerCase()) || c.code.toLowerCase().includes(lv4Search.toLowerCase()))
+                      .map((cat) => {
+                        const checked = tempLv4Code.includes(cat.code);
+                        return (
+                          <label key={cat.id} className="flex items-center space-x-2.5 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer select-none">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => {
+                                if (checked) {
+                                  setTempLv4Code(tempLv4Code.filter(x => x !== cat.code));
+                                } else {
+                                  setTempLv4Code([...tempLv4Code, cat.code]);
+                                }
+                              }}
+                              className="rounded border-slate-350 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                            />
+                            <span className={`text-[12px] ${checked ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>
+                              {cat.name} <span className="text-[10px] text-slate-400 font-mono">({cat.code})</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    {lv4Categories.filter(c => !lv4Search || c.name.toLowerCase().includes(lv4Search.toLowerCase()) || c.code.toLowerCase().includes(lv4Search.toLowerCase())).length === 0 && (
+                      <div className="text-center py-4 text-[12px] text-slate-400 italic">Không tìm thấy nhóm LV4</div>
+                    )}
+                  </div>
+                </div>
+              </ChipPopoverFilter>
+            </div>
+
+            {/* Right side: Action Buttons */}
+            <div className="flex items-center gap-2">
               <Can permission="ASSET_EXPORT">
                 <button 
                   onClick={handleExportAll}
-                  className="h-[32px] px-3 flex items-center text-[11px] font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap"
+                  className="h-[36px] px-4 flex items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap shadow-xs"
                 >
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> Export
+                  <Download className="mr-1.5 h-4 w-4 text-slate-500" /> Export
                 </button>
               </Can>
 
               <Can permission="ASSET_VIEW">
                 <button 
+                  type="button"
                   onClick={handleExportExcel}
-                  className="h-[32px] px-3 flex items-center text-[11px] font-bold bg-white border border-slate-200 rounded-lg hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap"
+                  className="h-[36px] px-4 flex items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap shadow-xs"
                 >
-                  <Download className="mr-1.5 h-3.5 w-3.5" /> Tải báo cáo
+                  <Download className="mr-1.5 h-4 w-4 text-slate-500" /> Tải báo cáo
                 </button>
               </Can>
               
               <Can permission="ASSET_CREATE">
-                <button onClick={() => openModal("ASSET_CREATE", { onComplete: fetchAssets })} className="h-[32px] px-3 flex items-center text-[11px] font-black bg-primary-600 text-white rounded-lg shadow-sm hover:bg-primary-700 transition-all whitespace-nowrap">
-                  <Plus className="mr-1.5 h-3.5 w-3.5" /> Thêm mới
+                <button 
+                  type="button"
+                  onClick={() => openModal("ASSET_CREATE", { onComplete: fetchAssets })} 
+                  className="h-[36px] px-5 flex items-center text-[12px] font-black bg-primary-600 text-white rounded-full shadow-md hover:bg-primary-700 transition-all whitespace-nowrap"
+                >
+                  <Plus className="mr-1.5 h-4 w-4" /> Thêm mới
                 </button>
               </Can>
+            </div>
           </div>
+
+          {/* Preset and Sorting Chips Row */}
+          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-2.5">
+            {/* Sorting Row */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest mr-1.5">Sắp xếp theo:</span>
+              {[
+                { label: 'Mới cập nhật', key: 'createdAt', order: 'desc' },
+                { label: 'Mã tài sản A-Z', key: 'assetCode', order: 'asc' },
+                { label: 'Giá trị cao-thấp', key: 'purchasePriceExVat', order: 'desc' },
+                { label: 'Ngày mua mới nhất', key: 'purchaseDate', order: 'desc' },
+                { label: 'Chưa kiểm kê', key: 'lastInventoryDate', order: 'asc' },
+              ].map((s) => {
+                const isActive = sortBy === s.key && sortOrder === s.order;
+                return (
+                  <button
+                    key={s.label}
+                    type="button"
+                    onClick={() => handleSortSelection(s.key, s.order)}
+                    className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-all ${
+                      isActive 
+                        ? 'bg-slate-900 border-slate-900 text-white font-bold' 
+                        : 'bg-white border-slate-200 text-slate-650 hover:border-slate-350'
+                    }`}
+                  >
+                    {s.label}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Presets Row */}
+            <div className="flex flex-wrap items-center gap-2 text-xs">
+              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest mr-1.5">Lọc nhanh (Preset):</span>
+              {[
+                { label: 'Đang sử dụng', key: 'status', val: 'ASSIGNED' },
+                { label: 'Trong kho', key: 'status', val: 'IN_STOCK' },
+                { label: 'Chưa kiểm kê', key: 'isChecked', val: 'false' },
+                { label: 'Chưa in tem', key: 'hasPrinted', val: 'false' },
+                { label: 'Thiếu thông tin', key: 'hasSerial', val: 'false' },
+                { label: 'Chờ thanh lý', key: 'status', val: 'PENDING_DISPOSAL' },
+                { label: 'Đang sửa chữa', key: 'status', val: 'UNDER_REPAIR' },
+                { label: 'Mất / thất thoát', key: 'status', val: 'LOST' },
+              ].map((preset) => {
+                const isActive = filters[preset.key] === preset.val;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => handleSortSelection('', '', true, preset.key, preset.val)}
+                    className={`px-3 py-1.5 rounded-full text-[12px] font-semibold border transition-all ${
+                      isActive 
+                        ? 'bg-primary-600 border-primary-600 text-white font-bold' 
+                        : 'bg-white border-slate-200 text-slate-650 hover:border-slate-355'
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Applied Filters chips */}
+          {activeFilterChips.length > 0 && (
+            <div className="flex flex-wrap items-center gap-2 mt-3 pt-3 border-t border-slate-100 animate-in fade-in duration-200">
+              <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest mr-1">Bộ lọc đang áp dụng:</span>
+              {activeFilterChips.map((chip, idx) => (
+                <div 
+                  key={idx}
+                  className="flex items-center bg-slate-50 border border-slate-200 rounded-full px-3 py-1 text-[12px] font-semibold text-slate-700 animate-in fade-in duration-200"
+                >
+                  <span className="text-slate-400 mr-1 font-bold">{chip.label}:</span>
+                  <span>{chip.value}</span>
+                  <button 
+                    type="button"
+                    onClick={chip.onClear} 
+                    className="ml-1.5 p-0.5 hover:bg-slate-200 rounded-full text-slate-400 hover:text-rose-600 transition-colors"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                </div>
+              ))}
+              <button 
+                type="button"
+                onClick={clearAllFilters}
+                className="text-[11px] font-black text-rose-600 hover:text-rose-700 uppercase tracking-widest ml-2 transition-colors hover:underline"
+              >
+                Xóa tất cả
+              </button>
+            </div>
+          )}
         </div>
       </header>
 
@@ -840,8 +1553,143 @@ export const AssetList: React.FC = () => {
         </div>
       </div>
     </main>
-    </div>
-  );
+
+    {/* ADVANCED FILTERS DRAWER */}
+    {isAdvancedFilterOpen && (
+      <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
+        <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setIsAdvancedFilterOpen(false)}></div>
+        <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
+          <div className="w-screen max-w-md bg-white shadow-2xl rounded-l-3xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+            {/* Header */}
+            <div className="px-6 py-5 bg-slate-900 text-white flex justify-between items-center border-b border-slate-800">
+              <h2 className="text-lg font-black tracking-tight flex items-center">
+                <Filter className="mr-2.5 h-5 w-5 text-slate-400" /> Bộ lọc nâng cao
+              </h2>
+              <button onClick={() => setIsAdvancedFilterOpen(false)} className="p-1.5 hover:bg-slate-800 rounded-full transition-all">
+                <X className="h-5 w-5 text-slate-400" />
+              </button>
+            </div>
+
+            {/* Content */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+              {/* Company Code */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Công ty chủ quản</label>
+                <AutocompleteInput 
+                  placeholder="Chọn công ty..." 
+                  value={tempCompanyCode} 
+                  onChange={setTempCompanyCode} 
+                  endpoint="/assets/filter-options/companies" 
+                  icon={<Box className="h-3 w-3" />}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Purchase Price Range */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Giá mua (VNĐ)</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="number"
+                    placeholder="Từ..."
+                    value={tempPriceMin}
+                    onChange={(e) => setTempPriceMin(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary-500 h-[38px]"
+                  />
+                  <input
+                    type="number"
+                    placeholder="Đến..."
+                    value={tempPriceMax}
+                    onChange={(e) => setTempPriceMax(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary-500 h-[38px]"
+                  />
+                </div>
+              </div>
+
+              {/* Purchase Date Range */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày mua tài sản</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <input
+                    type="date"
+                    value={tempPurchaseFrom}
+                    onChange={(e) => setTempPurchaseFrom(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary-500 h-[38px]"
+                  />
+                  <input
+                    type="date"
+                    value={tempPurchaseTo}
+                    onChange={(e) => setTempPurchaseTo(e.target.value)}
+                    className="w-full border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary-500 h-[38px]"
+                  />
+                </div>
+              </div>
+
+              {/* Supplier Name */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nhà cung cấp</label>
+                <AutocompleteInput 
+                  placeholder="Chọn nhà cung cấp..." 
+                  value={tempSupplierName} 
+                  onChange={setTempSupplierName} 
+                  endpoint="/assets/filter-options/suppliers" 
+                  icon={<Search className="h-3 w-3" />}
+                  className="w-full"
+                />
+              </div>
+
+              {/* Serial Check */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số Serial</label>
+                <select 
+                  value={tempHasSerial} 
+                  onChange={(e) => setTempHasSerial(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary-500 h-[38px] transition-all shadow-sm"
+                >
+                  <option value="">Tất cả</option>
+                  <option value="true">Có Số Serial</option>
+                  <option value="false">Không có Số Serial (Thiếu Serial)</option>
+                </select>
+              </div>
+
+              {/* Documents Check */}
+              <div className="space-y-1.5">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Hồ sơ / Chứng từ</label>
+                <select 
+                  value={tempHasDocuments} 
+                  onChange={(e) => setTempHasDocuments(e.target.value)}
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary-500 h-[38px] transition-all shadow-sm"
+                >
+                  <option value="">Tất cả</option>
+                  <option value="true">Có tài liệu đính kèm</option>
+                  <option value="false">Thiếu tài liệu đính kèm</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="px-6 py-5 bg-slate-50 border-t border-slate-100 flex justify-between gap-4">
+              <button 
+                type="button"
+                onClick={clearAdvancedFilters}
+                className="flex-1 py-3 bg-white border border-slate-200 text-slate-650 rounded-2xl text-[13px] font-[800] hover:bg-slate-100 transition-colors uppercase tracking-wider text-center"
+              >
+                Thiết lập lại
+              </button>
+              <button 
+                type="button"
+                onClick={applyAdvancedFilters}
+                className="flex-1 py-3 bg-slate-900 text-white rounded-2xl text-[13px] font-[800] hover:bg-slate-800 transition-colors shadow-xl shadow-slate-200 uppercase tracking-wider text-center"
+              >
+                Áp dụng
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    )}
+  </div>
+);
 };
 
 const StatCard = ({ label, value, icon, color, active, onClick }: any) => {

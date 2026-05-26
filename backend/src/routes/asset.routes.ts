@@ -272,9 +272,21 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
   }
 
   if (companyCode) where.companyCode = String(companyCode);
-  if (currentUserName) where.currentUserName = { contains: String(currentUserName) };
+  if (req.query.isAssigned === 'true') {
+    where.currentUserName = { not: null, notIn: ['', 'N/A', 'n/a'] };
+  } else if (req.query.isAssigned === 'false') {
+    where.currentUserName = { in: [null, '', 'N/A', 'n/a'] };
+  } else if (currentUserName) {
+    where.currentUserName = { contains: String(currentUserName) };
+  }
   if (departmentName) where.departmentName = { contains: String(departmentName) };
-  if (level4Code) where.level4Code = String(level4Code);
+  
+  if (level4Code) {
+    const codeArray = String(level4Code).split(',').filter(Boolean);
+    if (codeArray.length > 0) {
+      where.level4Code = { in: codeArray };
+    }
+  }
   
   if (cityName) where.cityName = { contains: String(cityName) };
   if (projectName) where.projectName = { contains: String(projectName) };
@@ -339,6 +351,12 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
 
   if (hasDocuments === 'true') where.documentNote = { not: null, notIn: ['', 'N/A', 'n/a'] };
   if (hasDocuments === 'false') where.documentNote = { in: [null, '', 'N/A', 'n/a'] };
+
+  if (req.query.hasPrinted === 'true') where.lastLabelPrint = { not: null };
+  if (req.query.hasPrinted === 'false') where.lastLabelPrint = null;
+
+  if (req.query.isChecked === 'true') where.lastInventoryDate = { not: null };
+  if (req.query.isChecked === 'false') where.lastInventoryDate = null;
 
   if (andClauses.length > 0) {
     where.AND = andClauses;
