@@ -8,6 +8,7 @@ import {
   ClipboardCheck, 
   TrendingUp,
   DollarSign,
+  ChevronLeft,
   ChevronRight,
   Plus,
   LayoutDashboard,
@@ -107,6 +108,9 @@ export const Dashboard: React.FC = () => {
 
   const [tempFilters, setTempFilters] = useState({ ...filters });
   const [isFilterOpen, setIsFilterOpen] = useState(false);
+  const [dailyMode, setDailyMode] = useState<'month' | 'day'>('month');
+  const [dailyMonth, setDailyMonth] = useState(format(new Date(defaultDates.start), 'yyyy-MM'));
+  const [dailySelectedDate, setDailySelectedDate] = useState(format(new Date(), 'yyyy-MM-dd'));
 
   // Metadata Lists for Popover
   const [companies, setCompanies] = useState<any[]>([]);
@@ -143,20 +147,31 @@ export const Dashboard: React.FC = () => {
   const fetchDashboardData = async () => {
     setLoading(true);
     try {
-      const params = {
+      const scopedParams = {
         companyCode: filters.companyCode || undefined,
         departmentName: filters.departmentName || undefined,
         cityName: filters.cityName || undefined,
         projectName: filters.projectName || undefined,
         locationName: filters.locationName || undefined,
+      };
+      const params = {
+        ...scopedParams,
         startDate: filters.startDate || undefined,
         endDate: filters.endDate || undefined
+      };
+      const [dailyYear, dailyMonthNumber] = dailyMonth.split('-').map(Number);
+      const dailyMonthStart = new Date(dailyYear, dailyMonthNumber - 1, 1);
+      const dailyMonthEnd = endOfMonth(dailyMonthStart);
+      const dailyParams = {
+        ...scopedParams,
+        startDate: format(dailyMonthStart, 'yyyy-MM-dd'),
+        endDate: format(dailyMonthEnd, 'yyyy-MM-dd')
       };
 
       const [summaryRes, statsRes, dailyStatsRes, actionItemsRes, activitiesRes] = await Promise.all([
         api.get('/dashboard/summary', { params }).catch(err => { console.error(err); return { data: null }; }),
         api.get('/dashboard/activity-stats', { params }).catch(err => { console.error(err); return { data: null }; }),
-        api.get('/dashboard/activity-daily-stats', { params }).catch(err => { console.error(err); return { data: [] }; }),
+        api.get('/dashboard/activity-daily-stats', { params: dailyParams }).catch(err => { console.error(err); return { data: [] }; }),
         api.get('/dashboard/action-items', { params }).catch(err => { console.error(err); return { data: null }; }),
         api.get('/dashboard/recent-activities', { params }).catch(err => { console.error(err); return { data: [] }; })
       ]);
@@ -175,7 +190,7 @@ export const Dashboard: React.FC = () => {
 
   useEffect(() => {
     fetchDashboardData();
-  }, [filters]);
+  }, [filters, dailyMonth]);
 
   // Sync tempFilters when popover opens
   const openPopover = () => {
@@ -443,7 +458,34 @@ export const Dashboard: React.FC = () => {
     { key: 'liquidatedAssets', label: 'Thanh lý', color: 'text-slate-600' }
   ];
 
-  const maxDailyTotal = Math.max(...dailyStats.map((item) => item.total || 0), 1);
+  const dailyStatsByDate = new Map(dailyStats.map((item) => [item.date, item]));
+  const visibleDailyStats = dailyMode === 'day'
+    ? dailyStats.filter((item) => item.date === dailySelectedDate)
+    : dailyStats;
+  const maxDailyTotal = Math.max(...visibleDailyStats.map((item) => item.total || 0), 1);
+  const [dailyYear, dailyMonthNumber] = dailyMonth.split('-').map(Number);
+  const dailyMonthDate = new Date(dailyYear, dailyMonthNumber - 1, 1);
+  const daysInDailyMonth = endOfMonth(dailyMonthDate).getDate();
+  const monthStartWeekday = dailyMonthDate.getDay();
+  const mondayFirstOffset = monthStartWeekday === 0 ? 6 : monthStartWeekday - 1;
+  const dailyCalendarCells = [
+    ...Array.from({ length: mondayFirstOffset }, () => null),
+    ...Array.from({ length: daysInDailyMonth }, (_, idx) => idx + 1)
+  ];
+  const dailyMonthLabel = format(dailyMonthDate, 'MM/yyyy');
+  const selectedDayStats = dailyStatsByDate.get(dailySelectedDate);
+
+  const changeDailyMonth = (delta: number) => {
+    const next = new Date(dailyYear, dailyMonthNumber - 1 + delta, 1);
+    setDailyMonth(format(next, 'yyyy-MM'));
+    setDailySelectedDate(format(next, 'yyyy-MM-dd'));
+  };
+
+  const selectDailyCalendarDay = (day: number) => {
+    const date = new Date(dailyYear, dailyMonthNumber - 1, day);
+    setDailySelectedDate(format(date, 'yyyy-MM-dd'));
+    setDailyMode('day');
+  };
 
   // Action Items Helper Mapping
   const actionList = [
@@ -780,22 +822,151 @@ export const Dashboard: React.FC = () => {
 
       {/* DAILY ACTIVITY BREAKDOWN */}
       <div className="bg-white rounded-[2rem] border border-slate-100 shadow-md shadow-slate-100/50 overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <div className="px-6 py-5 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
           <div className="flex items-center space-x-2">
             <Calendar className="h-5 w-5 text-indigo-600" />
             <div>
               <h2 className="text-lg font-[800] text-slate-800 tracking-tight">Thống kê phát sinh theo ngày</h2>
               <p className="text-xs font-medium text-slate-400">
-                Chỉ hiển thị các ngày có phát sinh trong kỳ đã chọn
+                Chọn tháng hoặc ngày để xem phát sinh; vòng đỏ là ngày có thao tác liên quan đến tài sản
               </p>
             </div>
           </div>
-          <div className="text-[11px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5">
-            {dailyStats.length} ngày có dữ liệu
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center rounded-2xl border border-slate-200 bg-slate-50 p-1">
+              <button
+                type="button"
+                onClick={() => setDailyMode('month')}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                  dailyMode === 'month' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Theo tháng
+              </button>
+              <button
+                type="button"
+                onClick={() => setDailyMode('day')}
+                className={`px-3 py-1.5 rounded-xl text-[11px] font-black uppercase tracking-widest transition-all ${
+                  dailyMode === 'day' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                }`}
+              >
+                Theo ngày
+              </button>
+            </div>
+            <div className="text-[11px] font-black uppercase tracking-widest text-slate-400 bg-slate-50 border border-slate-100 rounded-full px-3 py-1.5">
+              {visibleDailyStats.length} ngày có dữ liệu
+            </div>
           </div>
         </div>
 
-        {dailyStats.length > 0 ? (
+        <div className="grid grid-cols-1 xl:grid-cols-[360px_1fr] border-b border-slate-100">
+          <div className="p-5 border-b xl:border-b-0 xl:border-r border-slate-100 bg-slate-50/40">
+            <div className="flex items-center justify-between mb-4">
+              <button
+                type="button"
+                onClick={() => changeDailyMonth(-1)}
+                className="h-9 w-9 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200 flex items-center justify-center transition-all"
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </button>
+              <div className="text-center">
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tháng thống kê</p>
+                <input
+                  type="month"
+                  value={dailyMonth}
+                  onChange={(e) => {
+                    setDailyMonth(e.target.value);
+                    setDailySelectedDate(`${e.target.value}-01`);
+                  }}
+                  className="mt-1 bg-white border border-slate-200 rounded-xl px-3 py-1.5 text-sm font-black text-slate-800 text-center focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => changeDailyMonth(1)}
+                className="h-9 w-9 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200 flex items-center justify-center transition-all"
+              >
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+
+            <div className="grid grid-cols-7 gap-1.5 text-center mb-2">
+              {['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'].map((day) => (
+                <div key={day} className={`text-[10px] font-black uppercase ${day === 'CN' ? 'text-rose-500' : 'text-slate-400'}`}>
+                  {day}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-7 gap-1.5">
+              {dailyCalendarCells.map((day, idx) => {
+                if (!day) return <div key={`empty-${idx}`} className="h-10" />;
+                const dateKey = format(new Date(dailyYear, dailyMonthNumber - 1, day), 'yyyy-MM-dd');
+                const stats = dailyStatsByDate.get(dateKey);
+                const hasActivity = !!stats && stats.total > 0;
+                const isSelected = dailyMode === 'day' && dailySelectedDate === dateKey;
+                return (
+                  <button
+                    key={dateKey}
+                    type="button"
+                    onClick={() => selectDailyCalendarDay(day)}
+                    className={`relative h-10 rounded-xl border text-sm font-black transition-all ${
+                      isSelected
+                        ? 'bg-indigo-600 border-indigo-600 text-white shadow-md shadow-indigo-100'
+                        : hasActivity
+                          ? 'bg-white border-rose-200 text-slate-800 hover:border-rose-400'
+                          : 'bg-white border-slate-200 text-slate-500 hover:border-indigo-200'
+                    }`}
+                    title={hasActivity ? `${stats.total} phát sinh` : 'Không có phát sinh'}
+                  >
+                    {hasActivity && (
+                      <span className="absolute -top-1.5 -right-1.5 min-w-5 h-5 px-1 rounded-full bg-rose-500 text-white text-[10px] leading-5 font-black shadow-sm">
+                        {stats.total}
+                      </span>
+                    )}
+                    <span>{day}</span>
+                    {hasActivity && !isSelected && (
+                      <span className="absolute bottom-1 left-1/2 -translate-x-1/2 h-1 w-1 rounded-full bg-emerald-500" />
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div className="p-5 flex flex-col justify-between gap-4">
+            <div>
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Đang xem</p>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+                <p className="text-sm font-black text-slate-800">
+                  {dailyMode === 'day'
+                    ? `Ngày ${format(new Date(dailySelectedDate), 'dd/MM/yyyy')}`
+                    : `Tất cả ngày có phát sinh trong tháng ${dailyMonthLabel}`}
+                </p>
+                <p className="text-xs font-semibold text-slate-400 mt-1">
+                  {dailyMode === 'day'
+                    ? selectedDayStats
+                      ? `${selectedDayStats.total} phát sinh được ghi nhận`
+                      : 'Không có phát sinh trong ngày này'
+                    : `${dailyStats.length} ngày có phát sinh trong tháng`}
+                </p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {dailyStatColumns.map((col) => {
+                const total = visibleDailyStats.reduce((sum, item) => sum + (item[col.key] || 0), 0);
+                return (
+                  <div key={col.key} className="rounded-2xl border border-slate-100 bg-white px-3 py-2">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{col.label}</p>
+                    <p className={`text-lg font-black ${col.color}`}>{total.toLocaleString()}</p>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {visibleDailyStats.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full min-w-[980px] text-left">
               <thead>
@@ -810,7 +981,7 @@ export const Dashboard: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {dailyStats.map((item) => (
+                {visibleDailyStats.map((item) => (
                   <tr key={item.date} className="hover:bg-slate-50/70 transition-colors">
                     <td className="px-6 py-3">
                       <div className="flex items-center gap-3">
@@ -845,7 +1016,9 @@ export const Dashboard: React.FC = () => {
           </div>
         ) : (
           <div className="px-6 py-10 text-center">
-            <p className="text-sm font-bold text-slate-400">Không có phát sinh trong khoảng ngày đã chọn.</p>
+            <p className="text-sm font-bold text-slate-400">
+              {dailyMode === 'day' ? 'Không có phát sinh trong ngày đã chọn.' : 'Không có phát sinh trong tháng đã chọn.'}
+            </p>
           </div>
         )}
       </div>
