@@ -98,6 +98,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [selectedForm, setSelectedForm] = useState<{code: string, data?: any} | null>(null);
   const [updateAllSameName, setUpdateAllSameName] = useState(false);
   const [isCompanyRevealed, setIsCompanyRevealed] = useState(false);
+  const [showAssignInfoModal, setShowAssignInfoModal] = useState(false);
 
   useEffect(() => {
     if (isOpen && assetId) {
@@ -109,6 +110,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       setAsset(null);
       setMode('view');
       setActiveTab('info');
+      setShowAssignInfoModal(false);
     }
   }, [isOpen, assetId, initialTab]);
 
@@ -123,11 +125,17 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') onClose();
+      if (e.key === 'Escape') {
+        if (showAssignInfoModal) {
+          setShowAssignInfoModal(false);
+        } else {
+          onClose();
+        }
+      }
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose]);
+  }, [onClose, showAssignInfoModal]);
 
   const fetchAssetDetail = async () => {
     setLoading(true);
@@ -172,6 +180,21 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   );
 
   const currentOpenTicket = asset?.repairTickets?.find((t: any) => t.status === 'OPEN' || t.status === 'IN_PROGRESS');
+  const latestAssignment = asset?.assignments?.[0];
+  const emptyText = (value?: string | number | null) => {
+    if (value === undefined || value === null || value === '') return '--';
+    return String(value);
+  };
+
+  const InfoRow = ({ label, value, icon: Icon }: { label: string; value?: string | number | null; icon?: any }) => (
+    <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+      <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
+        {Icon && <Icon className="mr-2 h-3.5 w-3.5" />}
+        {label}
+      </p>
+      <p className="text-sm font-bold text-slate-800 leading-snug">{emptyText(value)}</p>
+    </div>
+  );
 
   const handleUpdateProgress = async () => {
     if (!currentOpenTicket) return;
@@ -598,7 +621,14 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       <h4 className="text-lg font-black text-slate-900">{asset.currentUserName || 'Sẵn sàng cấp phát'}</h4>
                       <p className="text-xs font-bold text-blue-500 mt-1">{asset.departmentName} {asset.currentPosition ? ` • ${asset.currentPosition}` : ''}</p>
                     </div>
-                    <div className="bg-white p-3 rounded-2xl shadow-sm text-blue-500"><User className="h-6 w-6" /></div>
+                    <button
+                      type="button"
+                      onClick={() => setShowAssignInfoModal(true)}
+                      className="bg-white p-3 rounded-2xl shadow-sm text-blue-500 hover:text-primary-600 hover:shadow-md hover:ring-2 hover:ring-primary-100 transition-all"
+                      title="Xem thông tin người đang sử dụng"
+                    >
+                      <User className="h-6 w-6" />
+                    </button>
                   </div>
 
                   <div className="space-y-4">
@@ -1029,6 +1059,63 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
           onClose={() => setIsCompleteRepairOpen(false)}
           onSuccess={() => { setIsCompleteRepairOpen(false); setSelectedTicket(null); fetchAssetDetail(); }}
         />
+      )}
+
+      {/* ASSIGNMENT QUICK VIEW */}
+      {showAssignInfoModal && asset && (
+        <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowAssignInfoModal(false)} />
+          <div className="relative w-full max-w-3xl bg-white rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="px-7 py-6 border-b border-slate-100 flex items-start justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="h-12 w-12 rounded-2xl bg-primary-50 text-primary-600 flex items-center justify-center">
+                  <User className="h-6 w-6" />
+                </div>
+                <div>
+                  <p className="text-[10px] font-black text-primary-600 uppercase tracking-widest">Thông tin cấp phát</p>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Người đang sử dụng tài sản</h3>
+                  <p className="text-xs font-bold text-slate-400 mt-1">{asset.assetCode} • {asset.assetName}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAssignInfoModal(false)}
+                className="h-10 w-10 rounded-2xl border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center transition-all"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-7 space-y-6">
+              <section className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Người nhận / người đang sử dụng</h4>
+                  <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-full">
+                    Hiện tại
+                  </span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <InfoRow label="Họ tên người nhận" value={asset.currentUserName || latestAssignment?.newUserName} icon={User} />
+                  <InfoRow label="Chức vụ" value={asset.currentPosition || latestAssignment?.newPosition} icon={Tag} />
+                  <InfoRow label="Số điện thoại" value={null} icon={Info} />
+                  <InfoRow label="Phòng ban" value={asset.departmentName || latestAssignment?.newDepartmentName} icon={Building2} />
+                  <InfoRow label="Vị trí / kho bàn giao đến" value={asset.locationName || latestAssignment?.newLocationName} icon={MapPin} />
+                  <InfoRow label="Tỉnh / thành phố" value={asset.cityName || latestAssignment?.newCityName} icon={MapPin} />
+                </div>
+              </section>
+
+              <section className="space-y-3">
+                <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Thông tin người giao</h4>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <InfoRow label="Người giao / người sử dụng trước" value={latestAssignment?.previousUserName} icon={User} />
+                  <InfoRow label="Ngày hiệu lực" value={latestAssignment?.effectiveAt ? format(new Date(latestAssignment.effectiveAt), 'dd/MM/yyyy') : null} icon={Calendar} />
+                  <InfoRow label="Trạng thái sau bàn giao" value={latestAssignment?.newStatus || asset.status} icon={CheckCircle2} />
+                  <InfoRow label="Ghi chú" value={latestAssignment?.note} icon={MessageSquare} />
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* REASON MODAL */}
