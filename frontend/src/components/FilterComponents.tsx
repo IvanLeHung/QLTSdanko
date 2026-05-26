@@ -41,7 +41,7 @@ export const AutocompleteInput: React.FC<{
   }, []);
 
   useEffect(() => {
-    if (localValue.length < 2 || !isOpen) {
+    if (!isOpen) {
       setSuggestions([]);
       return;
     }

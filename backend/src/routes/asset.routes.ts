@@ -49,7 +49,7 @@ router.get('/filter-options/users', authenticateToken, async (req, res) => {
   const { q = '' } = req.query;
   const users = await prisma.asset.findMany({
     where: { 
-      currentUserName: { contains: String(q) },
+      currentUserName: { contains: String(q), mode: 'insensitive' },
       isDeleted: false 
     },
     select: { currentUserName: true },
@@ -64,8 +64,8 @@ router.get('/filter-options/lv4', authenticateToken, async (req, res) => {
   const cats = await prisma.asset.findMany({
     where: { 
       OR: [
-        { level4Code: { contains: String(q) } },
-        { level4Name: { contains: String(q) } },
+        { level4Code: { contains: String(q), mode: 'insensitive' } },
+        { level4Name: { contains: String(q), mode: 'insensitive' } },
       ],
       isDeleted: false 
     },
@@ -80,7 +80,7 @@ router.get('/filter-options/departments', authenticateToken, async (req, res) =>
   const { q = '' } = req.query;
   const depts = await prisma.asset.findMany({
     where: { 
-      departmentName: { contains: String(q) },
+      departmentName: { contains: String(q), mode: 'insensitive' },
       isDeleted: false 
     },
     select: { departmentName: true },
@@ -94,7 +94,7 @@ router.get('/filter-options/locations', authenticateToken, async (req, res) => {
   const { q = '' } = req.query;
   const locs = await prisma.asset.findMany({
     where: {
-      locationName: { contains: String(q) },
+      locationName: { contains: String(q), mode: 'insensitive' },
       isDeleted: false
     },
     select: { locationName: true },
@@ -108,7 +108,7 @@ router.get('/filter-options/cities', authenticateToken, async (req, res) => {
   const { q = '' } = req.query;
   const cities = await prisma.asset.findMany({
     where: { 
-      cityName: { contains: String(q) },
+      cityName: { contains: String(q), mode: 'insensitive' },
       isDeleted: false 
     },
     select: { cityName: true },
@@ -122,7 +122,7 @@ router.get('/filter-options/projects', authenticateToken, async (req, res) => {
   const { q = '' } = req.query;
   const projects = await prisma.asset.findMany({
     where: { 
-      projectName: { contains: String(q) },
+      projectName: { contains: String(q), mode: 'insensitive' },
       isDeleted: false 
     },
     select: { projectName: true },
@@ -145,7 +145,7 @@ router.get('/filter-options/suppliers', authenticateToken, async (req, res) => {
   const { q = '' } = req.query;
   const suppliers = await prisma.asset.findMany({
     where: { 
-      supplierName: { contains: String(q) },
+      supplierName: { contains: String(q), mode: 'insensitive' },
       isDeleted: false 
     },
     select: { supplierName: true },
@@ -221,33 +221,33 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     const searchString = String(search);
     andClauses.push({
       OR: [
-        { assetCode: { contains: searchString } },
-        { assetName: { contains: searchString } },
-        { assetNameShort: { contains: searchString } },
-        { serialNumber: { contains: searchString } },
-        { companyCode: { contains: searchString } },
-        { companyName: { contains: searchString } },
-        { projectName: { contains: searchString } },
-        { level1Code: { contains: searchString } },
-        { level1Name: { contains: searchString } },
-        { level2Code: { contains: searchString } },
-        { level2Name: { contains: searchString } },
-        { level3Code: { contains: searchString } },
-        { level3Name: { contains: searchString } },
-        { level4Code: { contains: searchString } },
-        { level4Name: { contains: searchString } },
-        { runningNoText: { contains: searchString } },
-        { status: { contains: searchString } },
-        { unit: { contains: searchString } },
-        { usagePurpose: { contains: searchString } },
-        { supplierName: { contains: searchString } },
-        { currentUserName: { contains: searchString } },
-        { currentPosition: { contains: searchString } },
-        { departmentName: { contains: searchString } },
-        { locationName: { contains: searchString } },
-        { cityName: { contains: searchString } },
-        { documentNote: { contains: searchString } },
-        { lastInventoryStatus: { contains: searchString } }
+        { assetCode: { contains: searchString, mode: 'insensitive' } },
+        { assetName: { contains: searchString, mode: 'insensitive' } },
+        { assetNameShort: { contains: searchString, mode: 'insensitive' } },
+        { serialNumber: { contains: searchString, mode: 'insensitive' } },
+        { companyCode: { contains: searchString, mode: 'insensitive' } },
+        { companyName: { contains: searchString, mode: 'insensitive' } },
+        { projectName: { contains: searchString, mode: 'insensitive' } },
+        { level1Code: { contains: searchString, mode: 'insensitive' } },
+        { level1Name: { contains: searchString, mode: 'insensitive' } },
+        { level2Code: { contains: searchString, mode: 'insensitive' } },
+        { level2Name: { contains: searchString, mode: 'insensitive' } },
+        { level3Code: { contains: searchString, mode: 'insensitive' } },
+        { level3Name: { contains: searchString, mode: 'insensitive' } },
+        { level4Code: { contains: searchString, mode: 'insensitive' } },
+        { level4Name: { contains: searchString, mode: 'insensitive' } },
+        { runningNoText: { contains: searchString, mode: 'insensitive' } },
+        { status: { contains: searchString, mode: 'insensitive' } },
+        { unit: { contains: searchString, mode: 'insensitive' } },
+        { usagePurpose: { contains: searchString, mode: 'insensitive' } },
+        { supplierName: { contains: searchString, mode: 'insensitive' } },
+        { currentUserName: { contains: searchString, mode: 'insensitive' } },
+        { currentPosition: { contains: searchString, mode: 'insensitive' } },
+        { departmentName: { contains: searchString, mode: 'insensitive' } },
+        { locationName: { contains: searchString, mode: 'insensitive' } },
+        { cityName: { contains: searchString, mode: 'insensitive' } },
+        { documentNote: { contains: searchString, mode: 'insensitive' } },
+        { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
       ]
     });
   }
@@ -278,9 +278,9 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
   } else if (req.query.isAssigned === 'false') {
     where.currentUserName = { in: [null, '', 'N/A', 'n/a'] };
   } else if (currentUserName) {
-    where.currentUserName = { contains: String(currentUserName) };
+    where.currentUserName = { contains: String(currentUserName), mode: 'insensitive' };
   }
-  if (departmentName) where.departmentName = { contains: String(departmentName) };
+  if (departmentName) where.departmentName = { contains: String(departmentName), mode: 'insensitive' };
   
   if (level4Name) {
     const nameArray = String(level4Name).split(',').filter(Boolean);
@@ -294,14 +294,14 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     }
   }
   
-  if (cityName) where.cityName = { contains: String(cityName) };
-  if (projectName) where.projectName = { contains: String(projectName) };
+  if (cityName) where.cityName = { contains: String(cityName), mode: 'insensitive' };
+  if (projectName) where.projectName = { contains: String(projectName), mode: 'insensitive' };
   if (locationQuery) {
     andClauses.push({
       OR: [
-        { locationName: { contains: String(locationQuery) } },
-        { cityName: { contains: String(locationQuery) } },
-        { projectName: { contains: String(locationQuery) } }
+        { locationName: { contains: String(locationQuery), mode: 'insensitive' } },
+        { cityName: { contains: String(locationQuery), mode: 'insensitive' } },
+        { projectName: { contains: String(locationQuery), mode: 'insensitive' } }
       ]
     });
   }
@@ -349,7 +349,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
   }
 
   // Other metadata
-  if (supplierName) where.supplierName = { contains: String(supplierName) };
+  if (supplierName) where.supplierName = { contains: String(supplierName), mode: 'insensitive' };
   if (inventoryStatus) where.lastInventoryStatus = String(inventoryStatus);
 
   if (hasSerial === 'true') where.serialNumber = { not: null, notIn: ['', 'N/A', 'n/a'] };
@@ -709,33 +709,33 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     const searchString = String(search);
     andClauses.push({
       OR: [
-        { assetCode: { contains: searchString } },
-        { assetName: { contains: searchString } },
-        { assetNameShort: { contains: searchString } },
-        { serialNumber: { contains: searchString } },
-        { companyCode: { contains: searchString } },
-        { companyName: { contains: searchString } },
-        { projectName: { contains: searchString } },
-        { level1Code: { contains: searchString } },
-        { level1Name: { contains: searchString } },
-        { level2Code: { contains: searchString } },
-        { level2Name: { contains: searchString } },
-        { level3Code: { contains: searchString } },
-        { level3Name: { contains: searchString } },
-        { level4Code: { contains: searchString } },
-        { level4Name: { contains: searchString } },
-        { runningNoText: { contains: searchString } },
-        { status: { contains: searchString } },
-        { unit: { contains: searchString } },
-        { usagePurpose: { contains: searchString } },
-        { supplierName: { contains: searchString } },
-        { currentUserName: { contains: searchString } },
-        { currentPosition: { contains: searchString } },
-        { departmentName: { contains: searchString } },
-        { locationName: { contains: searchString } },
-        { cityName: { contains: searchString } },
-        { documentNote: { contains: searchString } },
-        { lastInventoryStatus: { contains: searchString } }
+        { assetCode: { contains: searchString, mode: 'insensitive' } },
+        { assetName: { contains: searchString, mode: 'insensitive' } },
+        { assetNameShort: { contains: searchString, mode: 'insensitive' } },
+        { serialNumber: { contains: searchString, mode: 'insensitive' } },
+        { companyCode: { contains: searchString, mode: 'insensitive' } },
+        { companyName: { contains: searchString, mode: 'insensitive' } },
+        { projectName: { contains: searchString, mode: 'insensitive' } },
+        { level1Code: { contains: searchString, mode: 'insensitive' } },
+        { level1Name: { contains: searchString, mode: 'insensitive' } },
+        { level2Code: { contains: searchString, mode: 'insensitive' } },
+        { level2Name: { contains: searchString, mode: 'insensitive' } },
+        { level3Code: { contains: searchString, mode: 'insensitive' } },
+        { level3Name: { contains: searchString, mode: 'insensitive' } },
+        { level4Code: { contains: searchString, mode: 'insensitive' } },
+        { level4Name: { contains: searchString, mode: 'insensitive' } },
+        { runningNoText: { contains: searchString, mode: 'insensitive' } },
+        { status: { contains: searchString, mode: 'insensitive' } },
+        { unit: { contains: searchString, mode: 'insensitive' } },
+        { usagePurpose: { contains: searchString, mode: 'insensitive' } },
+        { supplierName: { contains: searchString, mode: 'insensitive' } },
+        { currentUserName: { contains: searchString, mode: 'insensitive' } },
+        { currentPosition: { contains: searchString, mode: 'insensitive' } },
+        { departmentName: { contains: searchString, mode: 'insensitive' } },
+        { locationName: { contains: searchString, mode: 'insensitive' } },
+        { cityName: { contains: searchString, mode: 'insensitive' } },
+        { documentNote: { contains: searchString, mode: 'insensitive' } },
+        { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
       ]
     });
   }
@@ -760,17 +760,17 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
   }
 
   if (companyCode) where.companyCode = String(companyCode);
-  if (currentUserName) where.currentUserName = { contains: String(currentUserName) };
-  if (departmentName) where.departmentName = { contains: String(departmentName) };
+  if (currentUserName) where.currentUserName = { contains: String(currentUserName), mode: 'insensitive' };
+  if (departmentName) where.departmentName = { contains: String(departmentName), mode: 'insensitive' };
   if (level4Code) where.level4Code = String(level4Code);
-  if (cityName) where.cityName = { contains: String(cityName) };
-  if (projectName) where.projectName = { contains: String(projectName) };
+  if (cityName) where.cityName = { contains: String(cityName), mode: 'insensitive' };
+  if (projectName) where.projectName = { contains: String(projectName), mode: 'insensitive' };
   if (locationQuery) {
     andClauses.push({
       OR: [
-        { locationName: { contains: String(locationQuery) } },
-        { cityName: { contains: String(locationQuery) } },
-        { projectName: { contains: String(locationQuery) } }
+        { locationName: { contains: String(locationQuery), mode: 'insensitive' } },
+        { cityName: { contains: String(locationQuery), mode: 'insensitive' } },
+        { projectName: { contains: String(locationQuery), mode: 'insensitive' } }
       ]
     });
   }
@@ -815,7 +815,7 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     }
   }
 
-  if (supplierName) where.supplierName = { contains: String(supplierName) };
+  if (supplierName) where.supplierName = { contains: String(supplierName), mode: 'insensitive' };
   if (inventoryStatus) where.lastInventoryStatus = String(inventoryStatus);
   if (hasSerial === 'true') where.serialNumber = { not: null, notIn: ['', 'N/A', 'n/a'] };
   if (hasSerial === 'false') where.serialNumber = { in: [null, '', 'N/A', 'n/a'] };
