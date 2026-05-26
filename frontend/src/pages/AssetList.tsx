@@ -41,7 +41,7 @@ import { useModal } from '../context/ModalContext';
 
 export const AssetList: React.FC = () => {
   const { hasPermission } = useAuth();
-  const { activeModal, openModal } = useModal();
+  const { activeModal, openModal, closeModal } = useModal();
   const isDetailOpen = activeModal?.type === 'ASSET_DETAIL';
   const selectedAssetId = activeModal?.payload?.assetId;
   const [searchParams, setSearchParams] = useSearchParams();
@@ -480,9 +480,13 @@ export const AssetList: React.FC = () => {
           toast.error('Tài sản chưa có mã, không thể in tem.');
           break;
         }
-        openModal("PRINT_LABEL", {
-          assets: [{ ...asset, asset_code: assetCode }]
+        closeModal();
+        navigate('/print-center', {
+          state: {
+            selectedAssets: [asset]
+          }
         });
+        toast.success("Đã thêm tài sản vào danh sách in tem");
         break;
       case 'history':
         openAssetDetail(asset.id, 'timeline');
@@ -495,7 +499,13 @@ export const AssetList: React.FC = () => {
   const handleBulkPrint = () => {
     const selectedAssets = assets.filter(a => selectedIds.includes(a.id));
     if (selectedAssets.length === 0) return;
-    openModal("PRINT_LABEL", { assets: selectedAssets });
+    navigate('/print-center', {
+      state: {
+        selectedAssets
+      }
+    });
+    setSelectedIds([]);
+    toast.success(`Đã thêm ${selectedAssets.length} tài sản vào danh sách in tem`);
   };
 
   const handleExportAll = async () => {

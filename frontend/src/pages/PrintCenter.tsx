@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 import api from '../lib/api';
 import { format } from 'date-fns';
-import { useLocation } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { clsx, type ClassValue } from 'clsx';
 // ... inside PrintCenter component
 import { twMerge } from 'tailwind-merge';
@@ -31,9 +31,11 @@ function cn(...inputs: ClassValue[]) {
 
 export const PrintCenter: React.FC = () => {
   const location = useLocation();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState<'labels' | 'documents' | 'history'>('labels');
   const [assets, setAssets] = useState<any[]>([]);
   const [selectedAssets, setSelectedAssets] = useState<any[]>([]);
+  const [passedAssets, setPassedAssets] = useState<any[]>([]);
   const [documents, setDocuments] = useState<any[]>([]);
   const [history, setHistory] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -47,7 +49,11 @@ export const PrintCenter: React.FC = () => {
     const state = location.state as any;
     if (state?.selectedAssets) {
       setSelectedAssets(state.selectedAssets);
+      setPassedAssets(state.selectedAssets);
       if (state.mode) setActiveTab(state.mode);
+      
+      // Clear navigation state so a reload or tab change doesn't re-trigger this
+      navigate(location.pathname, { replace: true, state: {} });
     }
     fetchInitialData();
   }, [activeTab]);
@@ -57,7 +63,19 @@ export const PrintCenter: React.FC = () => {
     try {
       if (activeTab === 'labels') {
         const res = await api.get('/assets', { params: { search, limit: 100 } });
-        setAssets(res.data.assets || []);
+        let fetchedAssets = res.data.assets || [];
+        
+        // Merge from location.state (mount) or passedAssets state (subsequent loads)
+        const state = location.state as any;
+        const currentPassed = state?.selectedAssets || passedAssets;
+        
+        currentPassed.forEach((sel: any) => {
+          if (!fetchedAssets.some((a: any) => a.id === sel.id)) {
+            fetchedAssets = [sel, ...fetchedAssets];
+          }
+        });
+        
+        setAssets(fetchedAssets);
       } else if (activeTab === 'documents') {
         const res = await api.get('/documents');
         setDocuments(res.data || []);
