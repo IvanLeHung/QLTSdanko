@@ -7,68 +7,9 @@ import { buildDataScopeWhere } from '../utils/data-scope.util';
 
 const router = Router();
 
-// Get all repair tickets
-router.get('/', async (req, res) => {
-  try {
-    const tickets = await RepairService.getAllTickets(req.query);
-    res.json(tickets);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Get ticket by ID
-router.get('/:id', async (req, res) => {
-  try {
-    const ticket = await RepairService.getTicketById(parseInt(req.params.id));
-    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
-    res.json(ticket);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
-// Create new repair ticket
-router.post('/', async (req, res) => {
-  try {
-    const ticket = await RepairService.createTicket(req.body);
-    res.json(ticket);
-  } catch (error: any) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-// Update ticket progress
-router.put('/:id/progress', async (req, res) => {
-  try {
-    const ticket = await RepairService.updateProgress(parseInt(req.params.id), req.body);
-    res.json(ticket);
-  } catch (error: any) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-// Complete repair
-router.post('/:id/complete', async (req, res) => {
-  try {
-    const ticket = await RepairService.completeRepair(parseInt(req.params.id), req.body);
-    res.json(ticket);
-  } catch (error: any) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
-// Get repairs for an asset
-router.get('/asset/:assetId', async (req, res) => {
-  try {
-    const repairs = await RepairService.getAssetRepairs(parseInt(req.params.assetId));
-    res.json(repairs);
-  } catch (error: any) {
-    res.status(400).json({ message: error.message });
-  }
-});
-
 // GET /export-by-time - Báo hỏng / Sửa chữa (Repair tickets by Date Range)
+// Important: keep this route before '/:id' so Express does not treat
+// "export-by-time" as a ticket id.
 router.get('/export-by-time', authenticateToken, requirePermission('REPAIR_VIEW'), async (req: AuthRequest, res) => {
   const { startDate, endDate } = req.query;
   const where: any = {};
@@ -92,9 +33,9 @@ router.get('/export-by-time', authenticateToken, requirePermission('REPAIR_VIEW'
   });
   if (Object.keys(scopeWhere).length > 0) {
     if (scopeWhere.id === -1) {
-      const workbook = buildExcelWorkbook('DANH SÁCH BÀN GIAO - ĐIỀU CHUYỂN', 'Không tìm thấy dữ liệu', [], [], 'Sửa chữa');
+      const workbook = buildExcelWorkbook('BÁO CÁO TỔNG HỢP SỰ CỐ BÁO HỎNG VÀ SỬA CHỮA TÀI SẢN', 'Không tìm thấy dữ liệu', [], [], 'Sửa chữa');
       res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-      res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoSuaChua.xlsx');
+      res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoBaoHongSuaChua.xlsx');
       await workbook.xlsx.write(res);
       return res.end();
     }
@@ -132,7 +73,8 @@ router.get('/export-by-time', authenticateToken, requirePermission('REPAIR_VIEW'
       t.status === 'OPEN' ? 'Mới tiếp nhận' :
       t.status === 'IN_PROGRESS' ? 'Đang sửa chữa' :
       t.status === 'COMPLETED' ? 'Đã hoàn thành' :
-      t.status === 'CANCELLED' ? 'Đã hủy' : t.status,
+      t.status === 'CANCELLED' ? 'Đã hủy' :
+      t.status === 'FAILED' ? 'Không sửa được' : t.status,
       t.damageDescription,
       t.cause || '',
       t.repairAction || '',
@@ -160,6 +102,71 @@ router.get('/export-by-time', authenticateToken, requirePermission('REPAIR_VIEW'
     res.end();
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi xuất Excel: ' + error.message });
+  }
+});
+
+// Get repairs for an asset
+// Important: keep this route before '/:id'.
+router.get('/asset/:assetId', async (req, res) => {
+  try {
+    const repairs = await RepairService.getAssetRepairs(parseInt(req.params.assetId));
+    res.json(repairs);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Get all repair tickets
+router.get('/', async (req, res) => {
+  try {
+    const tickets = await RepairService.getAllTickets(req.query);
+    res.json(tickets);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Get ticket by ID
+router.get('/:id', async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (Number.isNaN(id)) return res.status(400).json({ message: 'Invalid ticket id' });
+
+    const ticket = await RepairService.getTicketById(id);
+    if (!ticket) return res.status(404).json({ message: 'Ticket not found' });
+    res.json(ticket);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// Create new repair ticket
+router.post('/', async (req, res) => {
+  try {
+    const ticket = await RepairService.createTicket(req.body);
+    res.json(ticket);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Update ticket progress
+router.put('/:id/progress', async (req, res) => {
+  try {
+    const ticket = await RepairService.updateProgress(parseInt(req.params.id), req.body);
+    res.json(ticket);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+// Complete repair
+router.post('/:id/complete', async (req, res) => {
+  try {
+    const ticket = await RepairService.completeRepair(parseInt(req.params.id), req.body);
+    res.json(ticket);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
   }
 });
 
