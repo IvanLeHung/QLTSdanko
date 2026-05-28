@@ -2,18 +2,21 @@ import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
 
 export class AssetService {
-  static async generateAssetCodes(params: {
-    companyCode: string;
-    level1Code: string;
-    level2Code: string;
-    level3Code: string;
-    level4Code: string;
-    quantity: number;
-  }) {
+  static async generateAssetCodes(
+    params: {
+      companyCode: string;
+      level1Code: string;
+      level2Code: string;
+      level3Code: string;
+      level4Code: string;
+      quantity: number;
+    },
+    txClient?: any
+  ) {
     const { companyCode, level1Code, level2Code, level3Code, level4Code, quantity } = params;
     const baseCode = `${companyCode}.${level1Code}.${level2Code}.${level3Code}.${level4Code}`;
 
-    return await prisma.$transaction(async (tx) => {
+    const execute = async (tx: any) => {
       console.log(`Generating code for: ${baseCode} x${quantity}`);
       
       const counterKey = `ASSET_CODE_${baseCode}`;
@@ -27,8 +30,28 @@ export class AssetService {
         });
       }
 
-      const startNumber = counter.lastNumber + 1;
-      const endNumber = counter.lastNumber + quantity;
+      // Query the Asset table to see what the actual max runningNo is.
+      // This is crucial because imported or manually inserted assets might have bypassed the DocumentCounter,
+      // leading to duplicate asset codes if we only trust DocumentCounter.
+      const maxAsset = await tx.asset.findFirst({
+        where: {
+          companyCode,
+          level1Code,
+          level2Code,
+          level3Code,
+          level4Code
+        },
+        orderBy: {
+          runningNo: 'desc'
+        },
+        select: {
+          runningNo: true
+        }
+      });
+
+      const maxAssetRunningNo = maxAsset?.runningNo || 0;
+      const startNumber = Math.max(counter.lastNumber, maxAssetRunningNo) + 1;
+      const endNumber = startNumber + quantity - 1;
 
       await tx.documentCounter.update({
         where: { id: counter.id },
@@ -43,17 +66,28 @@ export class AssetService {
       }
 
       return codes;
-    }, { timeout: 30000 });
+    };
+
+    if (txClient) {
+      return await execute(txClient);
+    } else {
+      return await prisma.$transaction(async (tx) => {
+        return await execute(tx);
+      }, { timeout: 30000 });
+    }
   }
 
-  static async generateSingleAssetCode(params: {
-    companyCode: string;
-    level1Code: string;
-    level2Code: string;
-    level3Code: string;
-    level4Code: string;
-  }) {
-    const codes = await this.generateAssetCodes({ ...params, quantity: 1 });
+  static async generateSingleAssetCode(
+    params: {
+      companyCode: string;
+      level1Code: string;
+      level2Code: string;
+      level3Code: string;
+      level4Code: string;
+    },
+    txClient?: any
+  ) {
+    const codes = await this.generateAssetCodes({ ...params, quantity: 1 }, txClient);
     return codes[0];
   }
 

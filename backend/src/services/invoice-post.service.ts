@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
+import { AssetService } from './asset.service';
 
 export interface PostInvoicePayload {
   invoice: {
@@ -161,37 +162,22 @@ export class InvoicePostService {
           throw new Error(`Không tìm thấy cấu trúc danh mục cho dòng ${index + 1}.`);
         }
 
-        // Generate Asset Codes with active transaction 'tx' to prevent SQLite lockups
-        const baseCode = `${company.code}.${c1.code}.${c2.code}.${c3.code}.${c4.code}`;
-        const counterKey = `ASSET_CODE_${baseCode}`;
-        
-        let counter = await tx.documentCounter.findUnique({
-          where: { documentType: counterKey }
-        });
+        // Generate Asset Codes with active transaction 'tx'
+        const codes = await AssetService.generateAssetCodes({
+          companyCode: company.code,
+          level1Code: c1.code,
+          level2Code: c2.code,
+          level3Code: c3.code,
+          level4Code: c4.code,
+          quantity: line.quantity
+        }, tx);
 
-        if (!counter) {
-          counter = await tx.documentCounter.create({
-            data: { documentType: counterKey, lastNumber: 0 }
-          });
-        }
-
-        const startNumber = counter.lastNumber + 1;
-        const endNumber = counter.lastNumber + line.quantity;
-
-        await tx.documentCounter.update({
-          where: { id: counter.id },
-          data: { lastNumber: endNumber }
-        });
-
-        const assetsData = [];
-        for (let i = 0; i < line.quantity; i++) {
-          const runningNo = startNumber + i;
-          const runningNoText = runningNo.toString().padStart(3, '0');
-          const assetCode = `${baseCode}.${runningNoText}`;
+        const assetsData = codes.map((c, i) => {
           const serial = line.serials?.[i] || null;
-
-          assetsData.push({
-            assetCode,
+          createdAssetCodes.push(c.assetCode);
+          createdAssetsCount++;
+          return {
+            assetCode: c.assetCode,
             assetName: line.assetName,
             serialNumber: serial,
             companyCode: company.code,
@@ -204,8 +190,8 @@ export class InvoicePostService {
             level3Name: c3.name,
             level4Code: c4.code,
             level4Name: c4.name,
-            runningNo,
-            runningNoText,
+            runningNo: c.runningNo,
+            runningNoText: c.runningNoText,
             purchasePriceExVat: line.unitPrice,
             purchaseDate: new Date(invoice.invoiceDate),
             supplierName: line.supplierName || invoice.supplierName,
@@ -213,11 +199,8 @@ export class InvoicePostService {
             invoiceBatchId: batch.id,
             invoiceLineId: invoiceLine.id,
             originalInvoiceItemName: line.invoiceItemName
-          });
-
-          createdAssetCodes.push(assetCode);
-          createdAssetsCount++;
-        }
+          };
+        });
 
         await tx.asset.createMany({ data: assetsData });
       }

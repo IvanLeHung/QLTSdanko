@@ -58,7 +58,7 @@ export class CreationService {
         level3Code: data.level3Code,
         level4Code: data.level4Code,
         quantity: data.quantity
-      });
+      }, tx);
 
       // 4. Create Assets
       const assetsData = codes.map((c, index) => ({
