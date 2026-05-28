@@ -30,26 +30,32 @@ export class AssetService {
         });
       }
 
-      // Query the Asset table to see what the actual max runningNo is.
-      // This is crucial because imported or manually inserted assets might have bypassed the DocumentCounter,
-      // leading to duplicate asset codes if we only trust DocumentCounter.
-      const maxAsset = await tx.asset.findFirst({
+      // Query the Asset table to see what the actual max runningNo is by inspecting assetCode prefixes.
+      // This is crucial because:
+      // 1. Imported or manually inserted assets might have bypassed the DocumentCounter.
+      // 2. Mismatches in fields like companyCode (e.g. 'Danko' vs '01') or level4Code (e.g. slug vs code) 
+      //    in existing database records can cause standard queries to miss them.
+      // 3. Since unique constraint is strictly on assetCode, querying startsWith(baseCode.) is the ultimate source of truth.
+      const existingAssets = await tx.asset.findMany({
         where: {
-          companyCode,
-          level1Code,
-          level2Code,
-          level3Code,
-          level4Code
-        },
-        orderBy: {
-          runningNo: 'desc'
+          assetCode: {
+            startsWith: `${baseCode}.`
+          }
         },
         select: {
-          runningNo: true
+          assetCode: true
         }
       });
 
-      const maxAssetRunningNo = maxAsset?.runningNo || 0;
+      let maxAssetRunningNo = 0;
+      for (const asset of existingAssets) {
+        const parts = asset.assetCode.split('.');
+        const lastPart = parts[parts.length - 1];
+        const num = parseInt(lastPart, 10);
+        if (!isNaN(num) && num > maxAssetRunningNo) {
+          maxAssetRunningNo = num;
+        }
+      }
       const startNumber = Math.max(counter.lastNumber, maxAssetRunningNo) + 1;
       const endNumber = startNumber + quantity - 1;
 
