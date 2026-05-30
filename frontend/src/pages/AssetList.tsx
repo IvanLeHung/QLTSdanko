@@ -422,8 +422,12 @@ export const AssetList: React.FC = () => {
       assetId,
       initialTab: targetTab,
       onAction: (action: string, id: number) => {
-        const targetAsset = assets.find(a => a.id === id);
-        if (targetAsset) handleAssetAction(action, targetAsset);
+        if (action === 'refresh') {
+          fetchAssets();
+        } else {
+          const targetAsset = assets.find(a => a.id === id);
+          if (targetAsset) handleAssetAction(action, targetAsset);
+        }
       }
     });
   };

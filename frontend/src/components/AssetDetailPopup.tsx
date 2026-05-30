@@ -285,6 +285,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       setReason('');
       setUpdateAllSameName(false);
       fetchAssetDetail();
+      onAction?.('refresh', asset.id);
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi cập nhật tài sản");
     } finally {
