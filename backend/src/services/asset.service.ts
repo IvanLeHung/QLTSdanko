@@ -214,6 +214,40 @@ export class AssetService {
       const oldAsset = await tx.asset.findUnique({ where: { id } });
       if (!oldAsset) throw new Error('Asset not found');
 
+      // Check if companyCode or any categoryCode has changed
+      if (
+        (updates.companyCode && updates.companyCode !== oldAsset.companyCode) ||
+        (updates.level1Code && updates.level1Code !== oldAsset.level1Code) ||
+        (updates.level2Code && updates.level2Code !== oldAsset.level2Code) ||
+        (updates.level3Code && updates.level3Code !== oldAsset.level3Code) ||
+        (updates.level4Code && updates.level4Code !== oldAsset.level4Code)
+      ) {
+        const companyCode = updates.companyCode || oldAsset.companyCode;
+        const level1Code = updates.level1Code || oldAsset.level1Code;
+        const level2Code = updates.level2Code || oldAsset.level2Code;
+        const level3Code = updates.level3Code || oldAsset.level3Code;
+        const level4Code = updates.level4Code || oldAsset.level4Code;
+
+        if (updates.companyCode && updates.companyCode !== oldAsset.companyCode) {
+          const company = await tx.company.findUnique({ where: { code: updates.companyCode } });
+          if (company) {
+            updates.companyName = company.name;
+          }
+        }
+
+        const generated = await this.generateSingleAssetCode({
+          companyCode,
+          level1Code,
+          level2Code,
+          level3Code,
+          level4Code
+        }, tx);
+
+        updates.assetCode = generated.assetCode;
+        updates.runningNo = generated.runningNo;
+        updates.runningNoText = generated.runningNoText;
+      }
+
       const updatedAsset = await tx.asset.update({
         where: { id },
         data: updates
@@ -237,9 +271,37 @@ export class AssetService {
         delete bulkUpdates.runningNoText;
 
         for (const other of otherAssets) {
+          const otherUpdates = { ...bulkUpdates };
+
+          if (
+            (otherUpdates.companyCode && otherUpdates.companyCode !== other.companyCode) ||
+            (otherUpdates.level1Code && otherUpdates.level1Code !== other.level1Code) ||
+            (otherUpdates.level2Code && otherUpdates.level2Code !== other.level2Code) ||
+            (otherUpdates.level3Code && otherUpdates.level3Code !== other.level3Code) ||
+            (otherUpdates.level4Code && otherUpdates.level4Code !== other.level4Code)
+          ) {
+            const companyCode = otherUpdates.companyCode || other.companyCode;
+            const level1Code = otherUpdates.level1Code || other.level1Code;
+            const level2Code = otherUpdates.level2Code || other.level2Code;
+            const level3Code = otherUpdates.level3Code || other.level3Code;
+            const level4Code = otherUpdates.level4Code || other.level4Code;
+
+            const generated = await this.generateSingleAssetCode({
+              companyCode,
+              level1Code,
+              level2Code,
+              level3Code,
+              level4Code
+            }, tx);
+
+            otherUpdates.assetCode = generated.assetCode;
+            otherUpdates.runningNo = generated.runningNo;
+            otherUpdates.runningNoText = generated.runningNoText;
+          }
+
           const updatedOther = await tx.asset.update({
             where: { id: other.id },
-            data: bulkUpdates
+            data: otherUpdates
           });
           await AuditService.logAssetChange(
             other.id,
