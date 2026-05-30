@@ -230,6 +230,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       purchaseDate: asset.purchaseDate ? format(new Date(asset.purchaseDate), 'yyyy-MM-dd') : '',
       depreciationEndDate: asset.depreciationEndDate ? format(new Date(asset.depreciationEndDate), 'yyyy-MM-dd') : '',
       supplierName: asset.supplierName || '',
+      supplierTaxCode: asset.supplierTaxCode || '',
       companyCode: asset.companyCode,
       assetCode: asset.assetCode,
       documentNote: asset.documentNote || ''
@@ -561,6 +562,30 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                     ) : (
                       hasPermission('ASSET_VIEW_PRICE') ? (
                         <p className="text-[15px] font-bold text-slate-800">{asset.supplierName || 'N/A'}</p>
+                      ) : (
+                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</p>
+                      )
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                      <Building2 className="mr-2 h-3 w-3" /> MST Nhà cung cấp
+                    </p>
+                    {mode === 'edit' ? (
+                      hasPermission('ASSET_VIEW_PRICE') ? (
+                        <input 
+                          type="text" 
+                          value={editForm.supplierTaxCode || ''} 
+                          onChange={e => setEditForm({...editForm, supplierTaxCode: e.target.value})}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
+                        />
+                      ) : (
+                        <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2.5"><Lock className="w-3.5 h-3.5" /> Không có quyền sửa</p>
+                      )
+                    ) : (
+                      hasPermission('ASSET_VIEW_PRICE') ? (
+                        <p className="text-[15px] font-bold text-slate-800">{asset.supplierTaxCode || 'N/A'}</p>
                       ) : (
                         <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</p>
                       )

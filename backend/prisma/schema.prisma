@@ -197,6 +197,7 @@ model Asset {
   purchasePriceExVat      Float?              @default(0)
   usagePurpose            String?
   supplierName            String?
+  supplierTaxCode         String?
   purchaseDate            DateTime?
   currentUserName         String?
   currentPosition         String?

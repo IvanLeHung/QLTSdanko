@@ -373,7 +373,8 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     handoverDate: row.handover_date ? new Date(row.handover_date) : null,
                     depreciationEndDate: row.depreciation_end_date ? new Date(row.depreciation_end_date) : null,
                     documentNote: row.document_note,
-                    supplierName: row.supplier_name
+                    supplierName: row.supplier_name,
+                    supplierTaxCode: row.supplier_tax_code || row.supplierTaxCode || null
                 };
 
                 await prisma.asset.upsert({

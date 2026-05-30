@@ -195,6 +195,7 @@ export class InvoicePostService {
             purchasePriceExVat: line.unitPrice,
             purchaseDate: new Date(invoice.invoiceDate),
             supplierName: line.supplierName || invoice.supplierName,
+            supplierTaxCode: invoice.supplierTaxCode || null,
             status: assignImmediately ? 'ASSIGNED' : 'IN_STOCK',
             invoiceBatchId: batch.id,
             invoiceLineId: invoiceLine.id,
