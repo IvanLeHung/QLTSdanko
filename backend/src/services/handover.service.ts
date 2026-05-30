@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
 import { generateDocumentNo } from '../utils/document';
+import { parseAndNormalizeLocation } from '../utils/location.util';
 
 export class HandoverService {
   static async createHandover(data: {
@@ -16,6 +17,7 @@ export class HandoverService {
     targetLocationId?: number;
     senderName?: string;
     senderDepartment?: string;
+    senderPosition?: string;
     senderId?: number;
     note?: string;
     reason?: string;
@@ -30,6 +32,7 @@ export class HandoverService {
           // Standardized prefixes: HANDOVER -> BBBG, TRANSFER -> BBDC, RECALL -> BBTH
           const typeCode = data.type === 'HANDOVER' ? 'BBBG' : (data.type === 'RECALL' ? 'BBTH' : 'BBDC');
           const documentNo = await generateDocumentNo(tx, typeCode);
+          const normalizedLoc = parseAndNormalizeLocation(data.newLocation);
 
           if (!data.assetIds || data.assetIds.length === 0) {
             throw new Error('Vui lòng chọn ít nhất 1 tài sản.');
@@ -89,11 +92,12 @@ export class HandoverService {
               recipientPhone: data.recipientPhone,
               receiverId: data.receiverId,
               receiverDepartmentId: data.receiverDepartmentId,
-              newLocation: data.newLocation,
-              newCity: data.newCity,
+              newLocation: normalizedLoc.fullFormatted || data.newLocation,
+              newCity: normalizedLoc.city || data.newCity,
               targetLocationId: data.targetLocationId,
               senderName: data.senderName,
               senderDepartment: data.senderDepartment,
+              senderPosition: data.senderPosition,
               senderId: data.senderId,
               reason: data.reason,
               note: data.note,
@@ -130,8 +134,9 @@ export class HandoverService {
                   currentUserName: data.type === 'RECALL' ? null : data.recipientName,
                   currentPosition: data.type === 'RECALL' ? null : data.recipientPosition,
                   departmentName: data.type === 'RECALL' ? null : data.recipientDepartment,
-                  locationName: data.newLocation,
-                  cityName: data.newCity,
+                  locationName: normalizedLoc.fullFormatted || data.newLocation,
+                  cityName: normalizedLoc.city || data.newCity,
+                  projectName: normalizedLoc.project || undefined,
                   handoverDate: data.type === 'RECALL' ? null : new Date(),
                 }
               });
@@ -144,8 +149,8 @@ export class HandoverService {
                   newUserName: data.type === 'RECALL' ? 'KHO QLTS' : data.recipientName,
                   newPosition: data.type === 'RECALL' ? null : data.recipientPosition,
                   newDepartmentName: data.recipientDepartment,
-                  newLocationName: data.newLocation,
-                  newCityName: data.newCity,
+                  newLocationName: normalizedLoc.fullFormatted || data.newLocation,
+                  newCityName: normalizedLoc.city || data.newCity,
                   newStatus: data.type === 'RECALL' ? 'IN_STOCK' : 'ASSIGNED',
                   effectiveAt: new Date(),
                   note: `Hồ sơ ${documentNo} (${data.type === 'RECALL' ? 'Thu hồi' : 'Bàn giao'})`
@@ -221,6 +226,7 @@ export class HandoverService {
     targetLocationId?: number;
     senderName?: string;
     senderDepartment?: string;
+    senderPosition?: string;
     senderId?: number;
     note?: string;
     reason?: string;
@@ -270,6 +276,7 @@ export class HandoverService {
         });
       }
 
+      const normalizedLoc = data.newLocation ? parseAndNormalizeLocation(data.newLocation) : null;
       const updated = await tx.handoverDocument.update({
         where: { id },
         data: {
@@ -281,11 +288,12 @@ export class HandoverService {
           recipientPhone: data.recipientPhone,
           receiverId: data.receiverId,
           receiverDepartmentId: data.receiverDepartmentId,
-          newLocation: data.newLocation,
-          newCity: data.newCity,
+          newLocation: normalizedLoc ? (normalizedLoc.fullFormatted || data.newLocation) : data.newLocation,
+          newCity: normalizedLoc ? (normalizedLoc.city || data.newCity) : data.newCity,
           targetLocationId: data.targetLocationId,
           senderName: data.senderName,
           senderDepartment: data.senderDepartment,
+          senderPosition: data.senderPosition,
           senderId: data.senderId,
           reason: data.reason,
           note: data.note,
@@ -355,6 +363,7 @@ export class HandoverService {
         }
       }
 
+      const normalizedLoc = parseAndNormalizeLocation(doc.newLocation);
       // Update each asset
       for (const item of doc.items) {
         const oldAsset = await tx.asset.findUnique({ where: { id: item.assetId } });
@@ -367,8 +376,9 @@ export class HandoverService {
             currentUserName: doc.type === 'RECALL' ? null : doc.recipientName,
             currentPosition: doc.type === 'RECALL' ? null : doc.recipientPosition,
             departmentName: doc.type === 'RECALL' ? null : doc.recipientDepartment,
-            locationName: doc.newLocation,
-            cityName: doc.newCity,
+            locationName: normalizedLoc.fullFormatted || doc.newLocation,
+            cityName: normalizedLoc.city || doc.newCity,
+            projectName: normalizedLoc.project || undefined,
             handoverDate: doc.type === 'RECALL' ? null : doc.documentDate,
           }
         });
@@ -381,8 +391,8 @@ export class HandoverService {
             newUserName: doc.type === 'RECALL' ? 'KHO QLTS' : doc.recipientName,
             newPosition: doc.type === 'RECALL' ? null : doc.recipientPosition,
             newDepartmentName: doc.recipientDepartment,
-            newLocationName: doc.newLocation,
-            newCityName: doc.newCity,
+            newLocationName: normalizedLoc.fullFormatted || doc.newLocation,
+            newCityName: normalizedLoc.city || doc.newCity,
             newStatus: doc.type === 'RECALL' ? 'IN_STOCK' : 'ASSIGNED',
             effectiveAt: doc.documentDate,
             note: `Hồ sơ ${doc.documentNo}`

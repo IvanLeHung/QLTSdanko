@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma';
 import ExcelJS from 'exceljs';
 import { AssetService } from './asset.service';
+import { parseAndNormalizeLocation } from '../utils/location.util';
 
 const BUSINESS_HEADERS = [
   'MTS', 'TTTS', 'MCTY', 'Group LV1', 'Group LV2', 'Group LV3', 'Group LV4',
@@ -153,6 +154,17 @@ export class ImportService {
 
         rowData[internalKey] = value;
       });
+
+      if (rowData.location_name) {
+        const norm = parseAndNormalizeLocation(rowData.location_name);
+        rowData.location_name = norm.fullFormatted;
+        if (norm.city) {
+          rowData.city_name = norm.city;
+        }
+        if (norm.project) {
+          rowData.projectName = norm.project;
+        }
+      }
 
       if (hasData) {
         rowData.rowNumber = i;

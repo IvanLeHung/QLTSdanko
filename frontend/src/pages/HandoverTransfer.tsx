@@ -986,6 +986,7 @@ export const HandoverTransfer: React.FC = () => {
                       <h4 className="text-xs font-black uppercase tracking-wider text-slate-450 flex items-center gap-1.5"><User className="h-4 w-4" /> Bên giao (Gửi)</h4>
                       <div className="text-xs space-y-2">
                         <p><span className="text-slate-400 font-semibold">Họ tên:</span> <span className="font-bold text-slate-900">{viewingDoc.senderName || 'Hành chính nhân sự (Kho QLTS)'}</span></p>
+                        <p><span className="text-slate-400 font-semibold">Chức vụ:</span> <span className="font-bold text-slate-800">{viewingDoc.senderPosition || '---'}</span></p>
                         <p><span className="text-slate-400 font-semibold">Bộ phận:</span> <span className="font-bold text-slate-800">{viewingDoc.senderDepartment || 'Kho QLTS'}</span></p>
                       </div>
                     </div>

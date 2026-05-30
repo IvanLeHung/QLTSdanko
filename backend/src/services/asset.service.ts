@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
+import { parseAndNormalizeLocation } from '../utils/location.util';
 
 export class AssetService {
   static async generateAssetCodes(
@@ -213,6 +214,14 @@ export class AssetService {
     return await prisma.$transaction(async (tx) => {
       const oldAsset = await tx.asset.findUnique({ where: { id } });
       if (!oldAsset) throw new Error('Asset not found');
+
+      // Normalize location if updated
+      if (updates.locationName) {
+        const norm = parseAndNormalizeLocation(updates.locationName);
+        updates.locationName = norm.fullFormatted;
+        if (norm.city) updates.cityName = norm.city;
+        if (norm.project) updates.projectName = norm.project;
+      }
 
       // Check if companyCode or any categoryCode has changed
       if (

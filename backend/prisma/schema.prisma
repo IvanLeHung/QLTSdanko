@@ -352,6 +352,7 @@ model HandoverDocument {
   
   senderName           String?
   senderDepartment     String?
+  senderPosition       String?
   senderId             Int?
   
   newLocation          String?

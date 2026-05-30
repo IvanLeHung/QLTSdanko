@@ -9,6 +9,42 @@ import api from '../lib/api';
 import { toast } from 'react-toastify';
 import { BaseModal } from './BaseModal';
 
+const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
+  'Hà Nội': {
+    'Văn phòng C6': [
+      'Mặt trước Khối I',
+      'Mặt sau Khối I',
+      'Kho',
+      'Mặt trước Khối II',
+      'Mặt sau Khối II',
+      'Tầng 9 Khối I',
+      'Tầng 2 Khối II'
+    ],
+    'Vân Canh': ['Kho']
+  },
+  'Thái Nguyên': {
+    'Danko City': ['Trung tâm thương mại', 'Văn phòng BQLDA', 'Kho'],
+    'Danko Avenue': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho'],
+    'Danko Sun River': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
+  },
+  'Bắc Giang': {
+    'Danko Riverside': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
+  },
+  'Tuyên Quang': {
+    'Danko Center': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
+  },
+  'Thanh Hóa': {
+    'Danko Royal': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho'],
+    'Danko The Country': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
+  },
+  'Phú Thọ': {
+    'Dự án chưa hình thành': ['Văn phòng BQLDA', 'Kho']
+  },
+  'Hà Nam': {
+    'Dự án chưa hình thành': ['Văn phòng BQLDA', 'Kho']
+  }
+};
+
 interface TransferWizardProps {
   isOpen: boolean;
   onClose: () => void;
@@ -47,11 +83,21 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     targetLocationId: null as number | null,
     senderName: 'Nhân viên QLTS',
     senderDepartment: 'Bộ phận QLTS',
+    senderPosition: 'Nhân viên',
     senderId: null as number | null,
     reason: '',
     note: '',
     agreedToCommitment: false
   });
+
+  // Dependent Location states
+  const [selectedCity, setSelectedCity] = useState('');
+  const [selectedProject, setSelectedProject] = useState('');
+  const [selectedLocation, setSelectedLocation] = useState('');
+
+  const [customCity, setCustomCity] = useState('');
+  const [customProject, setCustomProject] = useState('');
+  const [customLocation, setCustomLocation] = useState('');
 
   // Metadata Lists
   const [departments, setDepartments] = useState<any[]>([]);
@@ -77,6 +123,113 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     };
     fetchMetadata();
   }, []);
+
+  // Update Combined Location whenever dependent fields change
+  useEffect(() => {
+    const cityVal = selectedCity === 'Khác' ? customCity : selectedCity;
+    const projectVal = selectedProject === 'Khác' ? customProject : selectedProject;
+    const locationVal = selectedLocation === 'Khác' ? customLocation : selectedLocation;
+
+    let combinedLocation = '';
+    if (cityVal) {
+      combinedLocation += cityVal;
+      if (projectVal) {
+        combinedLocation += '-' + projectVal;
+      }
+      if (locationVal) {
+        combinedLocation += '-' + locationVal;
+      }
+    } else {
+      combinedLocation = locationVal || '';
+    }
+
+    setWizardForm(prev => ({
+      ...prev,
+      newCity: cityVal,
+      newLocation: combinedLocation
+    }));
+  }, [selectedCity, selectedProject, selectedLocation, customCity, customProject, customLocation]);
+
+  const parseLocationToStates = (fullLocation: string) => {
+    if (!fullLocation) return;
+    const trimmed = fullLocation.trim();
+
+    // Check shorthand matching
+    const lower = trimmed.toLowerCase();
+    const cleanStr = lower.normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .replace(/[^a-z0-9]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    
+    let resolvedCity = '';
+    let resolvedProject = '';
+    let resolvedLocation = '';
+    
+    if (cleanStr.includes('mat truoc c6 i') || cleanStr.includes('mat truoc c6 1')) {
+      resolvedCity = 'Hà Nội';
+      resolvedProject = 'Văn phòng C6';
+      resolvedLocation = 'Mặt trước Khối I';
+    } else if (cleanStr.includes('mat sau c6 i') || cleanStr.includes('mat sau c6 1') || cleanStr.includes('mat sau c6 ii') || cleanStr.includes('mat sau c6 2')) {
+      resolvedCity = 'Hà Nội';
+      resolvedProject = 'Văn phòng C6';
+      resolvedLocation = 'Mặt sau Khối II';
+    } else {
+      const parts = trimmed.split(/[-/\\]/).map(p => p.trim());
+      if (parts.length >= 3) {
+        resolvedCity = parts[0];
+        resolvedProject = parts[1];
+        resolvedLocation = parts.slice(2).join('-');
+      } else if (parts.length === 2) {
+        resolvedCity = parts[0];
+        resolvedLocation = parts[1];
+      } else {
+        resolvedLocation = trimmed;
+      }
+    }
+
+    if (resolvedCity) {
+      if (LOCATION_HIERARCHY[resolvedCity]) {
+        setSelectedCity(resolvedCity);
+        if (resolvedProject) {
+          if (LOCATION_HIERARCHY[resolvedCity][resolvedProject]) {
+            setSelectedProject(resolvedProject);
+            if (resolvedLocation) {
+              if (LOCATION_HIERARCHY[resolvedCity][resolvedProject].includes(resolvedLocation)) {
+                setSelectedLocation(resolvedLocation);
+              } else {
+                setSelectedLocation('Khác');
+                setCustomLocation(resolvedLocation);
+              }
+            }
+          } else {
+            setSelectedProject('Khác');
+            setCustomProject(resolvedProject);
+            setSelectedLocation('Khác');
+            setCustomLocation(resolvedLocation);
+          }
+        }
+      } else {
+        setSelectedCity('Khác');
+        setCustomCity(resolvedCity);
+        if (resolvedProject) {
+          setSelectedProject('Khác');
+          setCustomProject(resolvedProject);
+        }
+        if (resolvedLocation) {
+          setSelectedLocation('Khác');
+          setCustomLocation(resolvedLocation);
+        }
+      }
+    } else if (resolvedLocation) {
+      setSelectedCity('Khác');
+      setSelectedProject('Khác');
+      setSelectedLocation('Khác');
+      setCustomLocation(resolvedLocation);
+    }
+  };
 
   // Handle open state change
   useEffect(() => {
@@ -105,7 +258,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         recipientDepartment: '',
         receiverDepartmentId: null,
         newLocation: '',
-        targetLocationId: null
+        targetLocationId: null,
+        senderPosition: 'Nhân viên'
       }));
     } else if (wizardType === 'TRANSFER') {
       const firstAsset = wizardAssets[0];
@@ -118,7 +272,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         recipientDepartment: '',
         receiverDepartmentId: null,
         newLocation: '',
-        targetLocationId: null
+        targetLocationId: null,
+        senderPosition: firstAsset?.currentPosition || 'Nhân viên'
       }));
     } else if (wizardType === 'RECALL') {
       const firstAsset = wizardAssets[0];
@@ -134,8 +289,12 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         receiverDepartmentId: departments.find(d => d.name.toLowerCase().includes('qlts') || d.name.toLowerCase().includes('hành chính'))?.id || null,
         newLocation: defaultLoc?.name || 'Kho QLTS',
         newCity: defaultLoc?.city || 'Hà Nội',
-        targetLocationId: defaultLoc?.id || null
+        targetLocationId: defaultLoc?.id || null,
+        senderPosition: firstAsset?.currentPosition || 'Nhân viên'
       }));
+      if (defaultLoc) {
+        parseLocationToStates(defaultLoc.name);
+      }
     }
   }, [wizardType, wizardAssets, locations, departments, editingDocId]);
 
@@ -155,11 +314,18 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
       targetLocationId: null as number | null,
       senderName: 'Nhân viên QLTS',
       senderDepartment: 'Bộ phận QLTS',
+      senderPosition: 'Nhân viên',
       senderId: null as number | null,
       reason: '',
       note: '',
       agreedToCommitment: false
     });
+    setSelectedCity('');
+    setSelectedProject('');
+    setSelectedLocation('');
+    setCustomCity('');
+    setCustomProject('');
+    setCustomLocation('');
   };
 
   const fetchInitialAssets = async (ids: number[]) => {
@@ -181,10 +347,14 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
       setWizardForm(prev => ({
         ...prev,
         senderName: firstAsset?.currentUserName || 'Nhân viên QLTS',
+        senderPosition: firstAsset?.currentPosition || 'Nhân viên',
         senderDepartment: firstAsset?.departmentName || 'Bộ phận QLTS',
         newLocation: firstAsset?.locationName || '',
         newCity: firstAsset?.cityName || ''
       }));
+      if (firstAsset?.locationName) {
+        parseLocationToStates(firstAsset.locationName);
+      }
 
       // Directly jump to Step 2
       setWizardStep(2);
@@ -215,11 +385,15 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         targetLocationId: detail.targetLocationId || null,
         senderName: detail.senderName || '',
         senderDepartment: detail.senderDepartment || '',
+        senderPosition: detail.senderPosition || '',
         senderId: detail.senderId || null,
         reason: detail.reason || '',
         note: detail.note || '',
         agreedToCommitment: false
       });
+      if (detail.newLocation) {
+        parseLocationToStates(detail.newLocation);
+      }
 
       const assetsObj = await Promise.all(
         detail.items.map(async (item: any) => {
@@ -328,6 +502,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         targetLocationId: wizardForm.targetLocationId,
         senderName: wizardForm.senderName,
         senderDepartment: wizardForm.senderDepartment,
+        senderPosition: wizardForm.senderPosition,
         senderId: wizardForm.senderId,
         reason: wizardForm.reason,
         note: wizardForm.note,
@@ -671,7 +846,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
 
                       <div className="space-y-3 text-xs">
                         <div className="space-y-1">
-                          <label className="font-bold text-slate-500">Họ tên người giao (Bên giao)</label>
+                          <label className="font-bold text-slate-550">Họ tên người giao (Bên giao)</label>
                           <input 
                             type="text"
                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
@@ -680,28 +855,135 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                           />
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="font-bold text-slate-500">Phòng ban giao</label>
-                          <input 
-                            type="text"
-                            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                            value={wizardForm.senderDepartment}
-                            onChange={(e) => setWizardForm({...wizardForm, senderDepartment: e.target.value})}
-                          />
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1">
+                            <label className="font-bold text-slate-500">Chức vụ giao</label>
+                            <input 
+                              type="text"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                              value={wizardForm.senderPosition}
+                              onChange={(e) => setWizardForm({...wizardForm, senderPosition: e.target.value})}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="font-bold text-slate-500">Phòng ban giao</label>
+                            <input 
+                              type="text"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                              value={wizardForm.senderDepartment}
+                              onChange={(e) => setWizardForm({...wizardForm, senderDepartment: e.target.value})}
+                            />
+                          </div>
                         </div>
 
-                        <div className="space-y-1">
-                          <label className="font-bold text-slate-500">Vị trí / Kho bàn giao đến (Chọn danh mục) *</label>
-                          <select
-                            value={wizardForm.targetLocationId || ''}
-                            onChange={(e) => handleLocationSelect(Number(e.target.value))}
-                            className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                          >
-                            <option value="">-- Chọn vị trí bàn giao đến --</option>
-                            {locations.map(l => (
-                              <option key={l.id} value={l.id}>{l.name} ({l.city})</option>
-                            ))}
-                          </select>
+                        {/* DEPENDENT DROPDOWN SYSTEM */}
+                        <div className="space-y-3 pt-2 border-t">
+                          <div className="space-y-1">
+                            <label className="font-bold text-slate-500">Thành phố bàn giao đến *</label>
+                            <select
+                              value={selectedCity}
+                              onChange={(e) => {
+                                setSelectedCity(e.target.value);
+                                setSelectedProject('');
+                                setSelectedLocation('');
+                                setCustomCity('');
+                                setCustomProject('');
+                                setCustomLocation('');
+                              }}
+                              className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                            >
+                              <option value="">-- Chọn thành phố --</option>
+                              {Object.keys(LOCATION_HIERARCHY).map(c => (
+                                <option key={c} value={c}>{c}</option>
+                              ))}
+                              <option value="Khác">Khác</option>
+                            </select>
+                          </div>
+
+                          {selectedCity === 'Khác' && (
+                            <div className="space-y-1">
+                              <label className="font-bold text-slate-500">Ghi rõ thành phố khác *</label>
+                              <input
+                                type="text"
+                                value={customCity}
+                                onChange={(e) => setCustomCity(e.target.value)}
+                                placeholder="Nhập tên thành phố..."
+                                className="w-full px-3 py-2 bg-slate-50 border border-slate-202 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                              />
+                            </div>
+                          )}
+
+                          {selectedCity && (
+                            <>
+                              <div className="space-y-1">
+                                <label className="font-bold text-slate-500">Dự án bàn giao đến *</label>
+                                <select
+                                  value={selectedProject}
+                                  onChange={(e) => {
+                                    setSelectedProject(e.target.value);
+                                    setSelectedLocation('');
+                                    setCustomProject('');
+                                    setCustomLocation('');
+                                  }}
+                                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                                >
+                                  <option value="">-- Chọn dự án --</option>
+                                  {selectedCity !== 'Khác' && Object.keys(LOCATION_HIERARCHY[selectedCity] || {}).map(p => (
+                                    <option key={p} value={p}>{p}</option>
+                                  ))}
+                                  <option value="Khác">Khác</option>
+                                </select>
+                              </div>
+
+                              {selectedProject === 'Khác' && (
+                                <div className="space-y-1">
+                                  <label className="font-bold text-slate-500">Ghi rõ dự án khác *</label>
+                                  <input
+                                    type="text"
+                                    value={customProject}
+                                    onChange={(e) => setCustomProject(e.target.value)}
+                                    placeholder="Nhập tên dự án..."
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-202 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                                  />
+                                </div>
+                              )}
+                            </>
+                          )}
+
+                          {selectedProject && (
+                            <>
+                              <div className="space-y-1">
+                                <label className="font-bold text-slate-500">Vị trí bàn giao đến *</label>
+                                <select
+                                  value={selectedLocation}
+                                  onChange={(e) => {
+                                    setSelectedLocation(e.target.value);
+                                    setCustomLocation('');
+                                  }}
+                                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                                >
+                                  <option value="">-- Chọn vị trí --</option>
+                                  {selectedCity !== 'Khác' && selectedProject !== 'Khác' && (LOCATION_HIERARCHY[selectedCity]?.[selectedProject] || []).map(l => (
+                                    <option key={l} value={l}>{l}</option>
+                                  ))}
+                                  <option value="Khác">Khác</option>
+                                </select>
+                              </div>
+
+                              {selectedLocation === 'Khác' && (
+                                <div className="space-y-1">
+                                  <label className="font-bold text-slate-500">Ghi rõ vị trí khác *</label>
+                                  <input
+                                    type="text"
+                                    value={customLocation}
+                                    onChange={(e) => setCustomLocation(e.target.value)}
+                                    placeholder="Nhập vị trí chi tiết..."
+                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-202 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                                  />
+                                </div>
+                              )}
+                            </>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -804,7 +1086,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Bên giao</p>
-                          <p className="font-bold text-slate-200 mt-1">{wizardForm.senderName} ({wizardForm.senderDepartment})</p>
+                          <p className="font-bold text-slate-200 mt-1">{wizardForm.senderName} - {wizardForm.senderPosition} ({wizardForm.senderDepartment})</p>
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Bên nhận</p>
@@ -881,7 +1163,14 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                 disabled={
                   (wizardStep === 2 && wizardAssets.length === 0) ||
                   (wizardStep === 3 && (wizardType === 'HANDOVER' || wizardType === 'TRANSFER') && !wizardForm.recipientName.trim()) ||
-                  (wizardStep === 3 && wizardType === 'RECALL' && !wizardForm.newLocation.trim()) ||
+                  (wizardStep === 3 && (
+                    !selectedCity || 
+                    !selectedProject || 
+                    !selectedLocation || 
+                    (selectedCity === 'Khác' && !customCity.trim()) || 
+                    (selectedProject === 'Khác' && !customProject.trim()) || 
+                    (selectedLocation === 'Khác' && !customLocation.trim())
+                  )) ||
                   (wizardStep === 4 && !wizardForm.agreedToCommitment) ||
                   isSubmitting
                 }
