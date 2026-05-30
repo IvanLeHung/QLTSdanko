@@ -497,66 +497,6 @@ router.post('/bulk-create', authenticateToken, requirePermission('ASSET_CREATE')
   }
 });
 
-router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
-  const asset = await prisma.asset.findUnique({
-    where: { id: Number(req.params.id) },
-    include: {
-      assignments: { orderBy: { createdAt: 'desc' } },
-      damageReports: { include: { damageReport: true } },
-      lostReports: { orderBy: { createdAt: 'desc' } },
-      liquidations: { include: { liquidationRecord: true } },
-      events: { orderBy: { eventDate: 'desc' } },
-      editLogs: { orderBy: { createdAt: 'desc' } },
-      repairTickets: { orderBy: { createdAt: 'desc' } },
-      repairLogs: { orderBy: { createdAt: 'desc' } },
-      histories: { orderBy: { eventTime: 'desc' } }
-    }
-  });
-
-  if (!asset) return res.status(404).json({ message: 'Asset not found' });
-
-  // Data Scope Check for details view
-  const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
-    company: 'companyCode',
-    department: 'departmentName',
-    warehouse: 'locationName',
-    user: 'currentUserName'
-  });
-
-  // Verify the user can see this specific asset
-  if (scopeWhere.id !== undefined && scopeWhere.id === -1) {
-    return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Data Scope)' });
-  }
-
-  if (scopeWhere.OR) {
-    // Fast manual check since we already have the asset data
-    const canView = scopeWhere.OR.some((clause: any) => {
-      if (clause.companyCode && clause.companyCode.in.includes(asset.companyCode)) return true;
-      if (clause.departmentName && clause.departmentName.in.includes(asset.departmentName)) return true;
-      if (clause.locationName && clause.locationName.in.includes(asset.locationName)) return true;
-      return false;
-    });
-    if (!canView) return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Data Scope)' });
-  } else if ((scopeWhere as any).currentUserName) {
-    if (asset.currentUserName !== req.user?.fullName && asset.currentUserName !== req.user?.username) {
-      return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Chỉ xem của bản thân)' });
-    }
-  }
-
-  // Hide price if no ASSET_VIEW_PRICE
-  if (!req.user?.roles?.includes('SUPER_ADMIN') && !req.user?.permissions?.includes('ASSET_VIEW_PRICE')) {
-    asset.purchasePriceExVat = null;
-  }
-
-  // Fetch centralized audit logs
-  const auditLogs = await prisma.auditLog.findMany({
-    where: { entityType: 'ASSET', entityId: asset.id },
-    orderBy: { createdAt: 'desc' }
-  });
-
-  res.json({ ...asset, auditLogs });
-});
-
 router.patch('/:id', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
   const { id } = req.params;
   const performedBy = req.user?.username || 'system';
@@ -1086,4 +1026,65 @@ router.get('/export-liquidated', authenticateToken, requirePermission('ASSET_VIE
   }
 });
 
+router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
+  const asset = await prisma.asset.findUnique({
+    where: { id: Number(req.params.id) },
+    include: {
+      assignments: { orderBy: { createdAt: 'desc' } },
+      damageReports: { include: { damageReport: true } },
+      lostReports: { orderBy: { createdAt: 'desc' } },
+      liquidations: { include: { liquidationRecord: true } },
+      events: { orderBy: { eventDate: 'desc' } },
+      editLogs: { orderBy: { createdAt: 'desc' } },
+      repairTickets: { orderBy: { createdAt: 'desc' } },
+      repairLogs: { orderBy: { createdAt: 'desc' } },
+      histories: { orderBy: { eventTime: 'desc' } }
+    }
+  });
+
+  if (!asset) return res.status(404).json({ message: 'Asset not found' });
+
+  // Data Scope Check for details view
+  const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+    company: 'companyCode',
+    department: 'departmentName',
+    warehouse: 'locationName',
+    user: 'currentUserName'
+  });
+
+  // Verify the user can see this specific asset
+  if (scopeWhere.id !== undefined && scopeWhere.id === -1) {
+    return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Data Scope)' });
+  }
+
+  if (scopeWhere.OR) {
+    // Fast manual check since we already have the asset data
+    const canView = scopeWhere.OR.some((clause: any) => {
+      if (clause.companyCode && clause.companyCode.in.includes(asset.companyCode)) return true;
+      if (clause.departmentName && clause.departmentName.in.includes(asset.departmentName)) return true;
+      if (clause.locationName && clause.locationName.in.includes(asset.locationName)) return true;
+      return false;
+    });
+    if (!canView) return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Data Scope)' });
+  } else if ((scopeWhere as any).currentUserName) {
+    if (asset.currentUserName !== req.user?.fullName && asset.currentUserName !== req.user?.username) {
+      return res.status(403).json({ message: 'Bạn không có quyền xem tài sản này (Chỉ xem của bản thân)' });
+    }
+  }
+
+  // Hide price if no ASSET_VIEW_PRICE
+  if (!req.user?.roles?.includes('SUPER_ADMIN') && !req.user?.permissions?.includes('ASSET_VIEW_PRICE')) {
+    asset.purchasePriceExVat = null;
+  }
+
+  // Fetch centralized audit logs
+  const auditLogs = await prisma.auditLog.findMany({
+    where: { entityType: 'ASSET', entityId: asset.id },
+    orderBy: { createdAt: 'desc' }
+  });
+
+  res.json({ ...asset, auditLogs });
+});
+
 export default router;
+
