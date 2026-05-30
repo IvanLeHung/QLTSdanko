@@ -130,7 +130,7 @@ export class PdfUtil {
 
     // Default configuration if no custom configJson is provided
     const config = options.configJson || {
-      page: { size: 'A4', orientation: 'portrait', marginTop: 35, marginRight: 42, marginBottom: 55, marginLeft: 42 },
+      page: { size: 'A4', orientation: 'portrait', marginTop: 56, marginRight: 56, marginBottom: 70, marginLeft: 56 },
       header: { showLogo: true, departmentText: 'BỘ PHẬN QLTS', showTemplateCode: true, showDocumentQr: true },
       assetTable: { showAssetQr: true, assetQrSize: 50, repeatHeader: true, columns: ['index', 'assetCodeQr', 'assetName', 'specification', 'serial', 'unit', 'quantity', 'condition', 'note'] },
       signature: { columns: ['sender', 'receiver', 'qlts'] },
@@ -145,10 +145,10 @@ export class PdfUtil {
     const footerSettings = config.footer || {};
 
     const pageMargins = [
-      pageSettings.marginLeft !== undefined ? Number(pageSettings.marginLeft) : 42,
-      pageSettings.marginTop !== undefined ? Number(pageSettings.marginTop) : 35,
-      pageSettings.marginRight !== undefined ? Number(pageSettings.marginRight) : 42,
-      pageSettings.marginBottom !== undefined ? Number(pageSettings.marginBottom) : 55
+      pageSettings.marginLeft !== undefined ? Number(pageSettings.marginLeft) : 56,
+      pageSettings.marginTop !== undefined ? Number(pageSettings.marginTop) : 56,
+      pageSettings.marginRight !== undefined ? Number(pageSettings.marginRight) : 56,
+      pageSettings.marginBottom !== undefined ? Number(pageSettings.marginBottom) : 70
     ];
 
     // Build Header columns
