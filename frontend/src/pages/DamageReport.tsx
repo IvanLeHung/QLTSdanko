@@ -98,10 +98,12 @@ export const DamageReport: React.FC = () => {
 
   const getStatusInfo = (status: string) => {
     switch (status) {
+      case 'DRAFT': return { label: 'Nháp', color: 'bg-slate-50 text-slate-700 border-slate-100', icon: Clock };
       case 'OPEN': return { label: 'Chờ xử lý', color: 'bg-amber-50 text-amber-700 border-amber-100', icon: Clock };
       case 'IN_PROGRESS': return { label: 'Đang sửa', color: 'bg-blue-50 text-blue-700 border-blue-100', icon: Wrench };
       case 'COMPLETED': return { label: 'Đã xong', color: 'bg-emerald-50 text-emerald-700 border-emerald-100', icon: CheckCircle2 };
       case 'FAILED': return { label: 'Không sửa được', color: 'bg-rose-50 text-rose-700 border-rose-100', icon: X };
+      case 'CANCELLED': return { label: 'Đã hủy', color: 'bg-slate-100 text-slate-400 border-slate-200', icon: X };
       default: return { label: status, color: 'bg-slate-50 text-slate-700 border-slate-100', icon: Package };
     }
   };

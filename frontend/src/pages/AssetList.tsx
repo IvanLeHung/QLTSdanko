@@ -461,6 +461,10 @@ export const AssetList: React.FC = () => {
         });
         break;
       case 'repair':
+        if (asset.repairTickets && asset.repairTickets.length > 0) {
+          toast.warning("Tài sản này đang có phiếu sửa chữa chưa hoàn tất.");
+          break;
+        }
         openModal("BM_FORM", {
           code: 'BM03/QLTS',
           data: { asset },
@@ -1460,6 +1464,7 @@ export const AssetList: React.FC = () => {
                 <tr><td colSpan={7} className="p-12 text-center"><Loader2 className="h-6 w-6 animate-spin text-primary-500 mx-auto" /></td></tr>
               ) : assets.map((asset) => {
                 const status = getStatusLabel(asset.status);
+                const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
                 return (
                   <tr 
                     key={asset.id} 
@@ -1494,9 +1499,16 @@ export const AssetList: React.FC = () => {
                       <p className="text-[10px] font-medium text-slate-400 ml-3.5">{asset.locationName}</p>
                     </td>
                     <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'status_auto'); }}>
-                      <span className={cn("px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border", status.color)}>
-                        {status.label}
-                      </span>
+                      <div className="flex flex-col gap-1 items-start">
+                        <span className={cn("px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider border", status.color)}>
+                          {status.label}
+                        </span>
+                        {hasOpenTicket && (
+                          <span className="text-[9px] font-bold text-amber-600 bg-amber-50 border border-amber-200 px-1.5 py-0.5 rounded-md flex items-center gap-0.5 whitespace-nowrap">
+                            <Wrench className="h-2.5 w-2.5" /> Đang có phiếu sửa chữa
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3 text-right" onClick={(e) => e.stopPropagation()}>
                        <div className="relative inline-block">
@@ -1527,7 +1539,26 @@ export const AssetList: React.FC = () => {
 
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
                                  <Can permission="INVENTORY_CREATE"><ActionItem label="Kiểm kê" icon={<ClipboardCheck className="h-4 w-4" />} onClick={() => handleAssetAction('inventory', asset)} /></Can>
-                                 <Can permission="REPAIR_CREATE"><ActionItem label="Sửa chữa / Bảo trì" icon={<Wrench className="h-4 w-4" />} onClick={() => handleAssetAction('repair', asset)} /></Can>
+                                 {hasOpenTicket ? (
+                                   <Can permission="REPAIR_CREATE">
+                                     <ActionItem 
+                                       label="Xem phiếu sửa chữa" 
+                                       icon={<Wrench className="h-4 w-4 text-amber-500" />} 
+                                       onClick={() => {
+                                         setActiveMenuId(null);
+                                         openModal('REPAIR_PROCESSING', { ticketId: asset.repairTickets[0].id, onSuccess: fetchAssets });
+                                       }} 
+                                     />
+                                   </Can>
+                                 ) : (
+                                   <Can permission="REPAIR_CREATE">
+                                     <ActionItem 
+                                       label="Sửa chữa / Bảo trì" 
+                                       icon={<Wrench className="h-4 w-4" />} 
+                                       onClick={() => handleAssetAction('repair', asset)} 
+                                     />
+                                   </Can>
+                                 )}
                                  <Can permission="REPAIR_CREATE"><ActionItem label="Thanh lý" icon={<Trash className="h-4 w-4" />} onClick={() => handleAssetAction('liquidation', asset)} /></Can>
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
                                  <ActionItem label="Nhật ký tài sản" icon={<Activity className="h-4 w-4" />} onClick={() => handleAssetAction('history', asset)} />

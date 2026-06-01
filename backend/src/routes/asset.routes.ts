@@ -374,7 +374,17 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
         where,
         skip,
         take: Number(limit),
-        orderBy: { [String(sortBy)]: sortOrder }
+        orderBy: { [String(sortBy)]: sortOrder },
+        include: {
+          repairTickets: {
+            where: {
+              status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS'] }
+            },
+            select: {
+              id: true
+            }
+          }
+        }
       }),
       prisma.asset.count({ where })
     ]);

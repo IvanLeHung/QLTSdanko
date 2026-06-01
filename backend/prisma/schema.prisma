@@ -526,6 +526,7 @@ model AssetRepairTicket {
   actualFinishDate   DateTime?
   result             String?
   status             String           @default("OPEN")
+  previousAssetStatus String?
   note               String?
   attachments        String?
   createdAt          DateTime         @default(now())

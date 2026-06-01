@@ -11,6 +11,7 @@ import { AssetLabelPrintModal } from './AssetLabelPrintModal';
 import { InventoryWizardModal } from './InventoryWizardModal';
 import { LogDetailModal } from './LogDetailModal';
 import { BMFormDispatcher } from './forms/BMFormDispatcher';
+import { RepairProcessingPopup } from './RepairProcessingPopup';
 
 export const ModalManager: React.FC = () => {
   const { activeModal, closeModal, confirmState, closeConfirm } = useModal();
@@ -99,6 +100,18 @@ export const ModalManager: React.FC = () => {
               isOpen={true}
               onClose={closeModal}
               log={activeModal.payload?.log}
+            />
+          )}
+
+          {activeModal.type === 'REPAIR_PROCESSING' && (
+            <RepairProcessingPopup
+              isOpen={true}
+              ticketId={activeModal.payload?.ticketId}
+              onClose={closeModal}
+              onSuccess={() => {
+                if (activeModal.payload?.onSuccess) activeModal.payload.onSuccess();
+                closeModal();
+              }}
             />
           )}
         </>

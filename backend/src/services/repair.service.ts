@@ -7,18 +7,22 @@ export class RepairService {
   static async createTicket(data: any) {
     const { assetId, reportedBy, ...ticketData } = data;
 
-    // 1. Check if asset exists and is not disposed
+    // 1. Check if asset exists and is not in prohibited statuses for repair
     const asset = await prisma.asset.findUnique({
       where: { id: assetId }
     });
 
-    if (!asset || ['DISPOSED', 'LOST'].includes(asset.status)) {
-      throw new Error("Tài sản không tồn tại hoặc đã thanh lý/mất.");
+    if (!asset) {
+      throw new Error("Tài sản không tồn tại.");
     }
 
-    // 2. Check for open tickets
+    if (['DISPOSED', 'LOST', 'UNDER_REPAIR', 'PENDING_DISPOSAL'].includes(asset.status)) {
+      throw new Error(`Không thể báo hỏng tài sản đang ở trạng thái: ${asset.status}`);
+    }
+
+    // 2. Check for open tickets (DRAFT, OPEN, IN_PROGRESS)
     const openTicket = await prisma.assetRepairTicket.findFirst({
-      where: { assetId, status: { in: ['OPEN', 'IN_PROGRESS'] } }
+      where: { assetId, status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS'] } }
     });
 
     if (openTicket) {
@@ -29,14 +33,12 @@ export class RepairService {
     const count = await prisma.assetRepairTicket.count();
     const repairCode = `REP-${new Date().getFullYear()}${(count + 1).toString().padStart(5, '0')}`;
 
-    // 4. Determine new asset status based on repairAction
+    // 4. Determine new asset status and ticket status
+    const ticketStatus = ticketData.status || 'OPEN';
     let newAssetStatus = asset.status;
-    if (ticketData.repairAction === 'Sửa chữa' || ticketData.repairAction === 'Mang đi sửa') {
-      newAssetStatus = 'UNDER_REPAIR';
-    } else if (ticketData.repairAction === 'Không sửa được') {
+    
+    if (ticketStatus !== 'DRAFT') {
       newAssetStatus = 'DAMAGED';
-    } else if (ticketData.repairAction === 'Thanh lý') {
-      newAssetStatus = 'PENDING_LIQUIDATION';
     }
 
     return await prisma.$transaction(async (tx) => {
@@ -47,11 +49,12 @@ export class RepairService {
           repairCode,
           assetId,
           reportedBy,
-          status: 'OPEN'
+          status: ticketStatus,
+          previousAssetStatus: asset.status
         }
       });
 
-      // Update asset status
+      // Update asset status if needed
       if (newAssetStatus !== asset.status) {
         await tx.asset.update({
           where: { id: assetId },
@@ -66,7 +69,7 @@ export class RepairService {
           assetId,
           action: 'CREATE',
           newStatus: ticket.status,
-          description: `Khởi tạo phiếu sửa chữa: ${ticketData.damageDescription}`,
+          description: `Khởi tạo phiếu sửa chữa (${ticketStatus}): ${ticketData.damageDescription}`,
           performedBy: reportedBy
         }
       });
@@ -126,11 +129,28 @@ export class RepairService {
         }
       });
 
-      // Update asset status if ticket status changed to IN_PROGRESS
+      // Update asset status based on ticket status change
       if (status === 'IN_PROGRESS' && ticket.asset.status !== 'UNDER_REPAIR') {
         await tx.asset.update({
           where: { id: ticket.assetId },
           data: { status: 'UNDER_REPAIR' }
+        });
+      } else if (status === 'FAILED') {
+        const nextAssetStatus = (updateData.repairAction === 'Thanh lý' || updateData.repairAction === 'Chuyển chờ thanh lý') ? 'PENDING_DISPOSAL' : 'DAMAGED';
+        await tx.asset.update({
+          where: { id: ticket.assetId },
+          data: { status: nextAssetStatus }
+        });
+      } else if (status === 'CANCELLED') {
+        const restoredStatus = ticket.previousAssetStatus || 'IN_STOCK';
+        await tx.asset.update({
+          where: { id: ticket.assetId },
+          data: { status: restoredStatus }
+        });
+      } else if (status === 'OPEN' && ticket.status === 'DRAFT') {
+        await tx.asset.update({
+          where: { id: ticket.assetId },
+          data: { status: 'DAMAGED' }
         });
       }
 
@@ -186,11 +206,16 @@ export class RepairService {
       });
 
       // Update asset status after repair
+      let finalAssetStatus = assetStatusAfterRepair;
+      if (!finalAssetStatus) {
+        finalAssetStatus = ticket.asset.currentUserName ? 'ASSIGNED' : 'IN_STOCK';
+      }
+
       await tx.asset.update({
         where: { id: ticket.assetId },
         data: { 
-          status: assetStatusAfterRepair || 'IN_STOCK',
-          lastInventoryCondition: result // Optionally update condition
+          status: finalAssetStatus,
+          lastInventoryCondition: result
         }
       });
 
@@ -201,7 +226,7 @@ export class RepairService {
           action: 'COMPLETE',
           oldStatus: ticket.status,
           newStatus: 'COMPLETED',
-          description: `Hoàn tất sửa chữa. Kết quả: ${result}. Trạng thái tài sản mới: ${assetStatusAfterRepair}`,
+          description: `Hoàn tất sửa chữa. Kết quả: ${result}. Trạng thái tài sản mới: ${finalAssetStatus}`,
           cost: parseFloat(actualCost) || 0,
           performedBy
         }

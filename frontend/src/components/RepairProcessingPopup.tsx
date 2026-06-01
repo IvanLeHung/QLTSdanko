@@ -86,8 +86,9 @@ export const RepairProcessingPopup: React.FC<RepairProcessingPopupProps> = ({ ti
     }
   };
 
-  const handleUpdate = async (isComplete = false) => {
+  const handleUpdate = async (isComplete = false, overrideStatus?: string) => {
     setSubmitting(true);
+    const targetStatus = overrideStatus || formData.status;
     try {
       if (isComplete) {
         await api.post(`/repairs/${ticketId}/complete`, {
@@ -98,8 +99,9 @@ export const RepairProcessingPopup: React.FC<RepairProcessingPopupProps> = ({ ti
       } else {
         await api.put(`/repairs/${ticketId}/progress`, {
            ...formData,
+           status: targetStatus,
            performedBy: 'Nhân viên QLTS',
-           description: `Cập nhật xử lý: ${formData.repairAction}`
+           description: `Cập nhật xử lý: ${formData.repairAction || 'Cập nhật tiến độ'}`
         });
         toast.success("Đã lưu cập nhật xử lý");
       }
@@ -133,11 +135,18 @@ export const RepairProcessingPopup: React.FC<RepairProcessingPopupProps> = ({ ti
                        <h2 className="text-xl font-[900] text-slate-900 tracking-tighter uppercase">Xử lý sửa chữa / bảo trì</h2>
                        <span className={cn(
                           "px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border",
+                          ticket.status === 'DRAFT' ? "bg-slate-100 text-slate-700 border-slate-200" :
                           ticket.status === 'OPEN' ? "bg-amber-100 text-amber-700 border-amber-200" :
                           ticket.status === 'IN_PROGRESS' ? "bg-blue-100 text-blue-700 border-blue-200" :
-                          ticket.status === 'COMPLETED' ? "bg-emerald-100 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600"
+                          ticket.status === 'COMPLETED' ? "bg-emerald-100 text-emerald-700 border-emerald-200" :
+                          ticket.status === 'FAILED' ? "bg-rose-100 text-rose-700 border-rose-200" : "bg-slate-100 text-slate-500 border-slate-200"
                        )}>
-                          {ticket.status}
+                          {ticket.status === 'DRAFT' ? 'Nháp' :
+                           ticket.status === 'OPEN' ? 'Chờ xử lý' :
+                           ticket.status === 'IN_PROGRESS' ? 'Đang sửa' :
+                           ticket.status === 'COMPLETED' ? 'Đã xong' :
+                           ticket.status === 'FAILED' ? 'Không sửa được' :
+                           ticket.status === 'CANCELLED' ? 'Đã hủy' : ticket.status}
                        </span>
                     </div>
                     <h3 className="text-lg font-bold text-slate-700 leading-tight">{ticket.asset?.assetName} - {ticket.asset?.assetCode}</h3>
@@ -178,7 +187,7 @@ export const RepairProcessingPopup: React.FC<RepairProcessingPopupProps> = ({ ti
                </div>
 
                {/* HANDLING ACTION */}
-               {ticket.status !== 'COMPLETED' && (
+               {ticket.status !== 'COMPLETED' && ticket.status !== 'DRAFT' && ticket.status !== 'CANCELLED' && ticket.status !== 'FAILED' && (
                   <div className="space-y-4">
                      <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Hướng xử lý</h4>
                      <div className="grid grid-cols-3 gap-3">
@@ -193,7 +202,16 @@ export const RepairProcessingPopup: React.FC<RepairProcessingPopupProps> = ({ ti
                            <button
                               key={act.id}
                               type="button"
-                              onClick={() => setFormData({...formData, repairAction: act.id, status: (act.id === 'Sửa chữa' || act.id === 'Nội bộ') ? 'IN_PROGRESS' : formData.status})}
+                              onClick={() => setFormData({
+                                 ...formData, 
+                                 repairAction: act.id, 
+                                 status: 
+                                    (act.id === 'Sửa chữa' || act.id === 'Nội bộ') ? 'IN_PROGRESS' : 
+                                    (act.id === 'Không sửa được' || act.id === 'Thanh lý') ? 'FAILED' : 
+                                    (act.id === 'Hủy') ? 'CANCELLED' : 
+                                    (act.id === 'Vẫn dùng được') ? 'COMPLETED' : 
+                                    formData.status
+                              })}
                               className={cn(
                                  "flex items-center space-x-3 p-4 rounded-2xl border-2 transition-all",
                                  formData.repairAction === act.id 
@@ -327,26 +345,39 @@ export const RepairProcessingPopup: React.FC<RepairProcessingPopupProps> = ({ ti
             {/* FOOTER */}
             <div className="p-8 border-t border-slate-100 bg-slate-50/50 flex space-x-3">
                <button onClick={onClose} className="px-6 py-3.5 rounded-2xl font-black text-[11px] uppercase tracking-widest text-slate-500 hover:bg-white transition-all border border-slate-200">Đóng</button>
-               {ticket.status !== 'COMPLETED' && (
+               {ticket.status !== 'COMPLETED' && ticket.status !== 'CANCELLED' && ticket.status !== 'FAILED' && (
                   <>
                      <div className="flex-1" />
-                     <button 
-                        onClick={() => handleUpdate(false)}
-                        disabled={submitting}
-                        className="px-8 py-3.5 bg-white border border-slate-200 text-slate-700 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center shadow-sm disabled:opacity-50"
-                     >
-                        {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
-                        Lưu xử lý
-                     </button>
-                     {(ticket.status === 'IN_PROGRESS' || formData.repairAction === 'Vẫn dùng được') && (
+                     {ticket.status === 'DRAFT' ? (
                         <button 
-                           onClick={() => handleUpdate(true)}
+                           onClick={() => handleUpdate(false, 'OPEN')}
                            disabled={submitting}
                            className="px-8 py-3.5 bg-primary-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-primary-700 transition-all shadow-xl shadow-primary-200 flex items-center disabled:opacity-50"
                         >
                            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
-                           Hoàn tất sửa chữa
+                           Xác nhận báo hỏng
                         </button>
+                     ) : (
+                        <>
+                           <button 
+                              onClick={() => handleUpdate(false)}
+                              disabled={submitting}
+                              className="px-8 py-3.5 bg-white border border-slate-200 text-slate-700 rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-slate-50 transition-all flex items-center shadow-sm disabled:opacity-50"
+                           >
+                              {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Save className="h-4 w-4 mr-2" />}
+                              Lưu xử lý
+                           </button>
+                           {(ticket.status === 'IN_PROGRESS' || formData.repairAction === 'Vẫn dùng được') && (
+                              <button 
+                                 onClick={() => handleUpdate(true)}
+                                 disabled={submitting}
+                                 className="px-8 py-3.5 bg-primary-600 text-white rounded-2xl font-black text-[11px] uppercase tracking-widest hover:bg-primary-700 transition-all shadow-xl shadow-primary-200 flex items-center disabled:opacity-50"
+                              >
+                                 {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <CheckCircle2 className="h-4 w-4 mr-2" />}
+                                 Hoàn tất sửa chữa
+                              </button>
+                           )}
+                        </>
                      )}
                   </>
                )}

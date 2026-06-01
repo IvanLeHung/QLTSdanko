@@ -9,6 +9,7 @@ export type ModalType =
   | 'IMPORT_EXCEL'
   | 'REPAIR_TICKET'
   | 'COMPLETE_REPAIR'
+  | 'REPAIR_PROCESSING'
   | 'BM_FORM'
   | 'LOG_DETAIL';
 

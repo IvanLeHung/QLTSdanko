@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { BaseFormModal, FormSection, FormField, FormInput, FormSelect, FormTextArea } from './BaseFormModal';
 import { AttachmentUploader, SignatureBlock } from './FormComponents';
 import { AlertTriangle, User, Search, History } from 'lucide-react';
+import api from '../../lib/api';
+import { toast } from 'react-toastify';
 
 interface BM03ModalProps {
   isOpen: boolean;
@@ -25,13 +27,36 @@ export const BM03DamagedModal: React.FC<BM03ModalProps> = ({ isOpen, onClose, on
     action: 'Chuyển sửa chữa'
   });
 
-  const handleSubmit = () => {
+  const submitTicket = async (statusType: 'OPEN' | 'DRAFT') => {
+    if (!formData.description) {
+      toast.error("Vui lòng nhập mô tả sự cố");
+      return;
+    }
+    if (!asset) {
+      toast.error("Thiếu thông tin tài sản");
+      return;
+    }
     setLoading(true);
-    setTimeout(() => {
-      onSubmit(formData);
-      setLoading(false);
+    try {
+      const response = await api.post('/repairs', {
+        assetId: asset.id,
+        reportedBy: formData.reportedBy,
+        reportedDate: new Date(formData.discoveryDate),
+        damageLevel: formData.level,
+        damageDescription: formData.description,
+        cause: formData.cause,
+        canContinueUsing: formData.canContinue,
+        repairAction: formData.action,
+        status: statusType
+      });
+      toast.success(statusType === 'DRAFT' ? "Đã lưu nháp biên bản hỏng thành công" : "Đã gửi báo hỏng tài sản thành công");
+      onSubmit(response.data);
       onClose();
-    }, 800);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi gửi báo hỏng");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -42,7 +67,8 @@ export const BM03DamagedModal: React.FC<BM03ModalProps> = ({ isOpen, onClose, on
       formCode="BM03/QLTS"
       documentNo={formData.documentNo}
       date={formData.date}
-      onConfirm={handleSubmit}
+      onConfirm={() => submitTicket('OPEN')}
+      onSaveDraft={() => submitTicket('DRAFT')}
       submitting={loading}
       confirmLabel="Xác nhận báo hỏng"
       isCompleted={false}
