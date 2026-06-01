@@ -467,7 +467,35 @@ async function main() {
     }
   }
 
-  console.log('Master data fully updated with Roles, Departments, Locations, Companies, and default templates');
+  // --- DOCUMENT TEMPLATES SEED ---
+  const docTemplates = [
+    { templateCode: 'BM01', templateName: 'Biên bản bàn giao tài sản mới', businessModule: 'CREATION' },
+    { templateCode: 'BM02', templateName: 'Biên bản bàn giao tài sản', businessModule: 'HANDOVER' },
+    { templateCode: 'BM03', templateName: 'Biên bản tài sản hỏng / sửa chữa', businessModule: 'DAMAGE' },
+    { templateCode: 'BM04', templateName: 'Biên bản thanh lý tài sản', businessModule: 'LIQUIDATION' },
+    { templateCode: 'BM05', templateName: 'Biên bản tiêu hủy / mất tài sản', businessModule: 'DISPOSAL' },
+    { templateCode: 'BM06', templateName: 'Biên bản điều chuyển tài sản', businessModule: 'TRANSFER' },
+    { templateCode: 'BM07', templateName: 'Biên bản bàn giao tổng hợp', businessModule: 'HANDOVER' },
+    { templateCode: 'BM08', templateName: 'Biên bản kiểm kê định kỳ', businessModule: 'INVENTORY' },
+    { templateCode: 'BM09', templateName: 'Biên bản thu hồi tài sản', businessModule: 'RECALL' },
+    { templateCode: 'BM10', templateName: 'Yêu cầu sửa chữa tài sản', businessModule: 'REPAIR' },
+    { templateCode: 'BM11', templateName: 'Biên bản đánh giá tài sản', businessModule: 'INVENTORY' },
+    { templateCode: 'BM12', templateName: 'Biên bản kiểm kê tài sản', businessModule: 'INVENTORY' },
+    { templateCode: 'BM13', templateName: 'Biên bản ghi nhận mất tài sản', businessModule: 'LOST' }
+  ];
+
+  for (const dt of docTemplates) {
+    await prisma.documentTemplate.upsert({
+      where: { templateCode: dt.templateCode },
+      update: {
+        templateName: dt.templateName,
+        businessModule: dt.businessModule
+      },
+      create: dt
+    });
+  }
+
+  console.log('Master data fully updated with Roles, Departments, Locations, Companies, templates, and document templates');
 }
 
 
