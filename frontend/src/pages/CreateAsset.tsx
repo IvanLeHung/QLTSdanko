@@ -77,6 +77,7 @@ export const CreateAsset: React.FC = () => {
     warehouseId: '',
     totalAmount: '',
     note: '',
+    fileUrl: '',
   });
 
   const [lines, setLines] = useState<InvoiceLineItem[]>([
@@ -331,6 +332,7 @@ export const CreateAsset: React.FC = () => {
         supplierName: parsedInvoice.supplierName || prev.supplierName,
         supplierTaxCode: parsedInvoice.supplierTaxCode || prev.supplierTaxCode,
         totalAmount: parsedInvoice.totalAmount ? String(parsedInvoice.totalAmount) : prev.totalAmount,
+        fileUrl: parsedInvoice.fileUrl || prev.fileUrl,
       }));
 
       if (parsedLines && parsedLines.length > 0) {
@@ -653,13 +655,13 @@ export const CreateAsset: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* COMPONENT A: INVOICE METADATA FORM */}
-        <div className="lg:col-span-3 bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 space-y-6">
+        <div className={`${invoice.fileUrl ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 space-y-6 transition-all duration-300`}>
           <h2 className="text-xl font-black text-slate-800 flex items-center gap-3">
             <Building2 className="h-5 w-5 text-primary-500" />
             1. Thông tin hóa đơn gốc
           </h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+          <div className={`grid grid-cols-1 ${invoice.fileUrl ? 'md:grid-cols-2' : 'md:grid-cols-4'} gap-6`}>
             <div>
               <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Số hóa đơn *</label>
               <input 
@@ -747,6 +749,40 @@ export const CreateAsset: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* INVOICE PREVIEW PANEL (only when fileUrl is present) */}
+        {invoice.fileUrl && (
+          <div className="lg:col-span-1 bg-white border border-slate-100 rounded-[2.5rem] p-6 shadow-xl shadow-slate-100 flex flex-col justify-between h-full animate-in fade-in slide-in-from-right-4 duration-200">
+            <div className="space-y-3 flex-1 flex flex-col">
+              <div className="flex justify-between items-center border-b pb-2">
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Xem tệp hóa đơn gốc</h3>
+                <a 
+                  href={invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`} 
+                  target="_blank" 
+                  rel="noreferrer" 
+                  className="text-[10px] font-black text-primary-650 hover:underline"
+                >
+                  Mở tab mới
+                </a>
+              </div>
+              <div className="flex-1 bg-slate-50 rounded-2xl overflow-hidden border border-slate-100 flex items-center justify-center min-h-[350px] max-h-[450px]">
+                {invoice.fileUrl.toLowerCase().endsWith('.pdf') ? (
+                  <iframe 
+                    src={`${invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`}#toolbar=0`} 
+                    className="w-full h-full border-0" 
+                    title="Invoice PDF"
+                  />
+                ) : (
+                  <img 
+                    src={invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`} 
+                    alt="Invoice" 
+                    className="max-w-full max-h-full object-contain p-2"
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* COMPONENT B: EDITABLE LINE ITEMS TABLE */}
         <div className="lg:col-span-3 bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 space-y-6 overflow-hidden">

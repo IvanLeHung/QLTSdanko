@@ -517,6 +517,16 @@ export const CreateAssetModal: React.FC<CreateAssetModalProps> = ({ isOpen, onCl
                 <div>
                   <h4 className="text-xs font-black text-slate-800 uppercase tracking-wide">Trích xuất từ hóa đơn XML/PDF</h4>
                   <p className="text-[10px] text-slate-400 font-bold uppercase mt-0.5">Hệ thống hỗ trợ parse hóa đơn tự động để điền thông tin nhanh</p>
+                  {invoice.fileUrl && (
+                    <a 
+                      href={invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-block text-[10px] font-black text-primary-650 hover:underline uppercase mt-1.5"
+                    >
+                      → Xem hóa đơn gốc đã tải lên
+                    </a>
+                  )}
                 </div>
                 <div className="relative">
                   <input 
