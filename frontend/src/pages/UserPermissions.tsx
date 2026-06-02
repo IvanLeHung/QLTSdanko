@@ -234,7 +234,8 @@ export function UserPermissions() {
     description: '',
     parentDeptId: '',
     managerId: '',
-    companyId: ''
+    companyId: '',
+    type: 'DEPARTMENT'
   });
 
   useEffect(() => {
@@ -567,7 +568,8 @@ export function UserPermissions() {
         description: d.description || '',
         parentDeptId: d.parentDeptId ? String(d.parentDeptId) : '',
         managerId: d.managerId ? String(d.managerId) : '',
-        companyId: d.companyId ? String(d.companyId) : ''
+        companyId: d.companyId ? String(d.companyId) : '',
+        type: d.type || 'DEPARTMENT'
       });
     } else {
       setEditingDeptId(null);
@@ -577,7 +579,8 @@ export function UserPermissions() {
         description: '',
         parentDeptId: '',
         managerId: '',
-        companyId: ''
+        companyId: '',
+        type: 'DEPARTMENT'
       });
     }
     setIsDeptModalOpen(true);
@@ -592,7 +595,8 @@ export function UserPermissions() {
         description: deptFormData.description || null,
         parentDeptId: deptFormData.parentDeptId ? parseInt(deptFormData.parentDeptId) : null,
         managerId: deptFormData.managerId ? parseInt(deptFormData.managerId) : null,
-        companyId: deptFormData.companyId ? parseInt(deptFormData.companyId) : null
+        companyId: deptFormData.companyId ? parseInt(deptFormData.companyId) : null,
+        type: deptFormData.type
       };
 
       if (deptModalMode === 'create') {
@@ -2305,6 +2309,23 @@ export function UserPermissions() {
                     className="w-full p-2 text-xs border rounded-lg focus:outline-none"
                   />
                 </div>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">Loại phòng ban:</label>
+                <select
+                  required
+                  value={deptFormData.type}
+                  onChange={(e) => setDeptFormData({ ...deptFormData, type: e.target.value })}
+                  className="w-full p-2 text-xs border rounded-lg font-semibold text-slate-800"
+                >
+                  <option value="DEPARTMENT">Phòng / Ban chuyên môn (DEPARTMENT)</option>
+                  <option value="BOARD">Ban giám đốc / Hội đồng (BOARD)</option>
+                  <option value="TEAM">Tổ / Nhóm (TEAM)</option>
+                  <option value="PROJECT">Dự án (PROJECT)</option>
+                  <option value="WAREHOUSE">Kho (WAREHOUSE)</option>
+                  <option value="OTHER">Khác (OTHER)</option>
+                </select>
               </div>
 
               <div className="space-y-1.5">
