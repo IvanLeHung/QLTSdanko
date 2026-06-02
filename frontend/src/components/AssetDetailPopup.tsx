@@ -45,6 +45,7 @@ import {
   Lock
 } from 'lucide-react';
 import api from '../lib/api';
+import { useNavigate } from 'react-router-dom';
 import { format } from 'date-fns';
 import { useAuth } from '../context/AuthContext';
 import { clsx, type ClassValue } from 'clsx';
@@ -79,6 +80,7 @@ const isPublicCompany = (name?: string) => {
 
 export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isOpen, onClose, onAction, initialTab = 'info' }) => {
   const { hasPermission } = useAuth();
+  const navigate = useNavigate();
   const [asset, setAsset] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>('info');
@@ -99,6 +101,9 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [updateAllSameName, setUpdateAllSameName] = useState(false);
   const [isCompanyRevealed, setIsCompanyRevealed] = useState(false);
   const [showAssignInfoModal, setShowAssignInfoModal] = useState(false);
+  const [showLinkInvoiceModal, setShowLinkInvoiceModal] = useState(false);
+  const [showInvoiceDetailsModal, setShowInvoiceDetailsModal] = useState(false);
+  const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
 
   useEffect(() => {
     if (isOpen && assetId) {
@@ -111,6 +116,9 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       setMode('view');
       setActiveTab('info');
       setShowAssignInfoModal(false);
+      setShowLinkInvoiceModal(false);
+      setShowInvoiceDetailsModal(false);
+      setSelectedInvoiceId(null);
     }
   }, [isOpen, assetId, initialTab]);
 
@@ -128,6 +136,10 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       if (e.key === 'Escape') {
         if (showAssignInfoModal) {
           setShowAssignInfoModal(false);
+        } else if (showLinkInvoiceModal) {
+          setShowLinkInvoiceModal(false);
+        } else if (showInvoiceDetailsModal) {
+          setShowInvoiceDetailsModal(false);
         } else {
           onClose();
         }
@@ -135,7 +147,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     };
     window.addEventListener('keydown', handleEsc);
     return () => window.removeEventListener('keydown', handleEsc);
-  }, [onClose, showAssignInfoModal]);
+  }, [onClose, showAssignInfoModal, showLinkInvoiceModal, showInvoiceDetailsModal]);
 
   const fetchAssetDetail = async () => {
     setLoading(true);
@@ -636,6 +648,129 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       <p className="text-sm text-slate-600 font-medium leading-relaxed">{asset.documentNote || 'Không có ghi chú.'}</p>
                     )}
                   </div>
+
+                  {/* Hóa đơn liên quan section */}
+                  {mode !== 'edit' && (
+                    <div className="col-span-2 border-t border-slate-100 pt-6 space-y-4">
+                      <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center">
+                        <FileText className="mr-2 h-4 w-4 text-slate-450" />
+                        Hóa đơn của tài sản
+                      </h4>
+                      
+                      {asset.invoiceBatch ? (
+                        <div className="p-6 rounded-3xl bg-slate-50/70 border border-slate-100 space-y-4">
+                          <div className="grid grid-cols-1 md:grid-cols-4 gap-6 text-xs font-bold text-slate-600">
+                            <div>
+                              <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Số hóa đơn</span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setSelectedInvoiceId(asset.invoiceBatch.id);
+                                  setShowInvoiceDetailsModal(true);
+                                }}
+                                className="text-sm font-black text-primary-600 hover:text-primary-750 underline text-left"
+                              >
+                                {asset.invoiceBatch.invoiceNo || 'N/A'}
+                              </button>
+                            </div>
+                            <div>
+                              <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ngày hóa đơn</span>
+                              <span className="text-slate-800 text-sm">
+                                {asset.invoiceBatch.invoiceDate ? format(new Date(asset.invoiceBatch.invoiceDate), 'dd/MM/yyyy') : 'N/A'}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Nhà cung cấp</span>
+                              <span className="text-slate-800 text-sm truncate block" title={asset.invoiceBatch.supplierName}>{asset.invoiceBatch.supplierName || 'N/A'}</span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Giá trị trước VAT</span>
+                              <span className="text-slate-850 text-sm">
+                                {hasPermission('ASSET_VIEW_PRICE') && asset.purchasePriceExVat !== null
+                                  ? `${asset.purchasePriceExVat.toLocaleString()} ₫`
+                                  : '*****'}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex flex-wrap gap-2 pt-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (asset.invoiceBatch.fileUrl) {
+                                  const url = asset.invoiceBatch.fileUrl.startsWith('http') ? asset.invoiceBatch.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${asset.invoiceBatch.fileUrl}`;
+                                  window.open(url, '_blank');
+                                } else {
+                                  toast.warning("Không có file hóa đơn đính kèm.");
+                                }
+                              }}
+                              className="flex items-center px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm"
+                            >
+                              <Eye className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
+                              Xem hóa đơn
+                            </button>
+                            
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (asset.invoiceBatch.fileUrl) {
+                                  const url = asset.invoiceBatch.fileUrl.startsWith('http') ? asset.invoiceBatch.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${asset.invoiceBatch.fileUrl}`;
+                                  const link = document.createElement('a');
+                                  link.href = url;
+                                  link.setAttribute('download', asset.invoiceBatch.fileUrl.split('/').pop() || 'invoice');
+                                  document.body.appendChild(link);
+                                  link.click();
+                                  document.body.removeChild(link);
+                                } else {
+                                  toast.warning("Không có file hóa đơn đính kèm.");
+                                }
+                              }}
+                              className="flex items-center px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm"
+                            >
+                              <Download className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
+                              Tải hóa đơn
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => setShowLinkInvoiceModal(true)}
+                              className="flex items-center px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm"
+                            >
+                              <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
+                              Thay đổi liên kết
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                onClose();
+                                navigate(`/assets?invoiceBatchId=${asset.invoiceBatchId}`);
+                              }}
+                              className="flex items-center px-3 py-1.5 bg-primary-50 hover:bg-primary-100 text-primary-750 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm"
+                            >
+                              <Package className="h-3.5 w-3.5 mr-1.5 text-primary-500" />
+                              Xem các tài sản cùng hóa đơn
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="p-5 rounded-3xl bg-slate-50 border border-slate-100 flex flex-col md:flex-row items-center justify-between gap-4 text-center md:text-left">
+                          <div>
+                            <p className="text-xs text-slate-500 font-bold">Tài sản này chưa được liên kết với bất kỳ hóa đơn gốc nào.</p>
+                            <p className="text-[10px] text-slate-400 font-bold mt-0.5 uppercase tracking-wide">Nhấp vào nút bên phải để chọn và liên kết với một hóa đơn</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowLinkInvoiceModal(true)}
+                            className="px-4 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shrink-0"
+                          >
+                            <Plus className="h-3.5 w-3.5 mr-1.5 inline" />
+                            Liên kết hóa đơn
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1195,6 +1330,360 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
           });
         }}
       />
+
+      {/* LINK INVOICE SUB-MODAL */}
+      {showLinkInvoiceModal && asset && (
+        <div className="fixed inset-0 z-[140] flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowLinkInvoiceModal(false)} />
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200 space-y-6">
+            <div>
+              <h3 className="text-lg font-black uppercase tracking-tight text-slate-900 flex items-center gap-2">
+                <ArrowRightLeft className="h-5 w-5 text-primary-500" />
+                Liên kết hóa đơn với tài sản
+              </h3>
+              <p className="text-xs text-slate-400 font-bold uppercase mt-1">Chọn hóa đơn gốc hoặc hủy liên kết hiện tại</p>
+            </div>
+            
+            <LinkInvoiceSelector 
+              currentInvoiceId={asset.invoiceBatchId}
+              onCancel={() => setShowLinkInvoiceModal(false)}
+              onConfirm={async (invoiceId) => {
+                try {
+                  await api.put(`/assets/${asset.id}/link-invoice`, { invoiceBatchId: invoiceId });
+                  toast.success(invoiceId ? "Liên kết hóa đơn thành công!" : "Hủy liên kết hóa đơn thành công!");
+                  setShowLinkInvoiceModal(false);
+                  fetchAssetDetail();
+                  onAction?.('refresh', asset.id);
+                } catch (err: any) {
+                  toast.error(err.response?.data?.message || "Lỗi khi cập nhật liên kết hóa đơn.");
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {/* INVOICE DETAILS MODAL */}
+      {showInvoiceDetailsModal && selectedInvoiceId && (
+        <InvoiceDetailsModal
+          invoiceId={selectedInvoiceId}
+          onClose={() => {
+            setShowInvoiceDetailsModal(false);
+            setSelectedInvoiceId(null);
+          }}
+          hasPermission={hasPermission}
+          onViewAsset={(assetId) => {
+            setShowInvoiceDetailsModal(false);
+            onAction?.('view', assetId);
+          }}
+        />
+      )}
     </BaseModal>
+  );
+};
+
+// ================= LINK INVOICE SELECTOR COMPONENT =================
+interface LinkInvoiceSelectorProps {
+  currentInvoiceId: number | null;
+  onCancel: () => void;
+  onConfirm: (invoiceId: number | null) => void;
+}
+
+const LinkInvoiceSelector: React.FC<LinkInvoiceSelectorProps> = ({ currentInvoiceId, onCancel, onConfirm }) => {
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [search, setSearch] = useState('');
+  const [selectedId, setSelectedId] = useState<number | null>(currentInvoiceId);
+
+  useEffect(() => {
+    fetchInvoices();
+  }, [search]);
+
+  const fetchInvoices = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/assets/invoices', { params: { search } });
+      setInvoices(res.data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="space-y-1.5">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Tìm kiếm hóa đơn</label>
+        <input
+          type="text"
+          placeholder="Nhập số hóa đơn hoặc tên nhà cung cấp..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          className="w-full bg-slate-50 border border-slate-200 focus:bg-white focus:border-primary-500 focus:ring-primary-500 rounded-2xl px-4 py-2.5 text-xs font-bold text-slate-750 transition-all"
+        />
+      </div>
+
+      <div className="space-y-1">
+        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Chọn hóa đơn từ danh sách ({invoices.length})</label>
+        <div className="max-h-52 overflow-y-auto border border-slate-100 rounded-2xl divide-y divide-slate-50 bg-slate-50/20 custom-scrollbar">
+          {invoices.map((inv) => {
+            const isSelected = selectedId === inv.id;
+            return (
+              <button
+                key={inv.id}
+                type="button"
+                onClick={() => setSelectedId(inv.id)}
+                className={`w-full text-left px-4 py-3 flex items-start justify-between text-xs transition-colors hover:bg-slate-50 ${isSelected ? 'bg-primary-50/40 text-primary-750' : 'text-slate-600'}`}
+              >
+                <div className="space-y-0.5">
+                  <p className="font-black text-slate-805 text-slate-800">Số HĐ: {inv.invoiceNo}</p>
+                  <p className="text-[10px] font-bold text-slate-400">{inv.supplierName} • {format(new Date(inv.invoiceDate), 'dd/MM/yyyy')}</p>
+                </div>
+                <div className="text-right">
+                  <p className="font-bold text-slate-700">{inv.totalAmount?.toLocaleString()} ₫</p>
+                  {isSelected && <span className="text-[9px] font-black text-primary-600 uppercase tracking-widest mt-0.5 block">Đã chọn</span>}
+                </div>
+              </button>
+            );
+          })}
+          {invoices.length === 0 && !loading && (
+            <p className="text-center py-6 text-slate-400 italic text-xs font-bold">Không tìm thấy hóa đơn nào.</p>
+          )}
+          {loading && (
+            <p className="text-center py-6 text-slate-400 italic text-xs font-bold">Đang tải...</p>
+          )}
+        </div>
+      </div>
+
+      <div className="flex gap-2.5 pt-2">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="flex-1 px-4 py-3 bg-white border border-slate-200 rounded-xl text-slate-400 hover:text-slate-600 font-black text-[10px] uppercase tracking-widest transition-all"
+        >
+          Hủy
+        </button>
+        {currentInvoiceId && (
+          <button
+            type="button"
+            onClick={() => onConfirm(null)}
+            className="flex-1 px-4 py-3 bg-rose-50 border border-rose-200 text-rose-600 hover:bg-rose-100 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all"
+          >
+            Hủy liên kết
+          </button>
+        )}
+        <button
+          type="button"
+          disabled={!selectedId}
+          onClick={() => onConfirm(selectedId)}
+          className="flex-[2] px-4 py-3 bg-primary-600 text-white hover:bg-primary-700 rounded-xl font-black text-[10px] uppercase tracking-widest disabled:opacity-50 transition-all shadow-md shadow-primary-100"
+        >
+          Liên kết
+        </button>
+      </div>
+    </div>
+  );
+};
+
+// ================= INVOICE DETAILS MODAL COMPONENT =================
+interface InvoiceDetailsModalProps {
+  invoiceId: number;
+  onClose: () => void;
+  hasPermission: (perm: string) => boolean;
+  onViewAsset: (id: number) => void;
+}
+
+const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, onClose, hasPermission, onViewAsset }) => {
+  const [invoice, setInvoice] = useState<any>(null);
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    fetchInvoiceDetails();
+  }, [invoiceId]);
+
+  const fetchInvoiceDetails = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get(`/assets/invoices/${invoiceId}`);
+      setInvoice(res.data);
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể tải chi tiết hóa đơn.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
+      <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full max-w-4xl bg-white rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-205 flex flex-col max-h-[90vh]">
+        
+        {/* Header */}
+        <div className="px-8 py-6 border-b border-slate-100 flex items-center justify-between shrink-0">
+          <div className="flex items-center space-x-4">
+            <div className="h-12 w-12 rounded-2xl bg-primary-50 text-primary-600 flex items-center justify-center border border-primary-100 shadow-sm">
+              <FileText className="h-6 w-6" />
+            </div>
+            <div>
+              <p className="text-[10px] font-black text-primary-600 uppercase tracking-widest">Chi tiết hóa đơn gốc</p>
+              <h3 className="text-xl font-black text-slate-900 tracking-tight">Số hóa đơn: {invoice?.invoiceNo || 'Đang tải...'}</h3>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="h-10 w-10 rounded-2xl border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center transition-all"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {loading ? (
+          <div className="h-64 flex flex-col items-center justify-center space-y-4">
+            <Loader2 className="h-8 w-8 text-primary-600 animate-spin" />
+            <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Đang tải dữ liệu hóa đơn...</p>
+          </div>
+        ) : invoice ? (
+          <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
+            
+            {/* Meta Card */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-100 text-xs">
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ngày mua / Ngày hóa đơn</span>
+                <span className="text-slate-800 font-bold text-sm">
+                  {invoice.invoiceDate ? format(new Date(invoice.invoiceDate), 'dd/MM/yyyy') : 'N/A'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Mã số thuế NCC</span>
+                <span className="text-slate-800 font-bold text-sm">{invoice.supplierTaxCode || 'N/A'}</span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Nhà cung cấp</span>
+                <span className="text-slate-800 font-bold text-sm block truncate" title={invoice.supplierName}>{invoice.supplierName || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tổng giá trị (trước VAT)</span>
+                <span className="text-slate-800 font-bold text-sm text-primary-600 block">
+                  {hasPermission('ASSET_VIEW_PRICE') && invoice.totalAmount !== null
+                    ? `${invoice.totalAmount.toLocaleString()} ₫`
+                    : '*****'}
+                </span>
+              </div>
+              <div>
+                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tổng số lượng tài sản</span>
+                <span className="text-slate-800 font-bold text-sm block">{invoice.totalAssets || 0} cái</span>
+              </div>
+              <div className="col-span-2">
+                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tệp hóa đơn gốc</span>
+                {invoice.fileUrl ? (
+                  <div className="flex gap-2 mt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`;
+                        window.open(url, '_blank');
+                      }}
+                      className="text-primary-600 hover:underline font-black text-[10px] uppercase tracking-wider flex items-center bg-white border border-slate-205 px-2.5 py-1.5 rounded-lg shadow-sm"
+                    >
+                      <Eye className="h-3 w-3 mr-1" /> Xem file
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const url = invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`;
+                        const link = document.createElement('a');
+                        link.href = url;
+                        link.setAttribute('download', invoice.fileUrl.split('/').pop() || 'invoice');
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="text-slate-600 hover:text-slate-900 font-black text-[10px] uppercase tracking-wider flex items-center bg-white border border-slate-205 px-2.5 py-1.5 rounded-lg shadow-sm"
+                    >
+                      <Download className="h-3 w-3 mr-1" /> Tải về
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-slate-400 italic font-bold">Chưa đính kèm tệp tin</span>
+                )}
+              </div>
+            </div>
+
+            {/* Assets list */}
+            <div className="space-y-3">
+              <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 px-1">Danh sách tài sản hình thành từ hóa đơn</h4>
+              <div className="border border-slate-100 rounded-3xl overflow-hidden shadow-sm bg-white overflow-x-auto">
+                <table className="w-full text-left text-xs border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 text-slate-500 border-b border-slate-100 h-10 font-bold uppercase tracking-wider text-[10px]">
+                      <th className="p-3 w-36">Mã tài sản</th>
+                      <th className="p-3">Tên tài sản</th>
+                      <th className="p-3 w-20 text-center">ĐVT</th>
+                      <th className="p-3 w-32 text-right">Giá trị (ex VAT)</th>
+                      <th className="p-3 w-36 text-center">Trạng thái</th>
+                      <th className="p-3 w-16 text-center">Xem</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-slate-700">
+                    {invoice.assets?.map((ast: any) => {
+                      const getStatusLabelText = (st: string) => {
+                        switch (st) {
+                          case 'IN_STOCK': return 'Trong kho';
+                          case 'ASSIGNED': return 'Đang sử dụng';
+                          case 'RETIRED': return 'Đã thu hồi';
+                          case 'UNDER_REPAIR': return 'Đang sửa chữa';
+                          case 'DAMAGED': return 'Báo hỏng';
+                          case 'LOST': return 'Báo mất';
+                          case 'DISPOSED': return 'Đã thanh lý';
+                          default: return st;
+                        }
+                      };
+                      return (
+                        <tr key={ast.id} className="hover:bg-slate-50/50">
+                          <td className="p-3 font-mono font-bold text-slate-900">{ast.assetCode}</td>
+                          <td className="p-3 font-bold text-slate-800">{ast.assetName}</td>
+                          <td className="p-3 text-center">{ast.unit || 'Cái'}</td>
+                          <td className="p-3 text-right font-bold">
+                            {hasPermission('ASSET_VIEW_PRICE') && ast.purchasePriceExVat !== null
+                              ? `${ast.purchasePriceExVat.toLocaleString()} ₫`
+                              : '*****'}
+                          </td>
+                          <td className="p-3 text-center">
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                              {getStatusLabelText(ast.status)}
+                            </span>
+                          </td>
+                          <td className="p-3 text-center">
+                            <button
+                              type="button"
+                              onClick={() => onViewAsset(ast.id)}
+                              className="text-primary-600 hover:text-primary-755 p-1 bg-primary-50 rounded-lg"
+                              title="Xem chi tiết tài sản này"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {(!invoice.assets || invoice.assets.length === 0) && (
+                      <tr>
+                        <td colSpan={6} className="text-center py-10 text-slate-400 italic font-bold">Chưa có tài sản nào được liên kết với hóa đơn này.</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        ) : (
+          <div className="h-64 flex items-center justify-center text-slate-400 italic font-bold">Không thể hiển thị thông tin hóa đơn.</div>
+        )}
+      </div>
+    </div>
   );
 };

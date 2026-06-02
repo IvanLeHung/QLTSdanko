@@ -81,6 +81,7 @@ export const AssetList: React.FC = () => {
     isAssigned: searchParams.get('isAssigned') || '',
     hasPrinted: searchParams.get('hasPrinted') || '',
     isChecked: searchParams.get('isChecked') || '',
+    invoiceBatchId: searchParams.get('invoiceBatchId') || '',
   };
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -115,6 +116,8 @@ export const AssetList: React.FC = () => {
   const [tempHasSerial, setTempHasSerial] = useState('');
   const [tempHasDocuments, setTempHasDocuments] = useState('');
 
+  const [filterInvoiceNo, setFilterInvoiceNo] = useState<string>('');
+
   useEffect(() => {
     const fetchLv4Categories = async () => {
       try {
@@ -127,6 +130,16 @@ export const AssetList: React.FC = () => {
     };
     fetchLv4Categories();
   }, []);
+
+  useEffect(() => {
+    if (filters.invoiceBatchId) {
+      api.get(`/assets/invoices/${filters.invoiceBatchId}`)
+        .then(res => setFilterInvoiceNo(res.data.invoiceNo))
+        .catch(() => setFilterInvoiceNo(`ID: ${filters.invoiceBatchId}`));
+    } else {
+      setFilterInvoiceNo('');
+    }
+  }, [filters.invoiceBatchId]);
 
   useEffect(() => {
     setTempStatus(filters.status ? filters.status.split(',') : []);
@@ -832,8 +845,16 @@ export const AssetList: React.FC = () => {
       });
     }
 
+    if (filters.invoiceBatchId) {
+      list.push({
+        label: 'Hóa đơn',
+        value: filterInvoiceNo || `ID: ${filters.invoiceBatchId}`,
+        onClear: () => updateParam('invoiceBatchId', null)
+      });
+    }
+
     return list;
-  }, [filters, lv4Categories]);
+  }, [filters, lv4Categories, filterInvoiceNo]);
 
   // Status label calculation
   const statusActive = tempStatus.length > 0;

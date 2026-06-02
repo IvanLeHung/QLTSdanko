@@ -36,6 +36,7 @@ app.use(auditMiddleware);
 
 // Public or semi-public routes
 app.use('/api/auth', authRoutes);
+app.use('/uploads', express.static(path.join(process.cwd(), 'uploads')));
 
 // Protected routes that need permissions loaded
 const protectedApi = express.Router();

@@ -3,6 +3,8 @@ import prisma from '../utils/prisma';
 import { AssetService } from '../services/asset.service';
 import { authenticateToken, AuthRequest, requirePermission } from '../middleware/auth.middleware';
 import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
 import { InvoiceParserService } from '../services/invoice-parser.service';
 import { InvoicePostService } from '../services/invoice-post.service';
 import { buildDataScopeWhere } from '../utils/data-scope.util';
@@ -193,7 +195,8 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     lastInventoryTo,
     inventoryStatus,
     createdFrom,
-    createdTo
+    createdTo,
+    invoiceBatchId
   } = req.query;
 
   const skip = (Number(page) - 1) * Number(limit);
@@ -363,6 +366,10 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
 
   if (req.query.isChecked === 'true') where.lastInventoryDate = { not: null };
   if (req.query.isChecked === 'false') where.lastInventoryDate = null;
+
+  if (invoiceBatchId) {
+    where.invoiceBatchId = Number(invoiceBatchId);
+  }
 
   if (andClauses.length > 0) {
     where.AND = andClauses;
@@ -541,23 +548,41 @@ router.post('/import-invoice/parse', authenticateToken, upload.single('file'), a
 
     const filename = req.file.originalname.toLowerCase();
     
+    // Save file locally to uploads/invoices
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'invoices');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    const ext = path.extname(req.file.originalname) || (filename.endsWith('.xml') ? '.xml' : filename.endsWith('.pdf') ? '.pdf' : '.xlsx');
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    const savedFilename = `invoice-${Date.now()}-${randomSuffix}${ext}`;
+    const filePath = path.join(uploadsDir, savedFilename);
+    fs.writeFileSync(filePath, req.file.buffer);
+    const fileUrl = `/uploads/invoices/${savedFilename}`;
+
+    let result: any;
     if (filename.endsWith('.xml')) {
       const xmlContent = req.file.buffer.toString('utf-8');
-      const result = await InvoiceParserService.parseXml(xmlContent);
-      return res.json(result);
+      result = await InvoiceParserService.parseXml(xmlContent);
     } else if (filename.endsWith('.xlsx') || filename.endsWith('.xls') || filename.endsWith('.csv')) {
-      const result = await InvoiceParserService.parseExcel(req.file.buffer);
-      return res.json(result);
+      result = await InvoiceParserService.parseExcel(req.file.buffer);
     } else if (filename.endsWith('.pdf') || filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
       // PDF or Image text fallback
-      return res.json({
+      result = {
         invoice: { invoiceNo: '', invoiceDate: '', supplierName: '', supplierTaxCode: '', totalAmount: 0 },
         lines: [],
-        warnings: ['Không thể bóc tách đầy đủ dữ liệu từ PDF. Vui lòng nhập thủ công hoặc dùng file Excel/XML.']
-      });
+        warnings: ['Không thể bóc tách đầy đủ dữ liệu từ PDF/Ảnh. Vui lòng nhập thủ công hoặc dùng file Excel/XML.']
+      };
     } else {
       return res.status(400).json({ message: 'Định dạng tệp không được hỗ trợ. Chỉ hỗ trợ XML, Excel, PDF và ảnh.' });
     }
+
+    // Attach fileUrl to result
+    if (result && result.invoice) {
+      result.invoice.fileUrl = fileUrl;
+    }
+
+    return res.json(result);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
@@ -571,6 +596,110 @@ router.post('/import-invoice/post', authenticateToken, async (req: any, res) => 
     res.json(result);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+});
+
+router.get('/invoices', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { search = '' } = req.query;
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { invoiceNo: { contains: String(search), mode: 'insensitive' } },
+        { supplierName: { contains: String(search), mode: 'insensitive' } }
+      ];
+    }
+    const invoices = await prisma.assetInvoiceBatch.findMany({
+      where,
+      orderBy: { invoiceDate: 'desc' },
+      take: 50
+    });
+    res.json(invoices);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/invoices/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const invoice = await prisma.assetInvoiceBatch.findUnique({
+      where: { id },
+      include: {
+        assets: {
+          where: { isDeleted: false },
+          orderBy: { assetCode: 'asc' }
+        }
+      }
+    });
+    if (!invoice) {
+      return res.status(404).json({ message: 'Hóa đơn không tồn tại.' });
+    }
+    res.json(invoice);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/:id/link-invoice', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  try {
+    const assetId = parseInt(req.params.id as string);
+    const { invoiceBatchId } = req.body;
+    const performedBy = req.user?.username || 'system';
+
+    const asset = await prisma.asset.findUnique({ where: { id: assetId } });
+    if (!asset) return res.status(404).json({ message: 'Tài sản không tồn tại.' });
+
+    const oldInvoiceId = asset.invoiceBatchId;
+
+    if (invoiceBatchId === null || invoiceBatchId === undefined || invoiceBatchId === '') {
+      await prisma.asset.update({
+        where: { id: assetId },
+        data: {
+          invoiceBatchId: null,
+          invoiceLineId: null
+        }
+      });
+      
+      await prisma.assetEditLog.create({
+        data: {
+          assetId,
+          fieldName: 'invoiceBatchId',
+          oldValue: oldInvoiceId ? String(oldInvoiceId) : null,
+          newValue: null,
+          editedBy: performedBy
+        }
+      });
+
+      return res.json({ message: 'Đã hủy liên kết hóa đơn thành công.' });
+    }
+
+    const batch = await prisma.assetInvoiceBatch.findUnique({ where: { id: parseInt(invoiceBatchId) } });
+    if (!batch) return res.status(404).json({ message: 'Hóa đơn không tồn tại.' });
+
+    await prisma.asset.update({
+      where: { id: assetId },
+      data: {
+        invoiceBatchId: batch.id,
+        supplierName: batch.supplierName,
+        supplierTaxCode: batch.supplierTaxCode,
+        purchaseDate: batch.invoiceDate
+      }
+    });
+
+    await prisma.assetEditLog.create({
+      data: {
+        assetId,
+        fieldName: 'invoiceBatchId',
+        oldValue: oldInvoiceId ? String(oldInvoiceId) : null,
+        newValue: String(batch.id),
+        editedBy: performedBy
+      }
+    });
+
+    res.json({ message: 'Đã liên kết hóa đơn thành công.' });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 });
 
@@ -1048,7 +1177,9 @@ router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (re
       editLogs: { orderBy: { createdAt: 'desc' } },
       repairTickets: { orderBy: { createdAt: 'desc' } },
       repairLogs: { orderBy: { createdAt: 'desc' } },
-      histories: { orderBy: { eventTime: 'desc' } }
+      histories: { orderBy: { eventTime: 'desc' } },
+      invoiceBatch: true,
+      invoiceLine: true
     }
   });
 

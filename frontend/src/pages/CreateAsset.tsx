@@ -779,10 +779,7 @@ export const CreateAsset: React.FC = () => {
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider w-12">STT</th>
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[200px]">Tên trên hóa đơn *</th>
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[200px]">Tên tài sản chuẩn *</th>
-                  <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[120px]">Nhóm 1</th>
-                  <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[120px]">Nhóm 2</th>
-                  <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[120px]">Nhóm 3</th>
-                  <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[120px]">Nhóm 4</th>
+                  <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[180px]">Phân loại định khoản *</th>
                   <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-20">SL *</th>
                   <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-28">Đơn giá *</th>
                   <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-28">Thành tiền</th>
@@ -832,10 +829,10 @@ export const CreateAsset: React.FC = () => {
                         />
                       </td>
 
-                      {/* Dropdown level 1 */}
-                      <td className="px-2 py-2">
+                      {/* Phân loại tài sản (4 levels cascading) */}
+                      <td className="px-2 py-2 min-w-[200px] space-y-1">
                         <select
-                          className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold bg-white"
+                          className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-[11px] font-semibold bg-white focus:border-primary-500 focus:ring-primary-500"
                           value={line.categoryLevel1Id}
                           onChange={e => {
                             const val = e.target.value;
@@ -853,69 +850,63 @@ export const CreateAsset: React.FC = () => {
                             <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
                           ))}
                         </select>
-                      </td>
 
-                      {/* Dropdown level 2 */}
-                      <td className="px-2 py-2">
-                        <select
-                          className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold bg-white"
-                          disabled={!line.categoryLevel1Id}
-                          value={line.categoryLevel2Id}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setLines(prev => prev.map(l => l.id === line.id ? { 
-                              ...l, 
-                              categoryLevel2Id: val, 
-                              categoryLevel3Id: '', 
-                              categoryLevel4Id: '' 
-                            } : l));
-                          }}
-                        >
-                          <option value="">-- Cấp 2 --</option>
-                          {cat2List.map(c => (
-                            <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
-                          ))}
-                        </select>
-                      </td>
+                        {line.categoryLevel1Id && (
+                          <select
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-[11px] font-semibold bg-white focus:border-primary-500 focus:ring-primary-500 animate-in fade-in duration-100"
+                            value={line.categoryLevel2Id}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setLines(prev => prev.map(l => l.id === line.id ? { 
+                                ...l, 
+                                categoryLevel2Id: val, 
+                                categoryLevel3Id: '', 
+                                categoryLevel4Id: '' 
+                              } : l));
+                            }}
+                          >
+                            <option value="">-- Cấp 2 --</option>
+                            {cat2List.map(c => (
+                              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                            ))}
+                          </select>
+                        )}
 
-                      {/* Dropdown level 3 */}
-                      <td className="px-2 py-2">
-                        <select
-                          className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold bg-white"
-                          disabled={!line.categoryLevel2Id}
-                          value={line.categoryLevel3Id}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setLines(prev => prev.map(l => l.id === line.id ? { 
-                              ...l, 
-                              categoryLevel3Id: val, 
-                              categoryLevel4Id: '' 
-                            } : l));
-                          }}
-                        >
-                          <option value="">-- Cấp 3 --</option>
-                          {cat3List.map(c => (
-                            <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
-                          ))}
-                        </select>
-                      </td>
+                        {line.categoryLevel2Id && (
+                          <select
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-[11px] font-semibold bg-white focus:border-primary-500 focus:ring-primary-500 animate-in fade-in duration-100"
+                            value={line.categoryLevel3Id}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setLines(prev => prev.map(l => l.id === line.id ? { 
+                                ...l, 
+                                categoryLevel3Id: val, 
+                                categoryLevel4Id: '' 
+                              } : l));
+                            }}
+                          >
+                            <option value="">-- Cấp 3 --</option>
+                            {cat3List.map(c => (
+                              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                            ))}
+                          </select>
+                        )}
 
-                      {/* Dropdown level 4 */}
-                      <td className="px-2 py-2">
-                        <select
-                          className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-xs font-semibold bg-white"
-                          disabled={!line.categoryLevel3Id}
-                          value={line.categoryLevel4Id}
-                          onChange={e => {
-                            const val = e.target.value;
-                            setLines(prev => prev.map(l => l.id === line.id ? { ...l, categoryLevel4Id: val } : l));
-                          }}
-                        >
-                          <option value="">-- Cấp 4 --</option>
-                          {cat4List.map(c => (
-                            <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
-                          ))}
-                        </select>
+                        {line.categoryLevel3Id && (
+                          <select
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-[11px] font-semibold bg-white focus:border-primary-500 focus:ring-primary-500 animate-in fade-in duration-100"
+                            value={line.categoryLevel4Id}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setLines(prev => prev.map(l => l.id === line.id ? { ...l, categoryLevel4Id: val } : l));
+                            }}
+                          >
+                            <option value="">-- Cấp 4 --</option>
+                            {cat4List.map(c => (
+                              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                            ))}
+                          </select>
+                        )}
                       </td>
 
                       {/* Quantity */}

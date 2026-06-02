@@ -24,6 +24,7 @@ interface InvoiceMetadata {
   warehouseId: string;
   totalAmount: string;
   note: string;
+  fileUrl?: string;
 }
 
 interface InvoiceLineItem {
@@ -99,6 +100,7 @@ export const CreateAssetModal: React.FC<CreateAssetModalProps> = ({ isOpen, onCl
     warehouseId: '1',
     totalAmount: '',
     note: '',
+    fileUrl: '',
   });
 
   const [lines, setLines] = useState<InvoiceLineItem[]>([
@@ -168,40 +170,44 @@ export const CreateAssetModal: React.FC<CreateAssetModalProps> = ({ isOpen, onCl
     formData.append('file', file);
 
     try {
-      const res = await api.post('/creation/parse-invoice', formData);
-      const data = res.data;
+      const res = await api.post('/assets/import-invoice/parse', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const { invoice: parsedInvoice, lines: parsedLines, warnings } = res.data;
 
       setInvoice(prev => ({
         ...prev,
-        invoiceNo: data.invoiceNo || '',
-        invoiceDate: data.invoiceDate || new Date().toISOString().split('T')[0],
-        supplierName: data.supplierName || '',
-        supplierTaxCode: data.supplierTaxCode || '',
-        totalAmount: data.totalAmount?.toString() || '',
+        invoiceNo: parsedInvoice.invoiceNo || prev.invoiceNo,
+        invoiceDate: parsedInvoice.invoiceDate || prev.invoiceDate,
+        supplierName: parsedInvoice.supplierName || prev.supplierName,
+        supplierTaxCode: parsedInvoice.supplierTaxCode || prev.supplierTaxCode,
+        totalAmount: parsedInvoice.totalAmount ? String(parsedInvoice.totalAmount) : prev.totalAmount,
+        fileUrl: parsedInvoice.fileUrl || prev.fileUrl
       }));
 
-      if (data.items && data.items.length > 0) {
-        const mappedLines = data.items.map((item: any) => {
-          const suggested = suggestCategoryForLine(item.name);
-          return {
-            id: Math.random().toString(36).substr(2, 9),
-            invoiceItemName: item.name || '',
-            assetName: item.name || '',
-            categoryLevel1Id: suggested.categoryLevel1Id || '',
-            categoryLevel2Id: suggested.categoryLevel2Id || '',
-            categoryLevel3Id: suggested.categoryLevel3Id || '',
-            categoryLevel4Id: suggested.categoryLevel4Id || '',
-            quantity: item.quantity || 1,
-            unitPrice: item.price || 0,
-            serials: [],
-            note: ''
-          };
-        });
+      if (parsedLines && parsedLines.length > 0) {
+        const mappedLines = parsedLines.map((pl: any) => ({
+          id: Math.random().toString(36).substr(2, 9),
+          invoiceItemName: pl.rawItemName || '',
+          assetName: pl.suggestedAssetName || pl.rawItemName || '',
+          categoryLevel1Id: pl.suggestedCategory?.level1Id ? String(pl.suggestedCategory.level1Id) : '',
+          categoryLevel2Id: pl.suggestedCategory?.level2Id ? String(pl.suggestedCategory.level2Id) : '',
+          categoryLevel3Id: pl.suggestedCategory?.level3Id ? String(pl.suggestedCategory.level3Id) : '',
+          categoryLevel4Id: pl.suggestedCategory?.level4Id ? String(pl.suggestedCategory.level4Id) : '',
+          quantity: pl.quantity || 1,
+          unitPrice: pl.unitPrice || 0,
+          serials: pl.serials || [],
+          note: pl.note || ''
+        }));
         setLines(mappedLines);
         toast.success(`Đã phân tích hóa đơn và trích xuất ${mappedLines.length} dòng hàng.`);
       }
-    } catch (err) {
-      toast.error("Không thể phân tích hóa đơn. Vui lòng nhập thủ công.");
+
+      if (warnings && warnings.length > 0) {
+        warnings.forEach((w: string) => toast.warning(w));
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Không thể phân tích hóa đơn. Vui lòng nhập thủ công.");
     } finally {
       setParsing(false);
     }
@@ -268,9 +274,16 @@ export const CreateAssetModal: React.FC<CreateAssetModalProps> = ({ isOpen, onCl
     setIsSubmittingInvoice(true);
     try {
       const payload = {
-        metadata: {
-          ...invoice,
-          totalAmount: parseFloat(invoice.totalAmount) || 0,
+        invoice: {
+          invoiceNo: invoice.invoiceNo,
+          invoiceDate: invoice.invoiceDate,
+          supplierName: invoice.supplierName,
+          supplierTaxCode: invoice.supplierTaxCode,
+          companyId: invoice.companyId,
+          warehouseId: invoice.warehouseId,
+          totalAmount: invoice.totalAmount ? parseFloat(invoice.totalAmount) : undefined,
+          note: invoice.note,
+          fileUrl: invoice.fileUrl || undefined
         },
         lines: lines.map(l => ({
           invoiceItemName: l.invoiceItemName,
@@ -283,10 +296,11 @@ export const CreateAssetModal: React.FC<CreateAssetModalProps> = ({ isOpen, onCl
           unitPrice: l.unitPrice,
           serials: l.serials,
           note: l.note
-        }))
+        })),
+        assignImmediately: false
       };
 
-      await api.post('/creation/invoice-batch', payload);
+      await api.post('/assets/import-invoice/post', payload);
       toast.success("Tạo tài sản theo hóa đơn thành công!");
       if (onComplete) onComplete();
       onClose();
