@@ -113,6 +113,24 @@ export class RepairService {
   static async updateProgress(id: number, data: any) {
     const { performedBy, description, status, ...updateData } = data;
 
+    // Normalize date fields: empty string to null, otherwise parsed to Date object
+    const dateFields = ['sentToRepairDate', 'expectedFinishDate', 'actualFinishDate'];
+    for (const field of dateFields) {
+      if (updateData[field] === '' || updateData[field] === undefined) {
+        updateData[field] = null;
+      } else if (updateData[field] !== null) {
+        updateData[field] = new Date(updateData[field]);
+      }
+    }
+
+    // Normalize estimated and actual cost fields
+    if ('estimatedCost' in updateData) {
+      updateData.estimatedCost = updateData.estimatedCost === '' ? 0 : (parseFloat(updateData.estimatedCost) || 0);
+    }
+    if ('actualCost' in updateData) {
+      updateData.actualCost = updateData.actualCost === '' ? 0 : (parseFloat(updateData.actualCost) || 0);
+    }
+
     const ticket = await prisma.assetRepairTicket.findUnique({
       where: { id },
       include: { asset: true }
@@ -198,7 +216,7 @@ export class RepairService {
         where: { id },
         data: {
           status: 'COMPLETED',
-          actualFinishDate: actualFinishDate ? new Date(actualFinishDate) : new Date(),
+          actualFinishDate: (actualFinishDate && actualFinishDate !== '') ? new Date(actualFinishDate) : new Date(),
           actualCost: parseFloat(actualCost) || 0,
           result,
           note: note || ticket.note
