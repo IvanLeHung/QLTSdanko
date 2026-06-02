@@ -608,8 +608,8 @@ export const CreateAssetModal: React.FC<CreateAssetModalProps> = ({ isOpen, onCl
                         <th className="p-3 font-bold uppercase tracking-wider text-[10px] w-24">Tên hóa đơn</th>
                         <th className="p-3 font-bold uppercase tracking-wider text-[10px] w-32">Tên tài sản</th>
                         <th className="p-3 font-bold uppercase tracking-wider text-[10px] w-32">Phân loại</th>
-                        <th className="p-3 font-bold uppercase tracking-wider text-[10px] w-16 text-center">SL</th>
-                        <th className="p-3 font-bold uppercase tracking-wider text-[10px] w-24 text-right">Đơn giá</th>
+                        <th className="p-3 font-bold uppercase tracking-wider text-[10px] w-20 text-center">SL</th>
+                        <th className="p-3 font-bold uppercase tracking-wider text-[10px] w-32 text-right">Đơn giá</th>
                         <th className="p-3 font-bold uppercase tracking-wider text-[10px] w-20 text-center">Serial</th>
                         <th className="p-3 font-bold uppercase tracking-wider text-[10px] text-center w-12">Xóa</th>
                       </tr>

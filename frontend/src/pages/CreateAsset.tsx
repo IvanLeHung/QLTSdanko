@@ -816,9 +816,9 @@ export const CreateAsset: React.FC = () => {
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[200px]">Tên trên hóa đơn *</th>
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[200px]">Tên tài sản chuẩn *</th>
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[180px]">Phân loại định khoản *</th>
-                  <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-20">SL *</th>
-                  <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-28">Đơn giá *</th>
-                  <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-28">Thành tiền</th>
+                  <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-24">SL *</th>
+                  <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-36">Đơn giá *</th>
+                  <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-36">Thành tiền</th>
                   <th className="px-4 py-3 text-center text-slate-500 text-xs font-bold uppercase tracking-wider w-24">Serial</th>
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider w-28">Ghi chú</th>
                   <th className="px-4 py-3 text-center text-slate-500 text-xs font-bold uppercase tracking-wider w-20">Tác vụ</th>
