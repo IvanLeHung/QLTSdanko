@@ -111,7 +111,7 @@ export class RepairService {
   }
 
   static async updateProgress(id: number, data: any) {
-    const { performedBy, description, status, ...updateData } = data;
+    const { performedBy, description, status, assetStatusAfterRepair, ...updateData } = data;
 
     // Normalize date fields: empty string to null, otherwise parsed to Date object
     const dateFields = ['sentToRepairDate', 'expectedFinishDate', 'actualFinishDate'];
