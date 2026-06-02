@@ -412,7 +412,13 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
 
 // Cascading Selects helpers
 router.get('/companies/active', authenticateToken, async (req, res) => {
-  const companies = await prisma.company.findMany({ where: { isActive: true }, orderBy: { code: 'asc' } });
+  const companies = await prisma.company.findMany({ 
+    where: { 
+      isActive: true,
+      status: { in: ['ACTIVE', 'LOCKED'] }
+    }, 
+    orderBy: { code: 'asc' } 
+  });
   res.json(companies);
 });
 

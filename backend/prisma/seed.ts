@@ -164,25 +164,38 @@ async function main() {
 
   // --- COMPANIES ---
   const companies = [
-    { code: '00', name: 'Không có thông tin' },
-    { code: '01', name: 'Danko Group' },
-    { code: '02', name: 'VTC' },
-    { code: '03', name: 'Summit' },
-    { code: '04', name: 'Homevina' },
-    { code: '05', name: 'Bình Nguyên' },
-    { code: '06', name: 'TheLight' },
-    { code: '07', name: 'RH' },
-    { code: '08', name: 'Suntimes' },
-    { code: '09', name: 'Hà Thu' },
-    { code: '10', name: 'Tự chịu chi phí' },
-    { code: '11', name: 'SunVina' }
+    { code: '00', name: 'Không có thông tin', type: 'SYSTEM', status: 'LOCKED' },
+    { code: '01', name: 'Danko Group', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '02', name: 'VTC', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '03', name: 'Summit', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '04', name: 'Homevina', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '05', name: 'Bình Nguyên', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '06', name: 'TheLight', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '07', name: 'RH', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '08', name: 'Suntimes', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '09', name: 'Hà Thu', type: 'COMPANY', status: 'ACTIVE' },
+    { code: '10', name: 'Tự chịu chi phí', type: 'COST_CENTER', status: 'ACTIVE' },
+    { code: '11', name: 'SunVina', type: 'COMPANY', status: 'ACTIVE' }
   ];
 
   for (const comp of companies) {
     await prisma.company.upsert({
       where: { code: comp.code },
-      update: { name: comp.name },
+      update: { 
+        name: comp.name, 
+        type: comp.type, 
+        status: comp.status 
+      },
       create: comp,
+    });
+  }
+
+  // Set Danko Group as parent of VTC for hierarchy testing
+  const parentCompany = await prisma.company.findUnique({ where: { code: '01' } });
+  if (parentCompany) {
+    await prisma.company.update({
+      where: { code: '02' },
+      data: { parentId: parentCompany.id }
     });
   }
 

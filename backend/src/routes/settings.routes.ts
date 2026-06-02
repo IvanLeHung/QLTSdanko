@@ -9,20 +9,316 @@ const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
 // --- COMPANY MANAGEMENT ---
+router.get('/companies/stats', authenticateToken, async (req, res) => {
+  try {
+    const totalCompanies = await prisma.company.count();
+    const activeCompanies = await prisma.company.count({
+      where: { status: 'ACTIVE' }
+    });
+    const hiddenCompanies = await prisma.company.count({
+      where: { status: 'HIDDEN' }
+    });
+    
+    // Total assigned assets (companyCode not '00')
+    const totalAssignedAssets = await prisma.asset.count({
+      where: {
+        isDeleted: false,
+        companyCode: { not: '00' }
+      }
+    });
+
+    // Unassigned assets (companyCode is '00')
+    const unassignedAssets = await prisma.asset.count({
+      where: {
+        isDeleted: false,
+        companyCode: '00'
+      }
+    });
+
+    res.json({
+      totalCompanies,
+      activeCompanies,
+      hiddenCompanies,
+      totalAssignedAssets,
+      unassignedAssets
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/companies/merge', authenticateToken, async (req: any, res) => {
+  const { sourceCompanyId, targetCompanyId } = req.body;
+  const username = req.user?.username || 'system';
+
+  try {
+    if (sourceCompanyId === targetCompanyId) {
+      return res.status(400).json({ message: 'Công ty nguồn và đích không được giống nhau.' });
+    }
+
+    const sourceCompany = await prisma.company.findUnique({ where: { id: Number(sourceCompanyId) } });
+    const targetCompany = await prisma.company.findUnique({ where: { id: Number(targetCompanyId) } });
+
+    if (!sourceCompany || !targetCompany) {
+      return res.status(404).json({ message: 'Không tìm thấy công ty nguồn hoặc công ty đích.' });
+    }
+
+    if (sourceCompany.code === '00' || targetCompany.code === '00') {
+      return res.status(400).json({ message: 'Không cho phép gộp nhóm hệ thống.' });
+    }
+
+    // Query count of assets to be moved
+    const assetCount = await prisma.asset.count({
+      where: {
+        companyCode: sourceCompany.code,
+        isDeleted: false
+      }
+    });
+
+    // Move assets
+    await prisma.asset.updateMany({
+      where: {
+        companyCode: sourceCompany.code
+      },
+      data: {
+        companyCode: targetCompany.code,
+        companyName: targetCompany.name
+      }
+    });
+
+    // Update source company status
+    await prisma.company.update({
+      where: { id: sourceCompany.id },
+      data: {
+        status: 'MERGED',
+        mergedIntoId: targetCompany.id,
+        isActive: false
+      }
+    });
+
+    // Create Audit Log
+    await prisma.auditLog.create({
+      data: {
+        entityType: 'SETTINGS',
+        entityId: sourceCompany.id,
+        action: 'UPDATE',
+        details: `Gộp công ty: Chuyển ${assetCount} tài sản từ [${sourceCompany.code}] ${sourceCompany.name} sang [${targetCompany.code}] ${targetCompany.name}`,
+        performedBy: username
+      }
+    });
+
+    res.json({ 
+      message: `Gộp công ty thành công. Đã chuyển ${assetCount} tài sản sang công ty [${targetCompany.code}] ${targetCompany.name}.` 
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/companies', authenticateToken, async (req, res) => {
-  const companies = await prisma.company.findMany({ orderBy: { code: 'asc' } });
-  res.json(companies);
+  try {
+    const { search = '', status = '', type = '' } = req.query;
+    
+    // Build where filter
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { code: { contains: String(search), mode: 'insensitive' } },
+        { name: { contains: String(search), mode: 'insensitive' } }
+      ];
+    }
+    if (status) {
+      where.status = String(status);
+    }
+    if (type) {
+      where.type = String(type);
+    }
+
+    // Fetch companies
+    const companies = await prisma.company.findMany({
+      where,
+      include: {
+        parent: {
+          select: { id: true, name: true, code: true }
+        }
+      },
+      orderBy: { code: 'asc' }
+    });
+
+    // Fetch asset count and sum values for each company
+    const assetStats = await prisma.asset.groupBy({
+      by: ['companyCode'],
+      _count: {
+        id: true
+      },
+      _sum: {
+        purchasePriceExVat: true
+      },
+      where: {
+        isDeleted: false
+      }
+    });
+
+    // Map stats back to companies
+    const statsMap = new Map(assetStats.map(s => [s.companyCode, {
+      count: s._count.id || 0,
+      value: s._sum.purchasePriceExVat || 0
+    }]));
+
+    const result = companies.map(c => {
+      const stats = statsMap.get(c.code) || { count: 0, value: 0 };
+      return {
+        ...c,
+        assetCount: stats.count,
+        assetValue: stats.value
+      };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 router.get('/companies/active', authenticateToken, async (req, res) => {
-  const companies = await prisma.company.findMany({ where: { isActive: true }, orderBy: { code: 'asc' } });
+  const companies = await prisma.company.findMany({
+    where: { 
+      isActive: true, 
+      status: { in: ['ACTIVE', 'LOCKED'] }
+    },
+    orderBy: { code: 'asc' }
+  });
   res.json(companies);
 });
 
-router.post('/companies', authenticateToken, async (req, res) => {
-  const { code, name } = req.body;
+router.get('/companies/:id', authenticateToken, async (req, res) => {
   try {
-    const company = await prisma.company.create({ data: { code, name } });
+    const company = await prisma.company.findUnique({
+      where: { id: Number(req.params.id) },
+      include: {
+        parent: {
+          select: { id: true, name: true, code: true }
+        }
+      }
+    });
+    if (!company) {
+      return res.status(404).json({ message: 'Không tìm thấy công ty/đơn vị.' });
+    }
+
+    // Asset count and value
+    const assetStats = await prisma.asset.aggregate({
+      where: {
+        companyCode: company.code,
+        isDeleted: false
+      },
+      _count: {
+        id: true
+      },
+      _sum: {
+        purchasePriceExVat: true
+      }
+    });
+
+    res.json({
+      ...company,
+      assetCount: assetStats._count.id || 0,
+      assetValue: assetStats._sum.purchasePriceExVat || 0
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/companies/:id/assets', authenticateToken, async (req, res) => {
+  try {
+    const company = await prisma.company.findUnique({
+      where: { id: Number(req.params.id) }
+    });
+    if (!company) {
+      return res.status(404).json({ message: 'Không tìm thấy công ty.' });
+    }
+
+    const { page = 1, limit = 10, search = '' } = req.query;
+    const skip = (Number(page) - 1) * Number(limit);
+
+    const where: any = {
+      companyCode: company.code,
+      isDeleted: false
+    };
+
+    if (search) {
+      where.OR = [
+        { assetCode: { contains: String(search), mode: 'insensitive' } },
+        { assetName: { contains: String(search), mode: 'insensitive' } }
+      ];
+    }
+
+    const [assets, total] = await Promise.all([
+      prisma.asset.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy: { assetCode: 'asc' }
+      }),
+      prisma.asset.count({ where })
+    ]);
+
+    res.json({
+      assets,
+      pagination: {
+        total,
+        page: Number(page),
+        limit: Number(limit),
+        totalPages: Math.ceil(total / Number(limit))
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/companies/:id/logs', authenticateToken, async (req, res) => {
+  try {
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        entityType: 'SETTINGS',
+        entityId: Number(req.params.id)
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50
+    });
+    res.json(logs);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/companies', authenticateToken, async (req: any, res) => {
+  const { code, name, type, parentId, taxCode, address, status, note } = req.body;
+  const username = req.user?.username || 'system';
+
+  try {
+    // Check duplicate code
+    const existing = await prisma.company.findUnique({ where: { code } });
+    if (existing) {
+      return res.status(400).json({ message: 'Mã công ty đã tồn tại.' });
+    }
+
+    const company = await prisma.company.create({
+      data: {
+        code,
+        name,
+        type: type || 'COMPANY',
+        parentId: parentId ? Number(parentId) : null,
+        taxCode,
+        address,
+        status: status || 'ACTIVE',
+        note,
+        createdBy: username,
+        isActive: status !== 'HIDDEN' && status !== 'ARCHIVED'
+      }
+    });
+
     res.status(201).json(company);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
@@ -30,12 +326,77 @@ router.post('/companies', authenticateToken, async (req, res) => {
 });
 
 router.patch('/companies/:id', authenticateToken, async (req, res) => {
-  const { name, isActive } = req.body;
-  const company = await prisma.company.update({
-    where: { id: Number(req.params.id) },
-    data: { name, isActive }
-  });
-  res.json(company);
+  const companyId = Number(req.params.id);
+  const { name, type, parentId, taxCode, address, status, note, isActive } = req.body;
+
+  try {
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) {
+      return res.status(404).json({ message: 'Không tìm thấy công ty.' });
+    }
+
+    // Rules: System record check
+    if (company.code === '00') {
+      return res.status(400).json({ message: 'Không được phép thay đổi thông tin của nhóm hệ thống.' });
+    }
+
+    // If status is changed to ARCHIVED, HIDDEN or ACTIVE, update isActive flag accordingly
+    let finalIsActive = isActive;
+    if (status !== undefined) {
+      finalIsActive = status === 'ACTIVE' || status === 'LOCKED';
+    }
+
+    const updated = await prisma.company.update({
+      where: { id: companyId },
+      data: {
+        name,
+        type,
+        parentId: parentId ? Number(parentId) : null,
+        taxCode,
+        address,
+        status,
+        note,
+        isActive: finalIsActive
+      }
+    });
+
+    res.json(updated);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.delete('/companies/:id', authenticateToken, async (req, res) => {
+  const companyId = Number(req.params.id);
+
+  try {
+    const company = await prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) {
+      return res.status(404).json({ message: 'Không tìm thấy công ty.' });
+    }
+
+    if (company.code === '00') {
+      return res.status(400).json({ message: 'Không thể xóa nhóm hệ thống.' });
+    }
+
+    const assetCount = await prisma.asset.count({
+      where: {
+        companyCode: company.code,
+        isDeleted: false
+      }
+    });
+
+    if (assetCount > 0) {
+      return res.status(400).json({ 
+        message: `Không thể xóa đơn vị này vì đã có ${assetCount} tài sản gán với mã ${company.code}. Bạn có thể thay đổi trạng thái sang Ẩn (Hidden) hoặc Lưu trữ (Archived) thay thế.`
+      });
+    }
+
+    await prisma.company.delete({ where: { id: companyId } });
+    res.json({ message: 'Xóa công ty thành công.' });
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
 });
 
 // Helper to sort categories by sortOrder then numeric code value

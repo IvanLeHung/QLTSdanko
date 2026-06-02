@@ -116,13 +116,27 @@ model PermissionRequest {
 }
 
 model Company {
-  id          Int          @id @default(autoincrement())
-  code        String       @unique
-  name        String
-  isActive    Boolean      @default(true)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  departments Department[]
+  id           Int          @id @default(autoincrement())
+  code         String       @unique
+  name         String
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+  
+  // New fields for professional upgrade
+  type         String       @default("COMPANY") // COMPANY, BRANCH, COST_CENTER, SYSTEM
+  parentId     Int?
+  taxCode      String?
+  address      String?
+  status       String       @default("ACTIVE") // ACTIVE, HIDDEN, LOCKED, ARCHIVED, MERGED
+  mergedIntoId Int?
+  note         String?
+  createdBy    String       @default("system")
+
+  // Relations
+  parent       Company?     @relation("CompanyHierarchy", fields: [parentId], references: [id])
+  children     Company[]    @relation("CompanyHierarchy")
+  departments  Department[]
 }
 
 model Department {
