@@ -218,7 +218,8 @@ export function UserPermissions() {
     password: '',
     confirmPassword: '',
     mustChangePassword: false,
-    status: 'ACTIVE'
+    status: 'ACTIVE',
+    roleCode: ''
   });
 
   // Department Tab State
@@ -486,7 +487,8 @@ export function UserPermissions() {
         password: '',
         confirmPassword: '',
         mustChangePassword: false, // reset
-        status: u.isActive ? 'ACTIVE' : 'LOCKED'
+        status: u.isActive ? 'ACTIVE' : 'LOCKED',
+        roleCode: u.roles?.[0]?.role?.name || u.role || ''
       });
     } else {
       setEditingUserId(null);
@@ -497,7 +499,8 @@ export function UserPermissions() {
         password: '',
         confirmPassword: '',
         mustChangePassword: true, // default to true for new user
-        status: 'ACTIVE'
+        status: 'ACTIVE',
+        roleCode: ''
       });
     }
     setIsUserModalOpen(true);
@@ -506,6 +509,10 @@ export function UserPermissions() {
   const handleUserSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      if (!userFormData.roleCode) {
+        toast.error('Vui lòng chọn vai trò.');
+        return;
+      }
       if (userModalMode === 'create') {
         if (!userFormData.password) {
           toast.error('Vui lòng nhập mật khẩu.');
@@ -520,7 +527,8 @@ export function UserPermissions() {
           fullName: userFormData.fullName,
           departmentId: userFormData.departmentId ? parseInt(userFormData.departmentId) : null,
           password: userFormData.password,
-          mustChangePassword: userFormData.mustChangePassword
+          mustChangePassword: userFormData.mustChangePassword,
+          roleCode: userFormData.roleCode
         });
         toast.success(`Tạo người dùng ${userFormData.username} thành công!`);
       } else {
@@ -528,7 +536,8 @@ export function UserPermissions() {
           fullName: userFormData.fullName,
           departmentId: userFormData.departmentId ? parseInt(userFormData.departmentId) : null,
           status: userFormData.status,
-          mustChangePassword: userFormData.mustChangePassword
+          mustChangePassword: userFormData.mustChangePassword,
+          roleCode: userFormData.roleCode
         };
         if (userFormData.password) {
           if (userFormData.password !== userFormData.confirmPassword) {
@@ -2181,6 +2190,21 @@ export function UserPermissions() {
                   <option value="">-- Chưa gán phòng ban --</option>
                   {deptList.map(d => (
                     <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-700 block">Vai trò (Quyền hạn):</label>
+                <select
+                  required
+                  value={userFormData.roleCode}
+                  onChange={(e) => setUserFormData({ ...userFormData, roleCode: e.target.value })}
+                  className="w-full p-2 text-xs border rounded-lg"
+                >
+                  <option value="">-- Chọn vai trò --</option>
+                  {roles.map(r => (
+                    <option key={r.id} value={r.name}>{r.description} ({r.name})</option>
                   ))}
                 </select>
               </div>
