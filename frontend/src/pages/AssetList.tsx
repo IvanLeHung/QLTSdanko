@@ -56,7 +56,7 @@ export const AssetList: React.FC = () => {
   const page = parseInt(searchParams.get('page') || '1');
   const limit = parseInt(searchParams.get('limit') || '25');
   const search = searchParams.get('search') || '';
-  const sortBy = searchParams.get('sortBy') || 'createdAt';
+  const sortBy = searchParams.get('sortBy') || 'updatedAt';
   const sortOrder = searchParams.get('sortOrder') || 'desc';
 
   // Advanced Filters from URL
@@ -1238,7 +1238,7 @@ export const AssetList: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest mr-1.5">Sắp xếp theo:</span>
               {[
-                { label: 'Mới cập nhật', key: 'createdAt', order: 'desc' },
+                { label: 'Mới cập nhật', key: 'updatedAt', order: 'desc' },
                 { label: 'Mã tài sản A-Z', key: 'assetCode', order: 'asc' },
                 { label: 'Giá trị cao-thấp', key: 'purchasePriceExVat', order: 'desc' },
                 { label: 'Ngày mua mới nhất', key: 'purchaseDate', order: 'desc' },

@@ -163,7 +163,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     page = 1, 
     limit = 10, 
     search = '', 
-    sortBy = 'createdAt', 
+    sortBy = 'updatedAt', 
     sortOrder = 'desc',
     
     // Quick Filters
@@ -739,7 +739,7 @@ router.get('/import-invoice/template', async (req, res) => {
 router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
   const { 
     search = '', 
-    sortBy = 'createdAt', 
+    sortBy = 'updatedAt', 
     sortOrder = 'desc',
     status,
     companyCode,
