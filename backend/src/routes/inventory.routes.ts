@@ -51,7 +51,7 @@ router.post('/item/:id/check', authenticateToken, async (req: AuthRequest, res) 
 
 router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest, res) => {
   const checkedBy = req.user?.username || 'system';
-  const { sessionId, assetIds, actualStatus, quality, note } = req.body;
+  const { sessionId, assetIds, actualStatus, actualLocation, quality, note } = req.body;
   if (!sessionId || !assetIds || !Array.isArray(assetIds)) {
     return res.status(400).json({ message: 'Invalid payload' });
   }
@@ -67,13 +67,29 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
           where: { inventoryCheckId: Number(sessionId), assetId: Number(assetId) }
         });
 
+        // Determine result status
+        let result = 'MATCHED';
+        if (quality === 'DAMAGED' || quality === 'BAD' || actualStatus === 'DAMAGED') {
+          result = 'DAMAGED';
+        } else if (actualStatus === 'LOST' || quality === 'LOST') {
+          result = 'MISSING';
+        } else if ((actualLocation || asset.locationName) && item?.expectedLocation && (actualLocation || asset.locationName) !== item.expectedLocation) {
+          result = 'WRONG_LOCATION';
+        } else if (item && actualStatus !== item.expectedStatus) {
+          result = 'NEED_REVIEW';
+        } else if (!item && actualStatus !== asset.status) {
+          result = 'NEED_REVIEW';
+        }
+
         if (item) {
           item = await tx.inventoryItem.update({
             where: { id: item.id },
             data: {
               actualStatus,
+              actualLocation: actualLocation || item.expectedLocation || asset.locationName,
               quality,
               note: note || '',
+              result,
               checkStatus: 'CHECKED',
               checkedAt: new Date(),
               checkedBy
@@ -87,8 +103,11 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
               assetCode: asset.assetCode,
               expectedStatus: asset.status,
               actualStatus,
+              expectedLocation: asset.locationName || 'Trong kho',
+              actualLocation: actualLocation || asset.locationName || 'Trong kho',
               quality,
               note: note || '',
+              result,
               checkStatus: 'CHECKED',
               checkedAt: new Date(),
               checkedBy
@@ -97,6 +116,18 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
         }
         output.push(item);
       }
+
+      // Transition parent session status if OPEN
+      const session = await tx.inventoryCheck.findUnique({
+        where: { id: Number(sessionId) }
+      });
+      if (session && session.status === 'OPEN') {
+        await tx.inventoryCheck.update({
+          where: { id: session.id },
+          data: { status: 'IN_PROGRESS' }
+        });
+      }
+
       return output;
     });
 
@@ -106,10 +137,30 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
   }
 });
 
+router.patch('/:id/start', authenticateToken, async (req: AuthRequest, res) => {
+  const performedBy = req.user?.username || 'system';
+  try {
+    const session = await InventoryService.startInventorySession(Number(req.params.id), performedBy);
+    res.json(session);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
 router.patch('/:id/close', authenticateToken, async (req: AuthRequest, res) => {
   const performedBy = req.user?.username || 'system';
   try {
     const session = await InventoryService.closeInventorySession(Number(req.params.id), performedBy);
+    res.json(session);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.patch('/:id/cancel', authenticateToken, async (req: AuthRequest, res) => {
+  const performedBy = req.user?.username || 'system';
+  try {
+    const session = await InventoryService.cancelInventorySession(Number(req.params.id), performedBy);
     res.json(session);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
@@ -176,8 +227,11 @@ router.get('/export-by-time', authenticateToken, requirePermission('INVENTORY_VI
       item.inventoryCheck.inventoryCode,
       item.inventoryCheck.inventoryName,
       formatDate(item.inventoryCheck.inventoryDate),
+      item.inventoryCheck.status === 'DRAFT' ? 'Nháp' :
       item.inventoryCheck.status === 'OPEN' ? 'Đang mở' :
-      item.inventoryCheck.status === 'CLOSED' ? 'Đã đóng' : item.inventoryCheck.status,
+      item.inventoryCheck.status === 'IN_PROGRESS' ? 'Đang kiểm kê' :
+      item.inventoryCheck.status === 'COMPLETED' ? 'Hoàn thành' :
+      item.inventoryCheck.status === 'CANCELLED' ? 'Đã hủy' : item.inventoryCheck.status,
       item.inventoryCheck.scopeType === 'ALL' ? 'Tất cả tài sản' :
       item.inventoryCheck.scopeType === 'COMPANY' ? `Công ty: ${item.inventoryCheck.scopeValue}` :
       item.inventoryCheck.scopeType === 'DEPARTMENT' ? `Phòng ban: ${item.inventoryCheck.scopeValue}` :

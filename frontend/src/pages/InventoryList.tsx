@@ -30,8 +30,11 @@ export const InventoryList: React.FC = () => {
   const [formData, setFormData] = useState({
     inventoryName: '',
     inventoryDate: new Date().toISOString().split('T')[0],
+    expectedFinishDate: '',
     scopeType: 'ALL',
-    scopeValue: ''
+    scopeValue: '',
+    responsiblePerson: '',
+    note: ''
   });
 
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
@@ -72,12 +75,21 @@ export const InventoryList: React.FC = () => {
     fetchChecks();
   }, []);
 
-  const handleCreate = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleCreate = async (e: React.FormEvent, status: 'DRAFT' | 'OPEN') => {
+    if (e) e.preventDefault();
+    if (!formData.inventoryName.trim()) {
+      return toast.error("Vui lòng nhập tên đợt kiểm kê");
+    }
     setSubmitting(true);
     try {
-      const res = await api.post('/inventory', formData);
-      toast.success("Đã tạo đợt kiểm kê mới");
+      const payload = {
+        ...formData,
+        inventoryDate: new Date(`${formData.inventoryDate}T00:00:00+07:00`).toISOString(),
+        expectedFinishDate: formData.expectedFinishDate ? new Date(`${formData.expectedFinishDate}T00:00:00+07:00`).toISOString() : undefined,
+        status
+      };
+      const res = await api.post('/inventory', payload);
+      toast.success(status === 'DRAFT' ? "Đã lưu nháp đợt kiểm kê" : "Đã tạo đợt kiểm kê mới");
       setShowCreateModal(false);
       navigate(`/inventory/${res.data.id}`);
     } catch (err: any) {
@@ -180,9 +192,17 @@ export const InventoryList: React.FC = () => {
                   <p className="text-sm font-black text-slate-700">{check._count?.items || 0} tài sản</p>
                 </div>
                 <div className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest border ${
-                  check.status === 'OPEN' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200'
+                  check.status === 'DRAFT' ? 'bg-slate-100 text-slate-700 border-slate-200' :
+                  check.status === 'OPEN' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                  check.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-600 border-blue-100' :
+                  check.status === 'COMPLETED' ? 'bg-purple-50 text-purple-600 border-purple-100' :
+                  'bg-rose-50 text-rose-600 border-rose-100'
                 }`}>
-                  {check.status === 'OPEN' ? 'Đang mở' : 'Đã đóng'}
+                  {check.status === 'DRAFT' ? 'Nháp' :
+                   check.status === 'OPEN' ? 'Đang mở' :
+                   check.status === 'IN_PROGRESS' ? 'Đang kiểm kê' :
+                   check.status === 'COMPLETED' ? 'Đã xong' :
+                   check.status === 'CANCELLED' ? 'Đã hủy' : check.status}
                 </div>
                 <ChevronRight className="h-6 w-6 text-slate-300 group-hover:text-primary-600 group-hover:translate-x-1 transition-all" />
               </div>
@@ -205,33 +225,56 @@ export const InventoryList: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleCreate} className="p-10 space-y-8">
+            <form onSubmit={(e) => handleCreate(e, 'OPEN')} className="p-10 space-y-6">
               <div className="space-y-2">
                 <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Tên đợt kiểm kê *</label>
                 <input 
                   required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all"
-                  placeholder="Ví dụ: Kiểm kê định kỳ Quý 2 - 2024"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-xs font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all text-slate-800"
+                  placeholder="Ví dụ: Kiểm kê định kỳ Quý 2 - 2026"
                   value={formData.inventoryName}
                   onChange={(e) => setFormData({...formData, inventoryName: e.target.value})}
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Ngày bắt đầu</label>
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Ngày bắt đầu *</label>
                   <input 
                     type="date"
                     required
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-xs font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all text-slate-800"
                     value={formData.inventoryDate}
                     onChange={(e) => setFormData({...formData, inventoryDate: e.target.value})}
                   />
                 </div>
                 <div className="space-y-2">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Phạm vi</label>
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Kết thúc dự kiến</label>
+                  <input 
+                    type="date"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-xs font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all text-slate-800"
+                    value={formData.expectedFinishDate}
+                    onChange={(e) => setFormData({...formData, expectedFinishDate: e.target.value})}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Người phụ trách *</label>
+                  <input 
+                    type="text"
+                    required
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-xs font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all text-slate-800"
+                    placeholder="Họ tên người phụ trách..."
+                    value={formData.responsiblePerson}
+                    onChange={(e) => setFormData({...formData, responsiblePerson: e.target.value})}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Phạm vi *</label>
                   <select 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all appearance-none"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-xs font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all text-slate-850 appearance-none h-[46px]"
                     value={formData.scopeType}
                     onChange={(e) => setFormData({...formData, scopeType: e.target.value})}
                   >
@@ -244,10 +287,10 @@ export const InventoryList: React.FC = () => {
 
               {formData.scopeType !== 'ALL' && (
                 <div className="space-y-2 animate-in slide-in-from-top-2 duration-300">
-                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Giá trị phạm vi</label>
+                  <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Giá trị phạm vi *</label>
                   <input 
                     required
-                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-4 text-sm font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all"
+                    className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3.5 text-xs font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all text-slate-800"
                     placeholder={formData.scopeType === 'COMPANY' ? "Mã công ty (Vd: DKO)" : "Tên phòng ban..."}
                     value={formData.scopeValue}
                     onChange={(e) => setFormData({...formData, scopeValue: e.target.value})}
@@ -255,13 +298,33 @@ export const InventoryList: React.FC = () => {
                 </div>
               )}
 
-              <button 
-                type="submit" 
-                disabled={submitting}
-                className="w-full bg-slate-900 text-white py-5 rounded-[2rem] font-black text-sm uppercase tracking-widest hover:bg-slate-800 transition-all shadow-2xl shadow-slate-200 disabled:opacity-50"
-              >
-                {submitting ? <Loader2 className="h-6 w-6 animate-spin mx-auto" /> : "Bắt đầu kiểm kê ngay"}
-              </button>
+              <div className="space-y-2">
+                <label className="text-[11px] font-black text-slate-400 uppercase tracking-widest ml-1">Ghi chú đợt kiểm kê</label>
+                <textarea 
+                  className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-5 py-3 text-xs font-semibold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all h-20 resize-none text-slate-800"
+                  placeholder="Nhập ghi chú thêm cho đợt kiểm kê này..."
+                  value={formData.note}
+                  onChange={(e) => setFormData({...formData, note: e.target.value})}
+                />
+              </div>
+
+              <div className="flex space-x-4 pt-4">
+                <button 
+                  type="button" 
+                  onClick={(e) => handleCreate(e, 'DRAFT')}
+                  disabled={submitting}
+                  className="flex-1 bg-white border border-slate-250 text-slate-700 py-4 rounded-[2rem] font-black text-xs uppercase tracking-widest hover:bg-slate-50 transition-all shadow-md disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : "Lưu bản nháp"}
+                </button>
+                <button 
+                  type="submit" 
+                  disabled={submitting}
+                  className="flex-1 bg-slate-900 text-white py-4 rounded-[2rem] font-black text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-xl shadow-slate-200 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="h-5 w-5 animate-spin mx-auto" /> : "Bắt đầu kiểm kê"}
+                </button>
+              </div>
             </form>
           </div>
         </div>

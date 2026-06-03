@@ -295,15 +295,18 @@ model AssetAssignment {
 }
 
 model InventoryCheck {
-  id            Int             @id @default(autoincrement())
-  inventoryCode String          @unique
-  inventoryName String
-  inventoryDate DateTime
-  status        String          @default("OPEN")
-  scopeType     String?
-  scopeValue    String?
-  createdAt     DateTime        @default(now())
-  items         InventoryItem[]
+  id                 Int             @id @default(autoincrement())
+  inventoryCode      String          @unique
+  inventoryName      String
+  inventoryDate      DateTime
+  status             String          @default("DRAFT") // DRAFT, OPEN, IN_PROGRESS, COMPLETED, CANCELLED
+  scopeType          String?
+  scopeValue         String?
+  expectedFinishDate DateTime?
+  responsiblePerson  String?
+  note               String?
+  createdAt          DateTime        @default(now())
+  items              InventoryItem[]
 }
 
 model InventoryItem {
@@ -313,9 +316,12 @@ model InventoryItem {
   assetCode        String
   expectedStatus   String?
   actualStatus     String?
+  expectedLocation String?
+  actualLocation   String?
   quality          String?
   note             String?
-  checkStatus      String         @default("PENDING")
+  result           String?        // MATCHED, MISSING, EXTRA, DAMAGED, WRONG_LOCATION, NEED_REVIEW
+  checkStatus      String         @default("PENDING") // PENDING, CHECKED
   checkedAt        DateTime?
   checkedBy        String?
   asset            Asset          @relation(fields: [assetId], references: [id])

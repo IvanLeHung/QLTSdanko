@@ -28,8 +28,11 @@ export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({
   const [newSession, setNewSession] = useState({
     inventoryName: '',
     inventoryDate: new Date().toISOString().split('T')[0],
+    expectedFinishDate: '',
     scopeType: 'ALL',
-    scopeValue: ''
+    scopeValue: '',
+    responsiblePerson: '',
+    note: ''
   });
 
   // Checklist values
@@ -42,10 +45,10 @@ export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({
   const fetchOpenSessions = async () => {
     try {
       const res = await api.get('/inventory');
-      const openOnly = res.data.filter((s: any) => s.status === 'OPEN');
-      setSessions(openOnly);
-      if (openOnly.length > 0) {
-        setSelectedSessionId(openOnly[0].id.toString());
+      const activeSessions = res.data.filter((s: any) => s.status === 'OPEN' || s.status === 'IN_PROGRESS');
+      setSessions(activeSessions);
+      if (activeSessions.length > 0) {
+        setSelectedSessionId(activeSessions[0].id.toString());
       } else {
         setShowCreateSession(true);
       }
@@ -62,17 +65,30 @@ export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({
     }
   }, [isOpen]);
 
-  const handleCreateSession = async () => {
+  const handleCreateSession = async (status: 'DRAFT' | 'OPEN') => {
     if (!newSession.inventoryName.trim()) {
       return toast.error("Vui lòng nhập tên đợt kiểm kê mới");
     }
+    if (!newSession.responsiblePerson.trim()) {
+      return toast.error("Vui lòng nhập tên người phụ trách");
+    }
     setSubmitting(true);
     try {
-      const res = await api.post('/inventory', newSession);
-      toast.success("Đã tạo đợt kiểm kê mới");
-      setSessions(prev => [res.data, ...prev]);
-      setSelectedSessionId(res.data.id.toString());
-      setShowCreateSession(false);
+      const payload = {
+        ...newSession,
+        inventoryDate: new Date(`${newSession.inventoryDate}T00:00:00+07:00`).toISOString(),
+        expectedFinishDate: newSession.expectedFinishDate ? new Date(`${newSession.expectedFinishDate}T00:00:00+07:00`).toISOString() : undefined,
+        status
+      };
+      const res = await api.post('/inventory', payload);
+      toast.success(status === 'DRAFT' ? "Đã lưu bản nháp đợt kiểm kê" : "Đã bắt đầu đợt kiểm kê mới");
+      await fetchOpenSessions();
+      if (status === 'OPEN') {
+        setSelectedSessionId(res.data.id.toString());
+        setShowCreateSession(false);
+      } else {
+        setShowCreateSession(false);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi tạo đợt kiểm kê");
     } finally {
@@ -131,13 +147,22 @@ export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />} Xác nhận kiểm kê
             </button>
           ) : (
-            <button 
-              onClick={handleCreateSession}
-              disabled={submitting}
-              className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center shadow-lg shadow-primary-100 disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />} Tạo đợt kiểm kê
-            </button>
+            <>
+              <button 
+                onClick={() => handleCreateSession('DRAFT')}
+                disabled={submitting}
+                className="px-5 py-2.5 bg-white border border-slate-250 text-slate-700 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-slate-50 transition-all disabled:opacity-50"
+              >
+                Lưu bản nháp
+              </button>
+              <button 
+                onClick={() => handleCreateSession('OPEN')}
+                disabled={submitting}
+                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center shadow-lg disabled:opacity-50"
+              >
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />} Bắt đầu kiểm kê
+              </button>
+            </>
           )}
         </>
       }
@@ -192,12 +217,33 @@ export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Ngày kiểm kê</label>
+                    <label className="font-bold text-slate-500">Ngày bắt đầu *</label>
                     <input 
                       type="date"
                       className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
                       value={newSession.inventoryDate}
                       onChange={e => setNewSession({...newSession, inventoryDate: e.target.value})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Kết thúc dự kiến</label>
+                    <input 
+                      type="date"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
+                      value={newSession.expectedFinishDate}
+                      onChange={e => setNewSession({...newSession, expectedFinishDate: e.target.value})}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Người phụ trách *</label>
+                    <input 
+                      type="text"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
+                      placeholder="Họ tên người phụ trách..."
+                      value={newSession.responsiblePerson}
+                      onChange={e => setNewSession({...newSession, responsiblePerson: e.target.value})}
                     />
                   </div>
                   <div className="space-y-1">
@@ -208,8 +254,33 @@ export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({
                       className="w-full h-8 px-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
                     >
                       <option value="ALL">Toàn bộ tài sản (ALL)</option>
+                      <option value="COMPANY">Theo Công ty thành viên</option>
+                      <option value="DEPARTMENT">Theo Phòng ban</option>
                     </select>
                   </div>
+                </div>
+
+                {newSession.scopeType !== 'ALL' && (
+                  <div className="space-y-1 animate-in slide-in-from-top-2 duration-300">
+                    <label className="font-bold text-slate-500">Giá trị phạm vi *</label>
+                    <input 
+                      type="text"
+                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
+                      placeholder={newSession.scopeType === 'COMPANY' ? "Mã công ty (Vd: DKO)" : "Tên phòng ban..."}
+                      value={newSession.scopeValue}
+                      onChange={e => setNewSession({...newSession, scopeValue: e.target.value})}
+                    />
+                  </div>
+                )}
+
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-500">Ghi chú đợt kiểm kê</label>
+                  <textarea 
+                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 h-16 resize-none text-xs"
+                    placeholder="Nhập ghi chú thêm..."
+                    value={newSession.note}
+                    onChange={e => setNewSession({...newSession, note: e.target.value})}
+                  />
                 </div>
               </div>
             )}
