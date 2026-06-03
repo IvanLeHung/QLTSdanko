@@ -103,7 +103,10 @@ export class InventoryService {
                 assetName: true,
                 currentUserName: true,
                 departmentName: true,
-                locationName: true
+                locationName: true,
+                serialNumber: true,
+                companyName: true,
+                purchasePriceExVat: true
               }
             }
           }

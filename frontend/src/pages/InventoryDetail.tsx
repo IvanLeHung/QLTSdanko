@@ -608,6 +608,22 @@ export const InventoryDetail: React.FC = () => {
                     <label className="font-bold text-slate-500">Vị trí sổ sách:</label>
                     <p className="font-extrabold text-slate-800 mt-0.5">{selectedItemForCheck.expectedLocation || selectedItemForCheck.asset.locationName || 'Trong kho'}</p>
                   </div>
+                  <div>
+                    <label className="font-bold text-slate-500">Người sử dụng sổ sách:</label>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{selectedItemForCheck.asset?.currentUserName || 'Chưa cấp phát'}</p>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-500">Phòng ban sổ sách:</label>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{selectedItemForCheck.asset?.departmentName || 'Không có'}</p>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-500">Số Serial:</label>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{selectedItemForCheck.asset?.serialNumber || 'Không có (N/A)'}</p>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-500">Công ty chủ quản:</label>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{selectedItemForCheck.asset?.companyName || 'Không có'}</p>
+                  </div>
                 </div>
               </div>
 
