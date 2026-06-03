@@ -4,8 +4,34 @@ import { authenticateToken, AuthRequest, requirePermission } from '../middleware
 import prisma from '../utils/prisma';
 import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
 import { buildDataScopeWhere } from '../utils/data-scope.util';
+import multer from 'multer';
+import fs from 'fs';
+import path from 'path';
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    const uploadDir = path.join(process.cwd(), 'uploads', 'inventory');
+    if (!fs.existsSync(uploadDir)) {
+      fs.mkdirSync(uploadDir, { recursive: true });
+    }
+    cb(null, uploadDir);
+  },
+  filename: (req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, uniqueSuffix + path.extname(file.originalname));
+  }
+});
+const upload = multer({ storage });
 
 const router = Router();
+
+router.post('/upload-photo', authenticateToken, upload.single('photo'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ message: 'Không nhận được file ảnh' });
+  }
+  const fileUrl = `/uploads/inventory/${req.file.filename}`;
+  res.json({ url: fileUrl });
+});
 
 router.get('/', authenticateToken, async (req, res) => {
   try {
@@ -51,7 +77,7 @@ router.post('/item/:id/check', authenticateToken, async (req: AuthRequest, res) 
 
 router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest, res) => {
   const checkedBy = req.user?.username || 'system';
-  const { sessionId, assetIds, actualStatus, actualLocation, quality, note } = req.body;
+  const { sessionId, assetIds, actualStatus, actualLocation, quality, note, photos } = req.body;
   if (!sessionId || !assetIds || !Array.isArray(assetIds)) {
     return res.status(400).json({ message: 'Invalid payload' });
   }
@@ -69,16 +95,16 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
 
         // Determine result status
         let result = 'MATCHED';
-        if (quality === 'DAMAGED' || quality === 'BAD' || actualStatus === 'DAMAGED') {
-          result = 'DAMAGED';
-        } else if (actualStatus === 'LOST' || quality === 'LOST') {
+        if (actualStatus === 'LOST' || quality === 'LOST' || quality === 'MISSING') {
           result = 'MISSING';
+        } else if (quality === 'DAMAGED' || quality === 'BAD' || actualStatus === 'DAMAGED') {
+          result = 'DAMAGED';
         } else if ((actualLocation || asset.locationName) && item?.expectedLocation && (actualLocation || asset.locationName) !== item.expectedLocation) {
           result = 'WRONG_LOCATION';
         } else if (item && actualStatus !== item.expectedStatus) {
-          result = 'NEED_REVIEW';
+          result = 'WRONG_STATUS';
         } else if (!item && actualStatus !== asset.status) {
-          result = 'NEED_REVIEW';
+          result = 'WRONG_STATUS';
         }
 
         if (item) {
@@ -90,6 +116,7 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
               quality,
               note: note || '',
               result,
+              photos: photos || [],
               checkStatus: 'CHECKED',
               checkedAt: new Date(),
               checkedBy
@@ -108,6 +135,7 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
               quality,
               note: note || '',
               result,
+              photos: photos || [],
               checkStatus: 'CHECKED',
               checkedAt: new Date(),
               checkedBy
@@ -250,7 +278,11 @@ router.get('/export-by-time', authenticateToken, requirePermission('INVENTORY_VI
       item.quality === 'NORMAL' ? 'Bình thường' :
       item.quality === 'BAD' ? 'Kém/Hỏng' : item.quality || '',
       item.checkStatus === 'PENDING' ? 'Chưa kiểm' :
-      item.checkStatus === 'CHECKED' ? 'Đã kiểm' : item.checkStatus,
+      item.result === 'MATCHED' ? 'Khớp dữ liệu' :
+      item.result === 'WRONG_LOCATION' ? 'Lệch vị trí' :
+      item.result === 'WRONG_STATUS' ? 'Lệch trạng thái' :
+      item.result === 'DAMAGED' ? 'Báo hỏng' :
+      item.result === 'MISSING' ? 'Báo thiếu' : 'Đã kiểm',
       item.checkedBy || '',
       formatDate(item.checkedAt),
       item.note || ''

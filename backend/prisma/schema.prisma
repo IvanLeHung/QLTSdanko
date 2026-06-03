@@ -321,6 +321,7 @@ model InventoryItem {
   quality          String?
   note             String?
   result           String?        // MATCHED, MISSING, EXTRA, DAMAGED, WRONG_LOCATION, NEED_REVIEW
+  photos           String[]
   checkStatus      String         @default("PENDING") // PENDING, CHECKED
   checkedAt        DateTime?
   checkedBy        String?

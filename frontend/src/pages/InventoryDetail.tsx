@@ -33,14 +33,21 @@ export const InventoryDetail: React.FC = () => {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('ALL'); // ALL, PENDING, CHECKED
 
+  // QR Scanner modal state
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+  const [scanCodeInput, setScanCodeInput] = useState('');
+
   // Single Item Check modal state
   const [selectedItemForCheck, setSelectedItemForCheck] = useState<any>(null);
-  const [checkForm, setCheckForm] = useState({
+  const [checkForm, setCheckForm] = useState<any>({
     actualLocation: '',
     actualStatus: 'IN_STOCK',
     quality: 'GOOD',
-    note: ''
+    note: '',
+    photos: [] as string[],
+    checkCondition: 'FOUND' // FOUND, MISSING, UNAVAILABLE
   });
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
 
   const fetchDetail = async () => {
     try {
@@ -85,15 +92,76 @@ export const InventoryDetail: React.FC = () => {
     }
   };
 
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const file = e.target.files[0];
+    const formData = new FormData();
+    formData.append('photo', file);
+
+    setUploadingPhoto(true);
+    try {
+      const res = await api.post('/inventory/upload-photo', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      setCheckForm((prev: any) => ({
+        ...prev,
+        photos: [...(prev.photos || []), res.data.url]
+      }));
+      toast.success("Tải ảnh bằng chứng thành công");
+    } catch (err) {
+      toast.error("Lỗi khi tải ảnh lên");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
+  const removePhoto = (index: number) => {
+    setCheckForm((prev: any) => ({
+      ...prev,
+      photos: (prev.photos || []).filter((_: any, i: number) => i !== index)
+    }));
+  };
+
+  const handleScanSubmit = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!scanCodeInput.trim()) return;
+
+    const matchedItem = session?.items.find((item: any) => 
+      item.assetCode.toLowerCase() === scanCodeInput.trim().toLowerCase()
+    );
+
+    if (matchedItem) {
+      toast.success(`Đã tìm thấy tài sản: ${matchedItem.asset.assetName}`);
+      setIsScannerOpen(false);
+      setScanCodeInput('');
+      openCheckModal(matchedItem);
+    } else {
+      toast.error(`Không tìm thấy tài sản với mã "${scanCodeInput}" trong đợt kiểm kê này`);
+    }
+  };
+
   const handleCheckItem = async () => {
     if (!selectedItemForCheck) return;
     setSubmitting(true);
+    
+    // Map final fields based on checkCondition
+    let finalStatus = checkForm.actualStatus;
+    let finalLocation = checkForm.actualLocation;
+    let finalQuality = checkForm.quality;
+    
+    if (checkForm.checkCondition === 'MISSING') {
+      finalStatus = 'LOST';
+      finalQuality = 'LOST';
+      finalLocation = selectedItemForCheck.expectedLocation || selectedItemForCheck.asset.locationName || '';
+    }
+
     try {
       await api.post(`/inventory/item/${selectedItemForCheck.id}/check`, {
-        actualStatus: checkForm.actualStatus,
-        actualLocation: checkForm.actualLocation,
-        quality: checkForm.quality,
-        note: checkForm.note
+        actualStatus: finalStatus,
+        actualLocation: finalLocation,
+        quality: finalQuality,
+        note: checkForm.note,
+        photos: checkForm.photos
       });
       toast.success("Đã ghi nhận kiểm kê tài sản");
       setSelectedItemForCheck(null);
@@ -107,11 +175,14 @@ export const InventoryDetail: React.FC = () => {
 
   const openCheckModal = (item: any) => {
     setSelectedItemForCheck(item);
+    const initialCondition = (item.actualStatus === 'LOST' || item.quality === 'LOST') ? 'MISSING' : 'FOUND';
     setCheckForm({
       actualLocation: item.actualLocation || item.expectedLocation || item.asset.locationName || '',
       actualStatus: item.actualStatus || item.expectedStatus || 'IN_STOCK',
       quality: item.quality || 'GOOD',
-      note: item.note || ''
+      note: item.note || '',
+      photos: item.photos || [],
+      checkCondition: initialCondition
     });
   };
 
@@ -154,7 +225,7 @@ export const InventoryDetail: React.FC = () => {
     wrongLocation: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'WRONG_LOCATION').length || 0,
     missing: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'MISSING').length || 0,
     damaged: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'DAMAGED').length || 0,
-    needReview: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'NEED_REVIEW').length || 0,
+    wrongStatus: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'WRONG_STATUS').length || 0,
   };
 
   const checkers = Array.from(new Set(session?.items.map((i: any) => i.checkedBy).filter(Boolean))) as string[];
@@ -283,7 +354,7 @@ export const InventoryDetail: React.FC = () => {
           <div>
             <p className="text-[10px] font-black text-rose-450 uppercase tracking-widest mb-1">Tổng số chênh lệch</p>
             <p className="text-3xl font-black text-rose-600">
-              {stats.wrongLocation + stats.missing + stats.damaged + stats.needReview}
+              {stats.wrongLocation + stats.missing + stats.damaged + stats.wrongStatus}
             </p>
             <p className="text-[11px] text-slate-450 mt-1 font-bold">Khớp sổ sách: {stats.matched}</p>
           </div>
@@ -321,7 +392,7 @@ export const InventoryDetail: React.FC = () => {
             Báo hỏng: {stats.damaged}
           </span>
           <span className="flex items-center gap-1.5 px-3 py-1 bg-indigo-50 border border-indigo-100 rounded-lg text-indigo-700">
-            Cần xem xét: {stats.needReview}
+            Lệch trạng thái: {stats.wrongStatus}
           </span>
         </div>
       </div>
@@ -329,14 +400,25 @@ export const InventoryDetail: React.FC = () => {
       {/* TOOLBAR & LIST */}
       <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden">
         <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="relative flex-1 max-w-md">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
-            <input 
-              className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all"
-              placeholder="Tìm theo mã hoặc tên tài sản..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-            />
+          <div className="flex flex-1 max-w-lg gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-300" />
+              <input 
+                className="w-full bg-slate-50 border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all"
+                placeholder="Tìm theo mã hoặc tên tài sản..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+              />
+            </div>
+            {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
+              <button 
+                type="button"
+                onClick={() => setIsScannerOpen(true)}
+                className="bg-primary-50 hover:bg-primary-100 text-primary-650 px-5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all flex items-center shrink-0 border border-primary-200/50"
+              >
+                📷 Quét mã tài sản
+              </button>
+            )}
           </div>
           <div className="flex items-center space-x-3">
             <Filter className="h-5 w-5 text-slate-400 mr-2" />
@@ -422,7 +504,7 @@ export const InventoryDetail: React.FC = () => {
                          item.result === 'WRONG_LOCATION' ? 'Lệch vị trí' :
                          item.result === 'MISSING' ? 'Thiếu/Mất' :
                          item.result === 'DAMAGED' ? 'Báo hỏng' :
-                         item.result === 'NEED_REVIEW' ? 'Cần xem xét' : item.result}
+                         item.result === 'WRONG_STATUS' ? 'Lệch trạng thái' : item.result}
                       </span>
                     )}
                   </td>
@@ -470,10 +552,12 @@ export const InventoryDetail: React.FC = () => {
           size="form"
           title={
             <div>
-              <h2 className="text-lg font-black uppercase tracking-widest text-slate-900">Đối soát thực tế tài sản</h2>
-              <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mt-0.5">
-                {selectedItemForCheck.asset.assetName} ({selectedItemForCheck.assetCode})
-              </p>
+              <h2 className="text-lg font-black uppercase tracking-widest text-slate-900">Phiếu kiểm kê thực tế tài sản</h2>
+              <div className="mt-1 text-xs text-slate-500 font-bold space-y-0.5">
+                <p>Mã TS: <span className="text-slate-800 font-mono">{selectedItemForCheck.assetCode}</span></p>
+                <p>Tên TS: <span className="text-slate-800">{selectedItemForCheck.asset.assetName}</span></p>
+                <p>Đợt kiểm kê: <span className="text-primary-600 uppercase font-extrabold">{session.inventoryName}</span></p>
+              </div>
             </div>
           }
           footer={
@@ -484,41 +568,93 @@ export const InventoryDetail: React.FC = () => {
               >
                 Hủy
               </button>
-              <button 
-                onClick={handleCheckItem}
-                disabled={submitting}
-                className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center shadow-lg shadow-emerald-100 disabled:opacity-50"
-              >
-                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />} Xác nhận lưu
-              </button>
+              {checkForm.checkCondition === 'MISSING' ? (
+                <button 
+                  onClick={handleCheckItem}
+                  disabled={submitting}
+                  className="px-6 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center shadow-lg shadow-rose-100 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <AlertCircle className="mr-2 h-4 w-4" />} Báo thiếu tài sản
+                </button>
+              ) : (
+                <button 
+                  onClick={handleCheckItem}
+                  disabled={submitting}
+                  className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center shadow-lg shadow-emerald-100 disabled:opacity-50"
+                >
+                  {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />} Lưu kết quả
+                </button>
+              )}
             </>
           }
         >
-          <div className="space-y-5 text-xs text-slate-650">
-            {/* Asset Book Details Card */}
-            <div className="p-4 border border-slate-150 rounded-2xl bg-slate-50/50 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Trạng thái sổ sách</p>
-                <p className="font-bold text-slate-800 uppercase">
-                  {selectedItemForCheck.expectedStatus === 'IN_STOCK' ? 'Trong kho (IN_STOCK)' :
-                   selectedItemForCheck.expectedStatus === 'ASSIGNED' ? 'Đang sử dụng (ASSIGNED)' : selectedItemForCheck.expectedStatus}
-                </p>
+          <div className="space-y-6 text-xs text-slate-650">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* CỘT TRÁI - THÔNG TIN HỆ THỐNG */}
+              <div className="p-5 border border-slate-150 rounded-2xl bg-slate-50/50 space-y-4">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400 border-b pb-2">Thông tin hệ thống</h4>
+                <div className="space-y-3">
+                  <div>
+                    <label className="font-bold text-slate-500">Trạng thái sổ sách:</label>
+                    <p className="font-extrabold text-slate-800 uppercase mt-0.5">
+                      {selectedItemForCheck.expectedStatus === 'IN_STOCK' ? 'Trong kho (IN_STOCK)' :
+                       selectedItemForCheck.expectedStatus === 'ASSIGNED' ? 'Đang sử dụng (ASSIGNED)' :
+                       selectedItemForCheck.expectedStatus === 'UNDER_REPAIR' ? 'Đang sửa chữa' :
+                       selectedItemForCheck.expectedStatus === 'DAMAGED' ? 'Báo hỏng' :
+                       selectedItemForCheck.expectedStatus === 'LOST' ? 'Báo mất' : selectedItemForCheck.expectedStatus}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="font-bold text-slate-500">Vị trí sổ sách:</label>
+                    <p className="font-extrabold text-slate-800 mt-0.5">{selectedItemForCheck.expectedLocation || selectedItemForCheck.asset.locationName || 'Trong kho'}</p>
+                  </div>
+                </div>
               </div>
-              <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-0.5">Vị trí sổ sách</p>
-                <p className="font-bold text-slate-800">{selectedItemForCheck.expectedLocation || selectedItemForCheck.asset.locationName || 'Trong kho'}</p>
-              </div>
-            </div>
 
-            <div className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* CỘT PHẢI - KẾT QUẢ THỰC TẾ */}
+              <div className="space-y-4">
+                <h4 className="text-[10px] font-black uppercase tracking-widest text-primary-600 border-b pb-2">Kết quả thực tế</h4>
+                
+                {/* Tình trạng kiểm kê */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-500">Tình trạng kiểm kê *</label>
+                  <select 
+                    value={checkForm.checkCondition}
+                    onChange={e => {
+                      const cond = e.target.value;
+                      if (cond === 'MISSING') {
+                        setCheckForm({
+                          ...checkForm,
+                          checkCondition: cond,
+                          actualStatus: 'LOST',
+                          quality: 'LOST',
+                          actualLocation: selectedItemForCheck.expectedLocation || selectedItemForCheck.asset.locationName || 'Trong kho'
+                        });
+                      } else {
+                        setCheckForm({
+                          ...checkForm,
+                          checkCondition: cond,
+                          actualStatus: selectedItemForCheck.actualStatus || selectedItemForCheck.expectedStatus || 'IN_STOCK',
+                          quality: selectedItemForCheck.quality || 'GOOD'
+                        });
+                      }
+                    }}
+                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
+                  >
+                    <option value="FOUND">Đã tìm thấy (FOUND)</option>
+                    <option value="MISSING">Không tìm thấy (MISSING)</option>
+                    <option value="UNAVAILABLE">Không truy cập được (UNAVAILABLE)</option>
+                  </select>
+                </div>
+
                 {/* Trạng thái thực tế */}
                 <div className="space-y-1">
                   <label className="font-bold text-slate-500">Trạng thái thực tế *</label>
                   <select 
+                    disabled={checkForm.checkCondition === 'MISSING'}
                     value={checkForm.actualStatus}
                     onChange={e => setCheckForm({...checkForm, actualStatus: e.target.value})}
-                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
+                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs disabled:opacity-50"
                   >
                     <option value="IN_STOCK">Trong kho (IN_STOCK)</option>
                     <option value="ASSIGNED">Đang sử dụng (ASSIGNED)</option>
@@ -532,41 +668,139 @@ export const InventoryDetail: React.FC = () => {
                 <div className="space-y-1">
                   <label className="font-bold text-slate-500">Tình trạng vật lý *</label>
                   <select 
+                    disabled={checkForm.checkCondition === 'MISSING'}
                     value={checkForm.quality}
                     onChange={e => setCheckForm({...checkForm, quality: e.target.value})}
-                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
+                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs disabled:opacity-50"
                   >
                     <option value="GOOD">Tốt (GOOD)</option>
+                    <option value="NORMAL">Bình thường (NORMAL)</option>
+                    <option value="BAD">Kém / hao mòn (BAD)</option>
                     <option value="DAMAGED">Hỏng / lỗi (DAMAGED)</option>
                     <option value="LOST">Mất (LOST)</option>
                   </select>
                 </div>
-              </div>
 
-              {/* Vị trí thực tế */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Vị trí thực tế *</label>
-                <input 
-                  type="text"
-                  required
-                  className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                  placeholder="Vị trí thực tế..."
-                  value={checkForm.actualLocation}
-                  onChange={e => setCheckForm({...checkForm, actualLocation: e.target.value})}
-                />
-              </div>
-
-              {/* Ghi chú đối soát */}
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Ghi chú đối soát</label>
-                <textarea 
-                  className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-semibold text-slate-850 h-20 resize-none text-xs"
-                  placeholder="Nhập ghi chú chi tiết kết quả đối soát..."
-                  value={checkForm.note}
-                  onChange={e => setCheckForm({...checkForm, note: e.target.value})}
-                />
+                {/* Vị trí thực tế */}
+                <div className="space-y-1">
+                  <label className="font-bold text-slate-500">Vị trí thực tế *</label>
+                  <input 
+                    type="text"
+                    disabled={checkForm.checkCondition === 'MISSING'}
+                    required
+                    className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs disabled:opacity-50"
+                    placeholder="Vị trí thực tế..."
+                    value={checkForm.actualLocation}
+                    onChange={e => setCheckForm({...checkForm, actualLocation: e.target.value})}
+                  />
+                </div>
               </div>
             </div>
+
+            {/* Ảnh bằng chứng upload */}
+            <div className="space-y-2 border-t pt-4 border-slate-100">
+              <label className="font-bold text-slate-500 block">Ảnh bằng chứng kiểm kê (Ảnh tem, tình trạng hỏng, vị trí...):</label>
+              
+              <div className="flex flex-wrap gap-3 items-center">
+                {/* Thumbnails list */}
+                {(checkForm.photos || []).map((url: string, index: number) => (
+                  <div key={url} className="relative w-16 h-16 border rounded-xl overflow-hidden group">
+                    <img src={url} alt="Bằng chứng" className="w-full h-full object-cover" />
+                    <button 
+                      type="button" 
+                      onClick={() => removePhoto(index)}
+                      className="absolute inset-0 bg-slate-900/60 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                    >
+                      <XCircle className="h-5 w-5" />
+                    </button>
+                  </div>
+                ))}
+                
+                {/* Uploader button */}
+                <label className="w-16 h-16 border border-dashed border-slate-300 hover:border-primary-500 rounded-xl flex flex-col items-center justify-center text-slate-400 hover:text-primary-600 transition-all cursor-pointer bg-slate-50">
+                  <input 
+                    type="file" 
+                    className="hidden" 
+                    onChange={handleFileChange} 
+                    accept="image/*"
+                  />
+                  {uploadingPhoto ? (
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  ) : (
+                    <span className="text-[10px] font-black text-center uppercase tracking-tighter">Thêm ảnh</span>
+                  )}
+                </label>
+              </div>
+            </div>
+
+            {/* Ghi chú đối soát */}
+            <div className="space-y-1 border-t pt-4 border-slate-100">
+              <label className="font-bold text-slate-500">Ghi chú đối soát thực tế</label>
+              <textarea 
+                className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 h-16 resize-none text-xs"
+                placeholder="Nhập ghi chú chi tiết về tình trạng thực tế..."
+                value={checkForm.note}
+                onChange={e => setCheckForm({...checkForm, note: e.target.value})}
+              />
+            </div>
+          </div>
+        </BaseModal>
+      )}
+
+      {/* SCANNER MODAL */}
+      {isScannerOpen && (
+        <BaseModal
+          isOpen={isScannerOpen}
+          onClose={() => {
+            setIsScannerOpen(false);
+            setScanCodeInput('');
+          }}
+          size="confirm"
+          title={
+            <div>
+              <h2 className="text-md font-black uppercase tracking-widest text-slate-900">Quét mã tài sản (QR/Barcode)</h2>
+              <p className="text-[9px] uppercase font-bold tracking-widest text-slate-400 mt-0.5">Giả lập súng quét barcode: súng tự nhấn Enter sau khi quét</p>
+            </div>
+          }
+          footer={
+            <button 
+              onClick={() => {
+                setIsScannerOpen(false);
+                setScanCodeInput('');
+              }} 
+              className="px-4 py-2 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors font-bold text-xs"
+            >
+              Đóng
+            </button>
+          }
+        >
+          <div className="space-y-5 text-center py-2">
+            <div className="w-40 h-40 mx-auto border-4 border-dashed border-primary-500 rounded-3xl flex flex-col items-center justify-center bg-primary-50/20 relative overflow-hidden">
+              <div className="absolute inset-x-0 top-0 h-0.5 bg-primary-500 animate-bounce" />
+              <Package className="h-12 w-12 text-primary-400" />
+              <p className="text-[9px] font-black text-primary-600 uppercase tracking-widest mt-2 animate-pulse">Đang quét...</p>
+            </div>
+
+            <form onSubmit={handleScanSubmit} className="space-y-3">
+              <label className="text-xs font-bold text-slate-500 block">Nhập tay mã tài sản hoặc quét qua cổng súng quét:</label>
+              <div className="flex gap-2">
+                <input 
+                  type="text"
+                  autoFocus
+                  required
+                  className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-mono font-bold text-slate-800 text-center"
+                  placeholder="Ví dụ: 01.03.01.02.04.002"
+                  value={scanCodeInput}
+                  onChange={e => setScanCodeInput(e.target.value)}
+                />
+                <button 
+                  type="submit"
+                  className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider"
+                >
+                  Tìm
+                </button>
+              </div>
+            </form>
           </div>
         </BaseModal>
       )}

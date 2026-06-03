@@ -118,6 +118,7 @@ export class InventoryService {
     quality: string;
     note?: string;
     checkedBy: string;
+    photos?: string[];
   }) {
     const item = await prisma.inventoryItem.findUnique({
       where: { id: itemId }
@@ -126,14 +127,14 @@ export class InventoryService {
 
     // Dynamic result determination
     let result = 'MATCHED';
-    if (data.quality === 'DAMAGED' || data.quality === 'BAD' || data.actualStatus === 'DAMAGED') {
-      result = 'DAMAGED';
-    } else if (data.actualStatus === 'LOST' || data.quality === 'LOST') {
+    if (data.actualStatus === 'LOST' || data.quality === 'LOST' || data.quality === 'MISSING') {
       result = 'MISSING';
+    } else if (data.quality === 'DAMAGED' || data.quality === 'BAD' || data.actualStatus === 'DAMAGED') {
+      result = 'DAMAGED';
     } else if (data.actualLocation && item.expectedLocation && data.actualLocation !== item.expectedLocation) {
       result = 'WRONG_LOCATION';
     } else if (data.actualStatus !== item.expectedStatus) {
-      result = 'NEED_REVIEW';
+      result = 'WRONG_STATUS';
     }
 
     return await prisma.$transaction(async (tx) => {
@@ -145,6 +146,7 @@ export class InventoryService {
           quality: data.quality,
           note: data.note,
           result: result,
+          photos: data.photos || [],
           checkStatus: 'CHECKED',
           checkedAt: new Date(),
           checkedBy: data.checkedBy
