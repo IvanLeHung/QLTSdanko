@@ -74,8 +74,8 @@ export class HandoverService {
             if (data.type === 'HANDOVER' && asset.status !== 'IN_STOCK') {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không còn ở trong kho để bàn giao.`);
             }
-            if (data.type === 'TRANSFER' && asset.status !== 'ASSIGNED') {
-              throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng để luân chuyển.`);
+            if (data.type === 'TRANSFER' && asset.status !== 'ASSIGNED' && asset.status !== 'IN_STOCK') {
+              throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng hoặc trong kho để luân chuyển.`);
             }
             if (data.type === 'RECALL' && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED') {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng hoặc đã thu hồi để thu hồi.`);
@@ -107,13 +107,15 @@ export class HandoverService {
                 create: await Promise.all(data.assetIds.map(async (id) => {
                   const asset = await tx.asset.findUnique({ where: { id } });
                   if (!asset) throw new Error(`Asset ID ${id} not found`);
+                  const itemNewStatus = data.type === 'RECALL' ? 'IN_STOCK' : 
+                                       (data.type === 'TRANSFER' && asset.status === 'IN_STOCK') ? 'IN_STOCK' : 'ASSIGNED';
                   return {
                     assetId: asset.id,
                     assetCode: asset.assetCode,
                     assetName: asset.assetName,
                     unit: asset.unit,
                     oldStatus: asset.status,
-                    newStatus: data.type === 'RECALL' ? 'IN_STOCK' : 'ASSIGNED'
+                    newStatus: itemNewStatus
                   };
                 }))
               }
@@ -127,17 +129,18 @@ export class HandoverService {
               const oldAsset = await tx.asset.findUnique({ where: { id: item.assetId } });
               if (!oldAsset) continue;
 
+              const isStock = item.newStatus === 'IN_STOCK';
               const updatedAsset = await tx.asset.update({
                 where: { id: item.assetId },
                 data: {
-                  status: data.type === 'RECALL' ? 'IN_STOCK' : 'ASSIGNED',
-                  currentUserName: data.type === 'RECALL' ? null : data.recipientName,
-                  currentPosition: data.type === 'RECALL' ? null : data.recipientPosition,
+                  status: item.newStatus || 'ASSIGNED',
+                  currentUserName: isStock ? null : data.recipientName,
+                  currentPosition: isStock ? null : data.recipientPosition,
                   departmentName: data.type === 'RECALL' ? null : data.recipientDepartment,
                   locationName: normalizedLoc.fullFormatted || data.newLocation,
                   cityName: normalizedLoc.city || data.newCity,
                   projectName: normalizedLoc.project || undefined,
-                  handoverDate: data.type === 'RECALL' ? null : new Date(),
+                  handoverDate: isStock ? null : new Date(),
                 }
               });
 
@@ -146,14 +149,14 @@ export class HandoverService {
                 data: {
                   assetId: item.assetId,
                   previousUserName: oldAsset.currentUserName,
-                  newUserName: data.type === 'RECALL' ? 'KHO QLTS' : data.recipientName,
-                  newPosition: data.type === 'RECALL' ? null : data.recipientPosition,
+                  newUserName: isStock ? 'KHO QLTS' : data.recipientName,
+                  newPosition: isStock ? null : data.recipientPosition,
                   newDepartmentName: data.recipientDepartment,
                   newLocationName: normalizedLoc.fullFormatted || data.newLocation,
                   newCityName: normalizedLoc.city || data.newCity,
-                  newStatus: data.type === 'RECALL' ? 'IN_STOCK' : 'ASSIGNED',
+                  newStatus: item.newStatus || 'ASSIGNED',
                   effectiveAt: new Date(),
-                  note: `Hồ sơ ${documentNo} (${data.type === 'RECALL' ? 'Thu hồi' : 'Bàn giao'})`
+                  note: `Hồ sơ ${documentNo} (${data.type === 'RECALL' ? 'Thu hồi' : (data.type === 'TRANSFER' ? 'Luân chuyển' : 'Bàn giao')})`
                 }
               });
 
@@ -301,13 +304,15 @@ export class HandoverService {
             create: await Promise.all(data.assetIds.map(async (aid) => {
               const asset = await tx.asset.findUnique({ where: { id: aid } });
               if (!asset) throw new Error(`Asset ID ${aid} not found`);
+              const itemNewStatus = (data.type || doc.type) === 'RECALL' ? 'IN_STOCK' : 
+                                   ((data.type || doc.type) === 'TRANSFER' && asset.status === 'IN_STOCK') ? 'IN_STOCK' : 'ASSIGNED';
               return {
                 assetId: asset.id,
                 assetCode: asset.assetCode,
                 assetName: asset.assetName,
                 unit: asset.unit,
                 oldStatus: asset.status,
-                newStatus: (data.type || doc.type) === 'RECALL' ? 'IN_STOCK' : 'ASSIGNED'
+                newStatus: itemNewStatus
               };
             }))
           } : undefined
@@ -369,17 +374,18 @@ export class HandoverService {
         const oldAsset = await tx.asset.findUnique({ where: { id: item.assetId } });
         if (!oldAsset) continue;
 
+        const isStock = item.newStatus === 'IN_STOCK';
         const updatedAsset = await tx.asset.update({
           where: { id: item.assetId },
           data: {
-            status: doc.type === 'RECALL' ? 'IN_STOCK' : 'ASSIGNED',
-            currentUserName: doc.type === 'RECALL' ? null : doc.recipientName,
-            currentPosition: doc.type === 'RECALL' ? null : doc.recipientPosition,
+            status: item.newStatus || 'ASSIGNED',
+            currentUserName: isStock ? null : doc.recipientName,
+            currentPosition: isStock ? null : doc.recipientPosition,
             departmentName: doc.type === 'RECALL' ? null : doc.recipientDepartment,
             locationName: normalizedLoc.fullFormatted || doc.newLocation,
             cityName: normalizedLoc.city || doc.newCity,
             projectName: normalizedLoc.project || undefined,
-            handoverDate: doc.type === 'RECALL' ? null : doc.documentDate,
+            handoverDate: isStock ? null : doc.documentDate,
           }
         });
 
@@ -388,12 +394,12 @@ export class HandoverService {
           data: {
             assetId: item.assetId,
             previousUserName: oldAsset.currentUserName,
-            newUserName: doc.type === 'RECALL' ? 'KHO QLTS' : doc.recipientName,
-            newPosition: doc.type === 'RECALL' ? null : doc.recipientPosition,
+            newUserName: isStock ? 'KHO QLTS' : doc.recipientName,
+            newPosition: isStock ? null : doc.recipientPosition,
             newDepartmentName: doc.recipientDepartment,
             newLocationName: normalizedLoc.fullFormatted || doc.newLocation,
             newCityName: normalizedLoc.city || doc.newCity,
-            newStatus: doc.type === 'RECALL' ? 'IN_STOCK' : 'ASSIGNED',
+            newStatus: item.newStatus || 'ASSIGNED',
             effectiveAt: doc.documentDate,
             note: `Hồ sơ ${doc.documentNo}`
           }
