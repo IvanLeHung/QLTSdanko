@@ -77,8 +77,8 @@ export class HandoverService {
             if (data.type === 'TRANSFER' && asset.status !== 'ASSIGNED' && asset.status !== 'IN_STOCK') {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng hoặc trong kho để luân chuyển.`);
             }
-            if (data.type === 'RECALL' && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED') {
-              throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng hoặc đã thu hồi để thu hồi.`);
+            if (data.type === 'RECALL' && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && asset.status !== 'IN_STOCK') {
+              throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng, đã thu hồi hoặc trong kho để thu hồi.`);
             }
           }
 
