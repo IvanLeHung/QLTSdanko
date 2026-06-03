@@ -458,7 +458,8 @@ export const CreateAsset: React.FC = () => {
           companyId: invoice.companyId,
           warehouseId: invoice.warehouseId,
           totalAmount: invoice.totalAmount ? parseFloat(invoice.totalAmount) : undefined,
-          note: invoice.note
+          note: invoice.note,
+          fileUrl: invoice.fileUrl
         },
         lines: lines.map(l => ({
           invoiceItemName: l.invoiceItemName,
