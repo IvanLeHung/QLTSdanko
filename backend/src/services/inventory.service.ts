@@ -166,6 +166,15 @@ export class InventoryService {
         });
       }
 
+      // Update last inventory info on the Asset master record
+      await tx.asset.update({
+        where: { id: item.assetId },
+        data: {
+          lastInventoryDate: new Date(),
+          lastInventoryStatus: result
+        }
+      });
+
       return updatedItem;
     });
   }
