@@ -97,6 +97,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [pendingUpdates, setPendingUpdates] = useState<any>(null);
   const [copied, setCopied] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
+  const [categories, setCategories] = useState<any[]>([]);
   const [selectedForm, setSelectedForm] = useState<{code: string, data?: any} | null>(null);
   const [updateAllSameName, setUpdateAllSameName] = useState(false);
   const [isCompanyRevealed, setIsCompanyRevealed] = useState(false);
@@ -109,6 +110,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     if (isOpen && assetId) {
       fetchAssetDetail();
       fetchCompanies();
+      fetchCategories();
       setActiveTab(initialTab);
       setMode('view');
     } else {
@@ -130,6 +132,20 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       console.error(err);
     }
   };
+
+  const fetchCategories = async () => {
+    try {
+      const res = await api.get('/assets/categories/active/all');
+      setCategories(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const getCat1Options = () => categories.filter((c: any) => c.level === 1);
+  const getCat2Options = (parentId: string) => categories.filter((c: any) => c.level === 2 && c.parentId === parseInt(parentId));
+  const getCat3Options = (parentId: string) => categories.filter((c: any) => c.level === 3 && c.parentId === parseInt(parentId));
+  const getCat4Options = (parentId: string) => categories.filter((c: any) => c.level === 4 && c.parentId === parseInt(parentId));
 
   useEffect(() => {
     const handleEsc = (e: KeyboardEvent) => {
@@ -233,6 +249,18 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   };
 
   const enterEditMode = () => {
+    const cat1 = categories.find(c => c.level === 1 && c.code === asset.level1Code);
+    const cat1Id = cat1 ? cat1.id.toString() : '';
+
+    const cat2 = cat1 ? categories.find(c => c.level === 2 && c.code === asset.level2Code && c.parentId === cat1.id) : null;
+    const cat2Id = cat2 ? cat2.id.toString() : '';
+
+    const cat3 = cat2 ? categories.find(c => c.level === 3 && c.code === asset.level3Code && c.parentId === cat2.id) : null;
+    const cat3Id = cat3 ? cat3.id.toString() : '';
+
+    const cat4 = cat3 ? categories.find(c => c.level === 4 && c.code === asset.level4Code && c.parentId === cat3.id) : null;
+    const cat4Id = cat4 ? cat4.id.toString() : '';
+
     setEditForm({
       assetName: asset.assetName,
       serialNumber: asset.serialNumber || '',
@@ -245,7 +273,15 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       supplierTaxCode: asset.supplierTaxCode || '',
       companyCode: asset.companyCode,
       assetCode: asset.assetCode,
-      documentNote: asset.documentNote || ''
+      documentNote: asset.documentNote || '',
+      categoryLevel1Id: cat1Id,
+      categoryLevel2Id: cat2Id,
+      categoryLevel3Id: cat3Id,
+      categoryLevel4Id: cat4Id,
+      initialCategoryLevel1Id: cat1Id,
+      initialCategoryLevel2Id: cat2Id,
+      initialCategoryLevel3Id: cat3Id,
+      initialCategoryLevel4Id: cat4Id
     });
     setMode('edit');
   };
@@ -261,7 +297,26 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     const sensitiveFields = ['assetCode', 'purchasePriceExVat', 'purchaseDate', 'depreciationEndDate', 'serialNumber', 'companyCode'];
     let hasSensitiveChanges = false;
 
+    const isCategoryChanged = 
+      editForm.categoryLevel1Id !== editForm.initialCategoryLevel1Id ||
+      editForm.categoryLevel2Id !== editForm.initialCategoryLevel2Id ||
+      editForm.categoryLevel3Id !== editForm.initialCategoryLevel3Id ||
+      editForm.categoryLevel4Id !== editForm.initialCategoryLevel4Id;
+
+    if (isCategoryChanged) {
+      if (!editForm.categoryLevel1Id || !editForm.categoryLevel2Id || !editForm.categoryLevel3Id || !editForm.categoryLevel4Id) {
+        toast.error("Bạn phải chọn đầy đủ 4 cấp phân loại định khoản để tạo mã tài sản mới.");
+        return;
+      }
+    }
+
     for (const key in editForm) {
+      if ([
+        'categoryLevel1Id', 'categoryLevel2Id', 'categoryLevel3Id', 'categoryLevel4Id',
+        'initialCategoryLevel1Id', 'initialCategoryLevel2Id', 'initialCategoryLevel3Id', 'initialCategoryLevel4Id'
+      ].includes(key)) {
+        continue;
+      }
       let oldVal = asset[key];
       let newVal = editForm[key];
 
@@ -272,6 +327,30 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       if (String(oldVal) !== String(newVal)) {
         changes[key] = newVal;
         if (sensitiveFields.includes(key)) hasSensitiveChanges = true;
+      }
+    }
+
+    if (isCategoryChanged) {
+      const c1 = categories.find(c => c.id === parseInt(editForm.categoryLevel1Id));
+      const c2 = categories.find(c => c.id === parseInt(editForm.categoryLevel2Id));
+      const c3 = categories.find(c => c.id === parseInt(editForm.categoryLevel3Id));
+      const c4 = categories.find(c => c.id === parseInt(editForm.categoryLevel4Id));
+
+      if (c1 && c2 && c3 && c4) {
+        changes.level1Code = c1.code;
+        changes.level1Name = c1.name;
+        changes.level1Slug = c1.slug || '';
+        changes.level2Code = c2.code;
+        changes.level2Name = c2.name;
+        changes.level2Slug = c2.slug || '';
+        changes.level3Code = c3.code;
+        changes.level3Name = c3.name;
+        changes.level3Slug = c3.slug || '';
+        changes.level4Code = c4.code;
+        changes.level4Name = c4.name;
+        changes.level4Slug = c4.slug || '';
+
+        hasSensitiveChanges = true;
       }
     }
 
@@ -603,6 +682,129 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       )
                     )}
                   </div>
+
+                  {mode === 'edit' ? (
+                    <div className="col-span-2 p-5 bg-primary-50/20 rounded-2xl border border-primary-100/50 space-y-3">
+                      <p className="text-[10px] font-black text-primary-600 uppercase tracking-widest flex items-center">
+                        <Tag className="mr-2 h-3.5 w-3.5" />
+                        Phân loại định khoản (4 cấp) *
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                          <label className="block text-slate-400 text-[9px] font-bold uppercase tracking-wider mb-1">Cấp 1</label>
+                          <select
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-[11px] font-semibold bg-white focus:border-primary-500 focus:ring-primary-500"
+                            value={editForm.categoryLevel1Id}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditForm({
+                                ...editForm,
+                                categoryLevel1Id: val,
+                                categoryLevel2Id: '',
+                                categoryLevel3Id: '',
+                                categoryLevel4Id: ''
+                              });
+                            }}
+                          >
+                            <option value="">-- Cấp 1 --</option>
+                            {getCat1Options().map(c => (
+                              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-400 text-[9px] font-bold uppercase tracking-wider mb-1">Cấp 2</label>
+                          <select
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-[11px] font-semibold bg-white focus:border-primary-500 focus:ring-primary-500 disabled:opacity-50"
+                            value={editForm.categoryLevel2Id}
+                            disabled={!editForm.categoryLevel1Id}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditForm({
+                                ...editForm,
+                                categoryLevel2Id: val,
+                                categoryLevel3Id: '',
+                                categoryLevel4Id: ''
+                              });
+                            }}
+                          >
+                            <option value="">-- Cấp 2 --</option>
+                            {getCat2Options(editForm.categoryLevel1Id).map(c => (
+                              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-400 text-[9px] font-bold uppercase tracking-wider mb-1">Cấp 3</label>
+                          <select
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-[11px] font-semibold bg-white focus:border-primary-500 focus:ring-primary-500 disabled:opacity-50"
+                            value={editForm.categoryLevel3Id}
+                            disabled={!editForm.categoryLevel2Id}
+                            onChange={e => {
+                              const val = e.target.value;
+                              setEditForm({
+                                ...editForm,
+                                categoryLevel3Id: val,
+                                categoryLevel4Id: ''
+                              });
+                            }}
+                          >
+                            <option value="">-- Cấp 3 --</option>
+                            {getCat3Options(editForm.categoryLevel2Id).map(c => (
+                              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-slate-400 text-[9px] font-bold uppercase tracking-wider mb-1">Cấp 4</label>
+                          <select
+                            className="w-full px-2 py-1.5 border border-slate-200 rounded-xl text-[11px] font-semibold bg-white focus:border-primary-500 focus:ring-primary-500 disabled:opacity-50"
+                            value={editForm.categoryLevel4Id}
+                            disabled={!editForm.categoryLevel3Id}
+                            onChange={e => {
+                              setEditForm({
+                                ...editForm,
+                                categoryLevel4Id: e.target.value
+                              });
+                            }}
+                          >
+                            <option value="">-- Cấp 4 --</option>
+                            {getCat4Options(editForm.categoryLevel3Id).map(c => (
+                              <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="col-span-2 p-5 bg-slate-50 rounded-2xl border border-slate-100/50 space-y-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                        <Tag className="mr-2 h-3.5 w-3.5 text-primary-500" />
+                        Phân loại định khoản (4 cấp)
+                      </p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-bold text-slate-700">
+                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                          <span className="text-[9px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Cấp 1</span>
+                          <span className="text-slate-800 font-bold block truncate" title={asset.level1Name}>{asset.level1Code} - {asset.level1Name}</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                          <span className="text-[9px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Cấp 2</span>
+                          <span className="text-slate-800 font-bold block truncate" title={asset.level2Name}>{asset.level2Code} - {asset.level2Name}</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                          <span className="text-[9px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Cấp 3</span>
+                          <span className="text-slate-800 font-bold block truncate" title={asset.level3Name}>{asset.level3Code} - {asset.level3Name}</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+                          <span className="text-[9px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Cấp 4</span>
+                          <span className="text-slate-800 font-bold block truncate" title={asset.level4Name}>{asset.level4Code} - {asset.level4Name}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="space-y-1">
                     <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
