@@ -325,7 +325,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       }
 
       if (String(oldVal) !== String(newVal)) {
-        changes[key] = newVal;
+        changes[key] = (newVal === '' && (key === 'purchaseDate' || key === 'depreciationEndDate')) ? null : newVal;
         if (sensitiveFields.includes(key)) hasSensitiveChanges = true;
       }
     }
@@ -339,16 +339,12 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       if (c1 && c2 && c3 && c4) {
         changes.level1Code = c1.code;
         changes.level1Name = c1.name;
-        changes.level1Slug = c1.slug || '';
         changes.level2Code = c2.code;
         changes.level2Name = c2.name;
-        changes.level2Slug = c2.slug || '';
         changes.level3Code = c3.code;
         changes.level3Name = c3.name;
-        changes.level3Slug = c3.slug || '';
         changes.level4Code = c4.code;
         changes.level4Name = c4.name;
-        changes.level4Slug = c4.slug || '';
 
         hasSensitiveChanges = true;
       }
