@@ -915,4 +915,361 @@ router.get('/period-stats', authenticateToken, async (req: any, res) => {
   }
 });
 
+// GET /api/dashboard/advanced-stats
+router.get('/advanced-stats', authenticateToken, async (req: any, res) => {
+  try {
+    const userPerms = req.user?.permissions || [];
+    const isSuperAdmin = req.user?.roles?.includes('SUPER_ADMIN');
+    const hasPricePerm = isSuperAdmin || userPerms.includes('ASSET_VIEW_PRICE');
+
+    const assetWhere = buildAssetWhere(req, true);
+    if (assetWhere.id === -1) {
+      return res.json({
+        total: 0,
+        statusCounts: {},
+        unassignedCount: 0,
+        cityCounts: [],
+        locationCounts: [],
+        missingLocationCount: 0,
+        projectCounts: [],
+        noProjectCount: 0,
+        departmentStats: [],
+        unassignedCategories: [],
+        stockCategories: [],
+        financials: null,
+        ageGroups: { age0_1: 0, age1_3: 0, age3_5: 0, ageMoreThan5: 0, ageUnknown: 0 }
+      });
+    }
+
+    // 1. Total and Status Counts
+    const [total, statusGroups] = await Promise.all([
+      prisma.asset.count({ where: assetWhere }),
+      prisma.asset.groupBy({
+        by: ['status'],
+        where: assetWhere,
+        _count: { id: true }
+      })
+    ]);
+
+    const statusCounts: Record<string, number> = {};
+    statusGroups.forEach(g => {
+      statusCounts[g.status] = g._count.id;
+    });
+
+    // 2. Unassigned Count (status = IN_STOCK and currentUserName is null/empty/N/A)
+    const unassignedCount = await prisma.asset.count({
+      where: {
+        ...assetWhere,
+        status: 'IN_STOCK',
+        OR: [
+          { currentUserName: null },
+          { currentUserName: '' },
+          { currentUserName: { in: ['N/A', 'n/a'] } }
+        ]
+      }
+    });
+
+    // 3. City Breakdown
+    const cityGroups = await prisma.asset.groupBy({
+      by: ['cityName'],
+      where: assetWhere,
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } }
+    });
+    const cityCounts = cityGroups.map(g => ({
+      name: g.cityName || 'Không xác định',
+      count: g._count.id
+    }));
+
+    // 4. Location Breakdown
+    const locationGroups = await prisma.asset.groupBy({
+      by: ['locationName'],
+      where: assetWhere,
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } }
+    });
+    const locationCounts = locationGroups.map(g => ({
+      name: g.locationName || 'Không xác định',
+      count: g._count.id
+    }));
+    const missingLocationCount = await prisma.asset.count({
+      where: {
+        ...assetWhere,
+        OR: [
+          { locationName: null },
+          { locationName: '' }
+        ]
+      }
+    });
+
+    // 5. Project Breakdown
+    const projectGroups = await prisma.asset.groupBy({
+      by: ['projectName'],
+      where: assetWhere,
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } }
+    });
+    const projectCounts = projectGroups.map(g => ({
+      name: g.projectName || 'Không thuộc dự án',
+      count: g._count.id
+    }));
+    const noProjectCount = await prisma.asset.count({
+      where: {
+        ...assetWhere,
+        OR: [
+          { projectName: null },
+          { projectName: '' }
+        ]
+      }
+    });
+
+    // 6. Department Breakdown
+    const departmentGroups = await prisma.asset.groupBy({
+      by: ['departmentName'],
+      where: assetWhere,
+      _count: { id: true },
+      _sum: { purchasePriceExVat: true },
+      orderBy: { _count: { id: 'desc' } }
+    });
+    const departmentStats = departmentGroups.map(g => ({
+      name: g.departmentName || 'Không xác định',
+      count: g._count.id,
+      value: hasPricePerm ? (g._sum.purchasePriceExVat || 0) : null
+    }));
+
+    // 7. Unassigned Category Breakdown
+    const unassignedCatGroups = await prisma.asset.groupBy({
+      by: ['level1Name'],
+      where: {
+        ...assetWhere,
+        status: 'IN_STOCK',
+        OR: [
+          { currentUserName: null },
+          { currentUserName: '' },
+          { currentUserName: { in: ['N/A', 'n/a'] } }
+        ]
+      },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } }
+    });
+    const unassignedCategories = unassignedCatGroups.map(g => ({
+      name: g.level1Name || 'Khác',
+      count: g._count.id
+    }));
+
+    // 8. Stock Category Breakdown
+    const stockCatGroups = await prisma.asset.groupBy({
+      by: ['level1Name'],
+      where: {
+        ...assetWhere,
+        status: 'IN_STOCK'
+      },
+      _count: { id: true },
+      orderBy: { _count: { id: 'desc' } }
+    });
+    const stockCategories = stockCatGroups.map(g => ({
+      name: g.level1Name || 'Khác',
+      count: g._count.id
+    }));
+
+    // 9. Price Breakdown
+    let financials = null;
+    if (hasPricePerm) {
+      const [totalValueRes, assignedValueRes, stockValueRes, liquidatedValueRes] = await Promise.all([
+        prisma.asset.aggregate({
+          where: assetWhere,
+          _sum: { purchasePriceExVat: true }
+        }),
+        prisma.asset.aggregate({
+          where: { ...assetWhere, status: 'ASSIGNED' },
+          _sum: { purchasePriceExVat: true }
+        }),
+        prisma.asset.aggregate({
+          where: { ...assetWhere, status: 'IN_STOCK' },
+          _sum: { purchasePriceExVat: true }
+        }),
+        prisma.asset.aggregate({
+          where: { ...assetWhere, status: { in: ['LIQUIDATED', 'DISPOSED'] } },
+          _sum: { purchasePriceExVat: true }
+        })
+      ]);
+      financials = {
+        totalValue: totalValueRes._sum.purchasePriceExVat || 0,
+        assignedValue: assignedValueRes._sum.purchasePriceExVat || 0,
+        stockValue: stockValueRes._sum.purchasePriceExVat || 0,
+        liquidatedValue: liquidatedValueRes._sum.purchasePriceExVat || 0
+      };
+    }
+
+    // 10. Age Breakdown (active assets)
+    const ageActiveWhere = {
+      ...assetWhere,
+      status: { notIn: ['LIQUIDATED', 'DISPOSED', 'LOST'] }
+    };
+    const now = new Date();
+    const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+    const threeYearsAgo = new Date(now.getFullYear() - 3, now.getMonth(), now.getDate());
+    const fiveYearsAgo = new Date(now.getFullYear() - 5, now.getMonth(), now.getDate());
+
+    const [age0_1, age1_3, age3_5, ageMoreThan5, ageUnknown] = await Promise.all([
+      prisma.asset.count({
+        where: {
+          ...ageActiveWhere,
+          purchaseDate: { gte: oneYearAgo }
+        }
+      }),
+      prisma.asset.count({
+        where: {
+          ...ageActiveWhere,
+          purchaseDate: { lt: oneYearAgo, gte: threeYearsAgo }
+        }
+      }),
+      prisma.asset.count({
+        where: {
+          ...ageActiveWhere,
+          purchaseDate: { lt: threeYearsAgo, gte: fiveYearsAgo }
+        }
+      }),
+      prisma.asset.count({
+        where: {
+          ...ageActiveWhere,
+          purchaseDate: { lt: fiveYearsAgo }
+        }
+      }),
+      prisma.asset.count({
+        where: {
+          ...ageActiveWhere,
+          purchaseDate: null
+        }
+      })
+    ]);
+
+    res.json({
+      total,
+      statusCounts,
+      unassignedCount,
+      cityCounts,
+      locationCounts,
+      missingLocationCount,
+      projectCounts,
+      noProjectCount,
+      departmentStats,
+      unassignedCategories,
+      stockCategories,
+      financials,
+      ageGroups: {
+        age0_1,
+        age1_3,
+        age3_5,
+        ageMoreThan5,
+        ageUnknown
+      }
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/dashboard/drilldown/assets
+router.get('/drilldown/assets', authenticateToken, async (req: any, res) => {
+  try {
+    const status = cleanFilterValue(req.query.status);
+    const category = cleanFilterValue(req.query.category);
+    const unassigned = req.query.unassigned === 'true';
+    const assetWhere = buildAssetWhere(req, true);
+
+    const finalWhere: any = { ...assetWhere };
+    if (status) finalWhere.status = status;
+    if (category) finalWhere.level1Name = category;
+    if (unassigned) {
+      finalWhere.status = 'IN_STOCK';
+      finalWhere.OR = [
+        { currentUserName: null },
+        { currentUserName: '' },
+        { currentUserName: { in: ['N/A', 'n/a'] } }
+      ];
+    }
+
+    const assets = await prisma.asset.findMany({
+      where: finalWhere,
+      select: {
+        assetCode: true,
+        assetName: true,
+        serialNumber: true,
+        status: true,
+        currentUserName: true,
+        locationName: true,
+        projectName: true
+      },
+      orderBy: { assetCode: 'asc' },
+      take: 200
+    });
+    res.json(assets);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/dashboard/drilldown/city
+router.get('/drilldown/city', authenticateToken, async (req: any, res) => {
+  try {
+    const city = cleanFilterValue(req.query.city);
+    if (!city) return res.status(400).json({ message: 'City is required' });
+    const assetWhere = buildAssetWhere(req, true);
+
+    const groupings = await prisma.asset.groupBy({
+      by: ['locationName', 'level1Name'],
+      where: {
+        ...assetWhere,
+        cityName: city
+      },
+      _count: { id: true }
+    });
+
+    const locationMap: Record<string, any[]> = {};
+    groupings.forEach(g => {
+      const loc = g.locationName || 'Không rõ vị trí';
+      if (!locationMap[loc]) locationMap[loc] = [];
+      locationMap[loc].push({
+        category: g.level1Name || 'Khác',
+        count: g._count.id
+      });
+    });
+
+    const result = Object.entries(locationMap).map(([location, categories]) => ({
+      location,
+      categories
+    }));
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+// GET /api/dashboard/drilldown/project
+router.get('/drilldown/project', authenticateToken, async (req: any, res) => {
+  try {
+    const project = cleanFilterValue(req.query.project);
+    if (!project) return res.status(400).json({ message: 'Project is required' });
+    const assetWhere = buildAssetWhere(req, true);
+
+    const groupings = await prisma.asset.groupBy({
+      by: ['level1Name'],
+      where: {
+        ...assetWhere,
+        projectName: project
+      },
+      _count: { id: true }
+    });
+
+    const result = groupings.map(g => ({
+      category: g.level1Name || 'Khác',
+      count: g._count.id
+    }));
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 export default router;

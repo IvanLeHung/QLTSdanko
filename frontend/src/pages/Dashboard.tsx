@@ -31,6 +31,272 @@ import { format, startOfDay, endOfDay, subDays, startOfMonth, endOfMonth, startO
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 
+const formatCurrencyShort = (value: number | null | undefined) => {
+  if (value === null || value === undefined) return 'N/A';
+  if (value >= 1e9) {
+    return `${(value / 1e9).toFixed(1)} tỷ VNĐ`;
+  }
+  if (value >= 1e6) {
+    return `${(value / 1e6).toFixed(0)} triệu VNĐ`;
+  }
+  return `${value.toLocaleString()} VNĐ`;
+};
+
+const DonutChart: React.FC<{
+  data: { label: string; value: number; color: string; statusKey?: string; isUnassigned?: boolean }[];
+  total: number;
+  onSegmentClick: (label: string, statusKey?: string, isUnassigned?: boolean) => void;
+}> = ({ data, total, onSegmentClick }) => {
+  let accumulatedAngle = 0;
+  const radius = 50;
+  const strokeWidth = 12;
+  const circumference = 2 * Math.PI * radius;
+
+  return (
+    <div className="relative flex items-center justify-center w-full h-[220px]">
+      <svg width="220" height="220" viewBox="0 0 140 140" className="transform -rotate-90">
+        <circle
+          cx="70"
+          cy="70"
+          r={radius}
+          fill="transparent"
+          stroke="#F1F5F9"
+          strokeWidth={strokeWidth}
+        />
+        {data.map((item, idx) => {
+          if (total === 0 || item.value === 0) return null;
+          const percentage = item.value / total;
+          const strokeLength = percentage * circumference;
+          const strokeOffset = circumference - strokeLength + accumulatedAngle;
+          accumulatedAngle -= strokeLength;
+
+          return (
+            <circle
+              key={idx}
+              cx="70"
+              cy="70"
+              r={radius}
+              fill="transparent"
+              stroke={item.color}
+              strokeWidth={strokeWidth}
+              strokeDasharray={circumference}
+              strokeDashoffset={strokeOffset}
+              strokeLinecap="round"
+              className="cursor-pointer transition-all duration-300 hover:opacity-85 hover:stroke-[14px]"
+              onClick={() => onSegmentClick(item.label, item.statusKey, item.isUnassigned)}
+            >
+              <title>{item.label}: {item.value} ({Math.round(percentage * 100)}%)</title>
+            </circle>
+          );
+        })}
+      </svg>
+      <div className="absolute flex flex-col items-center justify-center text-center">
+        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Tổng</span>
+        <span className="text-2xl font-black text-slate-800 tracking-tight leading-none mt-1">{total.toLocaleString()}</span>
+        <span className="text-[11px] font-bold text-slate-400 mt-0.5">Tài sản</span>
+      </div>
+    </div>
+  );
+};
+
+const AssetListDrilldownModal: React.FC<{
+  isOpen: boolean;
+  title: string;
+  loading: boolean;
+  data: any[];
+  onClose: () => void;
+}> = ({ isOpen, title, loading, data, onClose }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white rounded-[2rem] w-full max-w-4xl max-h-[85vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col m-4">
+        <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="text-xl font-black text-slate-800 flex items-center">
+            <span className="w-2.5 h-6 bg-primary-600 rounded-full mr-3 text-transparent">|</span>
+            {title}
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        <div className="p-8 overflow-y-auto flex-1">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-4">
+              <Loader2 className="h-10 w-10 text-primary-600 animate-spin" />
+              <p className="text-slate-400 font-bold uppercase tracking-wider text-xs">Đang tải dữ liệu...</p>
+            </div>
+          ) : data.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 font-medium">
+              Không tìm thấy tài sản nào.
+            </div>
+          ) : (
+            <div className="overflow-hidden border border-slate-100 rounded-2xl">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-50 border-b border-slate-100">
+                    <th className="px-6 py-3.5 text-xs font-black uppercase tracking-wider text-slate-400">Mã TS</th>
+                    <th className="px-6 py-3.5 text-xs font-black uppercase tracking-wider text-slate-400">Tên tài sản</th>
+                    <th className="px-6 py-3.5 text-xs font-black uppercase tracking-wider text-slate-400">Số Serial</th>
+                    <th className="px-6 py-3.5 text-xs font-black uppercase tracking-wider text-slate-400">Vị trí</th>
+                    <th className="px-6 py-3.5 text-xs font-black uppercase tracking-wider text-slate-400">Người dùng</th>
+                    <th className="px-6 py-3.5 text-xs font-black uppercase tracking-wider text-slate-400">Dự án</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 text-sm font-semibold text-slate-600">
+                  {data.map((asset, idx) => (
+                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="px-6 py-4 font-black text-slate-800">{asset.assetCode}</td>
+                      <td className="px-6 py-4">{asset.assetName}</td>
+                      <td className="px-6 py-4 font-mono text-xs">{asset.serialNumber || 'N/A'}</td>
+                      <td className="px-6 py-4">{asset.locationName || 'N/A'}</td>
+                      <td className="px-6 py-4">
+                        {asset.currentUserName ? (
+                          <span className="bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-lg text-xs font-bold">
+                            {asset.currentUserName}
+                          </span>
+                        ) : (
+                          <span className="bg-amber-50 text-amber-700 px-2.5 py-1 rounded-lg text-xs font-bold">
+                            Chưa cấp
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4">{asset.projectName || 'N/A'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-xs font-bold text-slate-400">
+          <span>Hiển thị tối đa 200 tài sản</span>
+          <button onClick={onClose} className="bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-colors">
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const CityDrilldownModal: React.FC<{
+  isOpen: boolean;
+  title: string;
+  loading: boolean;
+  data: { location: string; categories: { category: string; count: number }[] }[];
+  onClose: () => void;
+}> = ({ isOpen, title, loading, data, onClose }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[85vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col m-4">
+        <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="text-xl font-black text-slate-800 flex items-center">
+            <span className="w-2.5 h-6 bg-indigo-600 rounded-full mr-3 text-transparent">|</span>
+            Chi tiết thành phố: {title}
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        <div className="p-8 overflow-y-auto flex-1 space-y-6">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-4">
+              <Loader2 className="h-10 w-10 text-indigo-600 animate-spin" />
+              <p className="text-slate-400 font-bold uppercase tracking-wider text-xs">Đang tải chi tiết...</p>
+            </div>
+          ) : data.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 font-medium">
+              Không có dữ liệu văn phòng.
+            </div>
+          ) : (
+            data.map((item, idx) => (
+              <div key={idx} className="bg-slate-50 border border-slate-100 rounded-2xl p-6 space-y-4">
+                <h4 className="text-base font-black text-slate-800 flex items-center justify-between">
+                  <span>📍 {item.location}</span>
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-3 py-1 rounded-full">
+                    {item.categories.reduce((sum, c) => sum + c.count, 0)} tài sản
+                  </span>
+                </h4>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {item.categories.map((c, cIdx) => (
+                    <div key={cIdx} className="bg-white border border-slate-100 rounded-xl p-3 flex justify-between items-center">
+                      <span className="text-xs font-bold text-slate-500">{c.category}</span>
+                      <span className="text-xs font-black text-slate-800">{c.count}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+        <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-end">
+          <button onClick={onClose} className="bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-colors font-bold text-sm">
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const ProjectDrilldownModal: React.FC<{
+  isOpen: boolean;
+  title: string;
+  loading: boolean;
+  data: { category: string; count: number }[];
+  onClose: () => void;
+}> = ({ isOpen, title, loading, data, onClose }) => {
+  if (!isOpen) return null;
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-900/60 backdrop-blur-sm animate-fadeIn">
+      <div className="bg-white rounded-[2rem] w-full max-w-lg max-h-[85vh] overflow-hidden shadow-2xl border border-slate-100 flex flex-col m-4">
+        <div className="px-8 py-6 border-b border-slate-100 flex justify-between items-center">
+          <h3 className="text-xl font-black text-slate-800 flex items-center">
+            <span className="w-2.5 h-6 bg-emerald-600 rounded-full mr-3 text-transparent">|</span>
+            Chi tiết dự án: {title}
+          </h3>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-full text-slate-400 hover:text-slate-600 transition-colors">
+            <X className="h-6 w-6" />
+          </button>
+        </div>
+        <div className="p-8 overflow-y-auto flex-1 space-y-4">
+          {loading ? (
+            <div className="flex flex-col items-center justify-center py-20 space-y-4">
+              <Loader2 className="h-10 w-10 text-emerald-600 animate-spin" />
+              <p className="text-slate-400 font-bold uppercase tracking-wider text-xs">Đang tải chi tiết...</p>
+            </div>
+          ) : data.length === 0 ? (
+            <div className="text-center py-20 text-slate-400 font-medium">
+              Không có dữ liệu thiết bị cho dự án này.
+            </div>
+          ) : (
+            <div className="bg-slate-50 border border-slate-100 rounded-2xl p-6 space-y-3">
+              <div className="flex justify-between items-center border-b border-slate-200 pb-2">
+                <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Nhóm thiết bị</span>
+                <span className="text-xs font-black uppercase text-slate-400 tracking-wider">Số lượng</span>
+              </div>
+              <div className="divide-y divide-slate-150">
+                {data.map((c, idx) => (
+                  <div key={idx} className="flex justify-between items-center py-3">
+                    <span className="text-sm font-bold text-slate-600">{c.category}</span>
+                    <span className="text-sm font-black text-slate-800 bg-white border border-slate-200 rounded-lg px-2.5 py-1 min-w-[40px] text-center">{c.count}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="px-8 py-5 bg-slate-50 border-t border-slate-100 flex justify-end">
+          <button onClick={onClose} className="bg-white border border-slate-200 text-slate-700 px-5 py-2.5 rounded-xl hover:bg-slate-50 transition-colors font-bold text-sm">
+            Đóng
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const navigate = useNavigate();
@@ -127,6 +393,53 @@ export const Dashboard: React.FC = () => {
   const [activities, setActivities] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Real-time Dashboard Upgrade States
+  const [advancedStats, setAdvancedStats] = useState<any>(null);
+  const [currentTime, setCurrentTime] = useState(new Date());
+  const [drilldownModal, setDrilldownModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    type: 'assets' | 'city' | 'project';
+    params: any;
+  }>({
+    isOpen: false,
+    title: '',
+    type: 'assets',
+    params: null
+  });
+  const [drilldownData, setDrilldownData] = useState<any[]>([]);
+  const [drilldownLoading, setDrilldownLoading] = useState(false);
+
+  // Real-time clock effect
+  useEffect(() => {
+    const timer = setInterval(() => {
+      setCurrentTime(new Date());
+    }, 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const openDrilldown = async (title: string, type: 'assets' | 'city' | 'project', params: any) => {
+    setDrilldownModal({ isOpen: true, title, type, params });
+    setDrilldownData([]);
+    setDrilldownLoading(true);
+    try {
+      let url = '';
+      if (type === 'assets') {
+        url = `/dashboard/drilldown/assets`;
+      } else if (type === 'city') {
+        url = `/dashboard/drilldown/city`;
+      } else if (type === 'project') {
+        url = `/dashboard/drilldown/project`;
+      }
+      const res = await api.get(url, { params });
+      setDrilldownData(res.data);
+    } catch (err) {
+      console.error("Failed to fetch drilldown data", err);
+    } finally {
+      setDrilldownLoading(false);
+    }
+  };
+
   // Load Metadata
   useEffect(() => {
     const fetchMetadata = async () => {
@@ -168,12 +481,13 @@ export const Dashboard: React.FC = () => {
         endDate: format(dailyMonthEnd, 'yyyy-MM-dd')
       };
 
-      const [summaryRes, statsRes, dailyStatsRes, actionItemsRes, activitiesRes] = await Promise.all([
+      const [summaryRes, statsRes, dailyStatsRes, actionItemsRes, activitiesRes, advancedRes] = await Promise.all([
         api.get('/dashboard/summary', { params }).catch(err => { console.error(err); return { data: null }; }),
         api.get('/dashboard/activity-stats', { params }).catch(err => { console.error(err); return { data: null }; }),
         api.get('/dashboard/activity-daily-stats', { params: dailyParams }).catch(err => { console.error(err); return { data: [] }; }),
         api.get('/dashboard/action-items', { params }).catch(err => { console.error(err); return { data: null }; }),
-        api.get('/dashboard/recent-activities', { params }).catch(err => { console.error(err); return { data: [] }; })
+        api.get('/dashboard/recent-activities', { params }).catch(err => { console.error(err); return { data: [] }; }),
+        api.get('/dashboard/advanced-stats', { params }).catch(err => { console.error(err); return { data: null }; })
       ]);
 
       if (summaryRes.data) setSummary(summaryRes.data);
@@ -181,6 +495,7 @@ export const Dashboard: React.FC = () => {
       setDailyStats(Array.isArray(dailyStatsRes.data) ? dailyStatsRes.data : []);
       if (actionItemsRes.data) setActionItems(actionItemsRes.data);
       if (activitiesRes.data) setActivities(activitiesRes.data);
+      if (advancedRes && advancedRes.data) setAdvancedStats(advancedRes.data);
     } catch (err) {
       console.error("Failed to fetch dashboard data", err);
     } finally {
@@ -1023,178 +1338,582 @@ export const Dashboard: React.FC = () => {
         )}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        {/* LEFT COLUMN: FINANCIALS & ACTION ITEMS */}
-        <div className="lg:col-span-2 space-y-8">
-          
-          {/* FINANCIAL OVERVIEW (Show only if user has permission) */}
-          {hasPricePermission && (
-            <div className="bg-slate-900 rounded-[2.5rem] p-10 text-white relative overflow-hidden shadow-2xl">
-              <div className="absolute top-0 right-0 p-12 opacity-5"><DollarSign className="h-64 w-64" /></div>
-              <div className="relative z-10 space-y-8">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-xs font-black uppercase tracking-widest text-slate-400">Giá trị sổ sách tài sản</h3>
-                  <span className="text-xs font-bold text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full">Tổng nguyên giá</span>
-                </div>
-                <div>
-                  <p className="text-5xl font-black tracking-tighter mb-2">{safeSummary.totalValue?.toLocaleString()} <span className="text-2xl text-slate-500 font-medium">VNĐ</span></p>
-                  <div className="flex items-center space-x-4">
-                    <div className="flex items-center text-emerald-400 text-sm font-bold">
-                      <TrendingUp className="h-4 w-4 mr-1" /> Vận hành ổn định
-                    </div>
-                  </div>
-                </div>
-                <div className="grid grid-cols-3 gap-6 pt-6 border-t border-slate-800">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Khấu hao lũy kế</p>
-                    <p className="text-lg font-bold text-amber-400">{safeSummary.depreciatedValue ? Math.round(safeSummary.depreciatedValue).toLocaleString() : 0} VNĐ</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Giá trị còn lại</p>
-                    <p className="text-lg font-bold text-emerald-400">{safeSummary.remainingValue ? Math.round(safeSummary.remainingValue).toLocaleString() : 0} VNĐ</p>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-1">Đã thanh lý / mất</p>
-                    <p className="text-lg font-bold text-rose-400">{safeSummary.liquidated + safeSummary.lost} tài sản</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ACTION ITEMS ("VIỆC CẦN XỬ LÝ") */}
-          {actionList.length > 0 ? (
-            <div className="bg-amber-50/50 rounded-[2.5rem] p-8 border border-amber-100 shadow-sm space-y-6">
-              <div className="flex items-center space-x-2">
-                <AlertCircle className="h-6 w-6 text-amber-600" />
-                <h3 className="text-lg font-[800] text-amber-800 tracking-tight">Việc cần xử lý ngay</h3>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {actionList.map((item, idx) => (
-                  <div 
-                    key={idx}
-                    onClick={() => navigate(item.path + buildQueryString(item.params))}
-                    className="flex items-center justify-between p-5 bg-white border border-slate-100 rounded-3xl cursor-pointer hover:border-amber-400 hover:shadow-md transition-all group"
-                  >
-                    <div className="flex items-center space-x-4">
-                      <div className={`p-3 rounded-2xl shrink-0 ${item.color}`}>
-                        <item.icon className="h-5 w-5" />
-                      </div>
-                      <span className="text-sm font-bold text-slate-700 leading-snug group-hover:text-primary-600 transition-colors">
-                        {item.label}
-                      </span>
-                    </div>
-                    <span className="bg-amber-600 text-white font-black text-sm px-3.5 py-1.5 rounded-full shrink-0">
-                      {item.count}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div className="bg-emerald-50/40 rounded-[2.5rem] p-8 border border-emerald-100/50 text-center space-y-3">
-              <FileCheck className="h-10 w-10 text-emerald-500 mx-auto" />
-              <h4 className="text-emerald-800 font-[800] text-base">Hệ thống vận hành tốt</h4>
-              <p className="text-emerald-600/80 text-sm font-medium">Hiện không có công việc hoặc sự vụ nào cần xử lý khẩn cấp.</p>
-            </div>
-          )}
-
-          {/* DISTRIBUTION */}
-          <div className="bg-white rounded-[2.5rem] p-10 border border-slate-200 shadow-sm">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-lg font-[800] text-slate-800 flex items-center tracking-tight">
-                <Activity className="mr-3 h-6 w-6 text-primary-600" />
-                Phân bổ tài sản đang sử dụng
-              </h3>
-              <button 
-                onClick={() => navigate('/assets')}
-                className="text-xs font-black text-slate-400 uppercase tracking-widest hover:text-primary-600 transition-colors"
-              >
-                Xem chi tiết
-              </button>
-            </div>
-            
-            <div className="space-y-6">
-              {[
-                { name: 'Khối Văn phòng', count: Math.round(safeSummary.assigned * 0.4), color: 'bg-primary-500' },
-                { name: 'Khối Dự án', count: Math.round(safeSummary.assigned * 0.5), color: 'bg-emerald-500' },
-                { name: 'Ban Quản lý', count: Math.round(safeSummary.assigned * 0.1), color: 'bg-amber-500' },
-              ].map((item) => (
-                <div key={item.name} className="space-y-2">
-                  <div className="flex justify-between text-sm">
-                    <span className="font-bold text-slate-700">{item.name}</span>
-                    <span className="font-bold text-slate-400">{item.count} TS</span>
-                  </div>
-                  <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
-                    <div 
-                      className={`h-full ${item.color} rounded-full`} 
-                      style={{ width: `${safeSummary.totalAssets > 0 ? (item.count / safeSummary.totalAssets) * 100 : 0}%` }}
-                    ></div>
-                  </div>
-                </div>
-              ))}
-            </div>
+      {/* ADVANCED PHÂN BỔ & KHAI THÁC DASHBOARD */}
+      <div className="border-t border-slate-100 pt-8 mt-12 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div className="flex items-center space-x-2">
+            <div className="w-1.5 h-6 bg-primary-600 rounded-full" />
+            <h2 className="text-xl font-[800] text-slate-800 tracking-tight">Khai thác & Phân bổ tài sản</h2>
+          </div>
+          <div className="text-xs text-slate-500 font-bold bg-slate-100 border border-slate-200 px-4 py-2 rounded-2xl flex items-center self-start">
+            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 mr-2 animate-pulse"></span>
+            Real-time: {format(currentTime, 'dd/MM/yyyy HH:mm:ss')} • Nguồn: Sổ tài sản
           </div>
         </div>
 
-        {/* RIGHT COLUMN: RECENT ACTIVITY & INVENTORY */}
-        <div className="space-y-8">
-          <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col h-full">
-            <div className="flex items-center justify-between mb-8">
-              <h3 className="text-lg font-[800] text-slate-800 flex items-center tracking-tight">
-                <TrendingUp className="mr-3 h-6 w-6 text-primary-600" />
-                Hoạt động gần đây
-              </h3>
-            </div>
+        {(() => {
+          const safeAdvanced = advancedStats || {
+            total: 0,
+            statusCounts: {},
+            unassignedCount: 0,
+            cityCounts: [],
+            locationCounts: [],
+            missingLocationCount: 0,
+            projectCounts: [],
+            noProjectCount: 0,
+            departmentStats: [],
+            unassignedCategories: [],
+            stockCategories: [],
+            financials: null,
+            ageGroups: { age0_1: 0, age1_3: 0, age3_5: 0, ageMoreThan5: 0, ageUnknown: 0 }
+          };
 
-            <div className="space-y-6 overflow-y-auto max-h-[480px] pr-2">
-              {cleanLogs.length > 0 ? (
-                cleanLogs.map((log: any) => (
-                  <div key={log.id} className="flex space-x-4 group">
-                    <div className={`mt-1 w-2.5 h-2.5 rounded-full shrink-0 ${
-                      log.action === 'CREATE' ? 'bg-emerald-500' : 
-                      log.action === 'UPDATE' ? 'bg-amber-500' : 'bg-primary-500'
-                    }`}></div>
-                    <div className="space-y-1">
-                      <p className="text-sm font-bold text-slate-800 leading-snug group-hover:text-primary-600 transition-colors">
-                        {log.performedBy} <span className="text-slate-400 font-medium">đã {log.actionVn || log.action}</span> {log.description || `${log.entityVn || log.entityType} #${log.entityId}`}
-                      </p>
-                      <p className="text-[11px] font-bold text-slate-300 uppercase tracking-widest">
-                        {format(new Date(log.createdAt), 'HH:mm • dd/MM/yyyy')}
-                      </p>
+          const totalAssigned = safeAdvanced.statusCounts['ASSIGNED'] || 0;
+          const totalInStock = safeAdvanced.statusCounts['IN_STOCK'] || 0;
+          const totalUnassigned = safeAdvanced.unassignedCount || 0;
+
+          const donutData = [
+            { label: 'Đang sử dụng', value: totalAssigned, color: '#10B981', statusKey: 'ASSIGNED' },
+            { label: 'Trong kho', value: totalInStock, color: '#0EA5E9', statusKey: 'IN_STOCK' },
+            { label: 'Chưa chỉ định', value: totalUnassigned, color: '#F59E0B', isUnassigned: true }
+          ];
+
+          return (
+            <div className="space-y-8">
+              {/* ROW 1: Donut (Card 1) & Tình trạng sử dụng (Card 2) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* CARD 1: TỔNG QUAN PHÂN BỐ (DONUT CHART) */}
+                <div className="lg:col-span-5 bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
+                      <TrendingUp className="mr-2 h-5 w-5 text-primary-600" />
+                      Phân bố tài sản
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold mb-4">Nhấp vào từng phân đoạn biểu đồ để xem danh sách tài sản chi tiết</p>
+                  </div>
+
+                  <DonutChart 
+                    data={donutData} 
+                    total={safeAdvanced.total} 
+                    onSegmentClick={(label, statusKey, isUnassigned) => {
+                      openDrilldown(label, 'assets', { status: statusKey, unassigned: isUnassigned ? 'true' : undefined });
+                    }} 
+                  />
+
+                  <div className="grid grid-cols-3 gap-2 mt-4 pt-4 border-t border-slate-100">
+                    <div 
+                      onClick={() => openDrilldown('Đang sử dụng', 'assets', { status: 'ASSIGNED' })}
+                      className="cursor-pointer hover:bg-slate-50 p-2 rounded-xl text-center transition-colors"
+                    >
+                      <div className="flex items-center justify-center space-x-1.5 mb-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#10B981] shrink-0" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sử dụng</span>
+                      </div>
+                      <span className="text-sm font-black text-slate-800">{totalAssigned.toLocaleString()}</span>
+                    </div>
+
+                    <div 
+                      onClick={() => openDrilldown('Trong kho', 'assets', { status: 'IN_STOCK' })}
+                      className="cursor-pointer hover:bg-slate-50 p-2 rounded-xl text-center transition-colors"
+                    >
+                      <div className="flex items-center justify-center space-x-1.5 mb-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#0EA5E9] shrink-0" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trong kho</span>
+                      </div>
+                      <span className="text-sm font-black text-slate-800">{totalInStock.toLocaleString()}</span>
+                    </div>
+
+                    <div 
+                      onClick={() => openDrilldown('Chưa chỉ định', 'assets', { unassigned: 'true' })}
+                      className="cursor-pointer hover:bg-slate-50 p-2 rounded-xl text-center transition-colors"
+                    >
+                      <div className="flex items-center justify-center space-x-1.5 mb-1">
+                        <span className="w-2.5 h-2.5 rounded-full bg-[#F59E0B] shrink-0" />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Chưa gán</span>
+                      </div>
+                      <span className="text-sm font-black text-slate-800">{totalUnassigned.toLocaleString()}</span>
                     </div>
                   </div>
-                ))
-              ) : (
-                <p className="text-sm text-slate-400 font-medium text-center py-10">Không tìm thấy hoạt động nào.</p>
-              )}
-            </div>
+                  
+                  <div className="mt-3 text-center">
+                    <button 
+                      onClick={() => navigate('/assets')}
+                      className="text-xs font-black text-primary-600 hover:text-primary-700 hover:underline uppercase tracking-wider"
+                    >
+                      Xem chi tiết →
+                    </button>
+                  </div>
+                </div>
 
-            <button 
-              onClick={() => navigate('/activity-logs')}
-              className="mt-8 w-full py-4 bg-slate-50 rounded-2xl text-xs font-black text-slate-500 uppercase tracking-widest hover:bg-slate-100 transition-all flex items-center justify-center group"
-            >
-              Xem toàn bộ nhật ký <ChevronRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-all" />
-            </button>
+                {/* CARD 2: TÌNH TRẠNG SỬ DỤNG */}
+                <div className="lg:col-span-7 bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
+                      <Archive className="mr-2 h-5 w-5 text-indigo-600" />
+                      Tình trạng sử dụng
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Thống kê chi tiết tài sản theo trạng thái vận hành của doanh nghiệp</p>
+                  </div>
+
+                  <div className="space-y-5">
+                    {[
+                      { name: 'Đang sử dụng', count: safeAdvanced.statusCounts['ASSIGNED'] || 0, color: 'bg-emerald-500', statusKey: 'ASSIGNED' },
+                      { name: 'Trong kho', count: safeAdvanced.statusCounts['IN_STOCK'] || 0, color: 'bg-sky-500', statusKey: 'IN_STOCK' },
+                      { name: 'Đang sửa chữa', count: safeAdvanced.statusCounts['UNDER_REPAIR'] || 0, color: 'bg-amber-500', statusKey: 'UNDER_REPAIR' },
+                      { name: 'Thanh lý', count: (safeAdvanced.statusCounts['LIQUIDATED'] || 0) + (safeAdvanced.statusCounts['DISPOSED'] || 0), color: 'bg-slate-500', statusKey: 'LIQUIDATED' },
+                      { name: 'Mất / Thất thoát', count: safeAdvanced.statusCounts['LOST'] || 0, color: 'bg-rose-500', statusKey: 'LOST' }
+                    ].map((item) => {
+                      const pct = safeAdvanced.total > 0 ? (item.count / safeAdvanced.total) * 100 : 0;
+                      return (
+                        <div 
+                          key={item.name} 
+                          className="space-y-1.5 cursor-pointer group"
+                          onClick={() => openDrilldown(item.name, 'assets', { status: item.statusKey })}
+                        >
+                          <div className="flex justify-between items-center text-sm">
+                            <span className="font-bold text-slate-700 group-hover:text-primary-600 transition-colors">{item.name}</span>
+                            <span className="font-black text-slate-800">{item.count.toLocaleString()} TS <span className="text-xs text-slate-400 font-medium">({Math.round(pct)}%)</span></span>
+                          </div>
+                          <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
+                            <div 
+                              className={`h-full ${item.color} rounded-full transition-all duration-500`}
+                              style={{ width: `${pct}%` }}
+                            ></div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+
+              {/* ROW 2: Tồn kho chi tiết (Card 8) & Chưa phân bổ (Card 7) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* CARD 8: TỒN KHO CHI TIẾT */}
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="text-base font-[800] text-slate-800 flex items-center">
+                        <Package className="mr-2 h-5 w-5 text-sky-600" />
+                        Tồn kho ({totalInStock.toLocaleString()} thiết bị)
+                      </h3>
+                      <button 
+                        onClick={() => openDrilldown('Tài sản trong kho', 'assets', { status: 'IN_STOCK' })}
+                        className="text-xs font-black text-slate-400 hover:text-primary-600 uppercase tracking-wider"
+                      >
+                        Xem danh sách →
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Chi tiết thiết bị hiện có trong kho sẵn sàng cấp phát theo loại</p>
+                  </div>
+
+                  <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
+                    {safeAdvanced.stockCategories.length === 0 ? (
+                      <p className="text-sm font-medium text-slate-400 text-center py-10">Không có thiết bị trong kho</p>
+                    ) : (
+                      safeAdvanced.stockCategories.map((c: any) => (
+                        <div 
+                          key={c.name}
+                          onClick={() => openDrilldown(`${c.name} trong kho`, 'assets', { status: 'IN_STOCK', category: c.name })}
+                          className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-100 rounded-2xl cursor-pointer transition-all"
+                        >
+                          <span className="text-xs font-bold text-slate-600">{c.name}</span>
+                          <span className="text-xs font-black text-slate-800 bg-white border border-slate-200 px-3 py-1 rounded-lg">
+                            {c.count} cái
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* CARD 7: CHƯA PHÂN BỔ */}
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <div className="flex justify-between items-start mb-2">
+                      <h3 className="text-base font-[800] text-slate-800 flex items-center">
+                        <AlertTriangle className="mr-2 h-5 w-5 text-amber-500" />
+                        Chưa phân bổ ({totalUnassigned.toLocaleString()} tài sản)
+                      </h3>
+                      <button 
+                        onClick={() => navigate('/assets', { state: { allocationFilter: 'UNASSIGNED' } })}
+                        className="text-xs font-black text-amber-600 hover:text-amber-700 uppercase tracking-widest font-black"
+                      >
+                        [Phân bổ ngay]
+                      </button>
+                    </div>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Thiết bị lưu kho chưa được bàn giao cho nhân sự sử dụng</p>
+                  </div>
+
+                  <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
+                    {safeAdvanced.unassignedCategories.length === 0 ? (
+                      <div className="text-center py-8 bg-emerald-50 rounded-2xl border border-emerald-100 text-emerald-800 font-bold text-xs">
+                        🎉 Đã phân bổ toàn bộ tài sản trong kho!
+                      </div>
+                    ) : (
+                      safeAdvanced.unassignedCategories.map((c: any) => (
+                        <div 
+                          key={c.name}
+                          onClick={() => openDrilldown(`${c.name} chưa phân bổ`, 'assets', { unassigned: 'true', category: c.name })}
+                          className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-100 rounded-2xl cursor-pointer transition-all"
+                        >
+                          <span className="text-xs font-bold text-slate-600">{c.name}</span>
+                          <span className="text-xs font-black text-amber-700 bg-amber-50 border border-amber-100 px-3 py-1 rounded-lg">
+                            {c.count} cái
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ROW 3: Thành phố (Card 3) & Vị trí (Card 4) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* CARD 3: TÀI SẢN THEO KHU VỰC (THÀNH PHỐ / CHI NHÁNH) */}
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
+                      <Filter className="mr-2 h-5 w-5 text-indigo-600" />
+                      Tài sản theo khu vực (Tổng: {safeAdvanced.cityCounts.filter((c: any) => c.name !== 'Không xác định').length} thành phố)
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Click vào từng thành phố để xem chi tiết kho và văn phòng nhánh</p>
+                  </div>
+
+                  <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
+                    {safeAdvanced.cityCounts.length === 0 ? (
+                      <p className="text-sm font-medium text-slate-400 text-center py-10">Không có dữ liệu thành phố</p>
+                    ) : (
+                      safeAdvanced.cityCounts.map((city: any) => {
+                        const maxCount = Math.max(...safeAdvanced.cityCounts.map((c: any) => c.count), 1);
+                        const pct = (city.count / maxCount) * 100;
+                        return (
+                          <div 
+                            key={city.name}
+                            onClick={() => openDrilldown(city.name, 'city', { city: city.name })}
+                            className="space-y-1.5 cursor-pointer group"
+                          >
+                            <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                              <span className="group-hover:text-primary-600 transition-colors">{city.name}</span>
+                              <span className="font-black text-slate-800">{city.count.toLocaleString()} TS</span>
+                            </div>
+                            <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }}></div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
+                {/* CARD 4: VỊ TRÍ TÀI SẢN */}
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
+                      <Calendar className="mr-2 h-5 w-5 text-sky-600" />
+                      Vị trí tài sản
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Danh sách kho chứa, tầng làm việc và các vị trí lưu trữ thực tế</p>
+                  </div>
+
+                  <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
+                    {/* Cảnh báo Không rõ vị trí */}
+                    {safeAdvanced.missingLocationCount > 0 && (
+                      <div 
+                        onClick={() => openDrilldown('Không rõ vị trí', 'assets', { locationName: '' })}
+                        className="flex items-center justify-between p-3.5 bg-rose-50 border border-rose-100 text-rose-700 rounded-2xl cursor-pointer hover:bg-rose-100 transition-colors animate-pulse"
+                      >
+                        <span className="text-xs font-black flex items-center">
+                          <AlertTriangle className="mr-2 h-4 w-4 text-rose-500" />
+                          Không rõ vị trí (Dữ liệu thiếu)
+                        </span>
+                        <span className="text-xs font-black bg-white border border-rose-200 px-3 py-1 rounded-lg">
+                          {safeAdvanced.missingLocationCount} TS ⚠️
+                        </span>
+                      </div>
+                    )}
+
+                    {safeAdvanced.locationCounts.length === 0 ? (
+                      <p className="text-sm font-medium text-slate-400 text-center py-10">Không có dữ liệu vị trí</p>
+                    ) : (
+                      safeAdvanced.locationCounts
+                        .filter((l: any) => l.name !== 'Không xác định')
+                        .map((l: any) => (
+                          <div 
+                            key={l.name}
+                            onClick={() => openDrilldown(l.name, 'assets', { locationName: l.name })}
+                            className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-100 rounded-xl cursor-pointer transition-colors"
+                          >
+                            <span className="text-xs font-bold text-slate-600">📍 {l.name}</span>
+                            <span className="text-xs font-black text-slate-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                              {l.count} TS
+                            </span>
+                          </div>
+                        ))
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ROW 4: Phòng ban (Card 6) & Dự án (Card 5) */}
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                {/* CARD 6: THEO PHÒNG BAN */}
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
+                      <UserCheck className="mr-2 h-5 w-5 text-emerald-600" />
+                      Theo phòng ban
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Thống kê số lượng sử dụng và nguyên giá tài sản thuộc phòng ban quản lý</p>
+                  </div>
+
+                  <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
+                    {safeAdvanced.departmentStats.length === 0 ? (
+                      <p className="text-sm font-medium text-slate-400 text-center py-10">Không có dữ liệu phòng ban</p>
+                    ) : (
+                      safeAdvanced.departmentStats.map((dept: any) => (
+                        <div 
+                          key={dept.name}
+                          onClick={() => openDrilldown(`Phòng ban: ${dept.name}`, 'assets', { departmentName: dept.name })}
+                          className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-100 rounded-2xl cursor-pointer transition-colors"
+                        >
+                          <span className="text-xs font-bold text-slate-600">👥 {dept.name}</span>
+                          <div className="text-right">
+                            <span className="text-xs font-black text-slate-800 block">{dept.count} TS</span>
+                            {hasPricePermission && dept.value !== null && (
+                              <span className="text-[10px] font-black text-emerald-600 tracking-wider">
+                                {formatCurrencyShort(dept.value)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+                {/* CARD 5: DỰ ÁN SỬ DỤNG */}
+                <div className="bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
+                      <LayoutDashboard className="mr-2 h-5 w-5 text-indigo-600" />
+                      Dự án sử dụng
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Số lượng thiết bị phân phối riêng cho các khối dự án vận hành</p>
+                  </div>
+
+                  <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
+                    {safeAdvanced.noProjectCount > 0 && (
+                      <div 
+                        onClick={() => openDrilldown('Tài sản không thuộc dự án', 'assets', { projectName: '' })}
+                        className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-100 rounded-xl cursor-pointer transition-colors"
+                      >
+                        <span className="text-xs font-bold text-slate-505">🏢 Không thuộc dự án</span>
+                        <span className="text-xs font-black text-slate-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
+                          {safeAdvanced.noProjectCount} TS
+                        </span>
+                      </div>
+                    )}
+
+                    {safeAdvanced.projectCounts.length === 0 ? (
+                      <p className="text-sm font-medium text-slate-400 text-center py-10">Không có dữ liệu dự án</p>
+                    ) : (
+                      safeAdvanced.projectCounts
+                        .filter((p: any) => p.name !== 'Không thuộc dự án' && p.name !== 'Không xác định')
+                        .map((p: any) => {
+                          const maxCount = Math.max(...safeAdvanced.projectCounts.map((c: any) => c.count), 1);
+                          const pct = (p.count / maxCount) * 100;
+                          return (
+                            <div 
+                              key={p.name}
+                              onClick={() => openDrilldown(p.name, 'project', { project: p.name })}
+                              className="space-y-1.5 cursor-pointer group"
+                            >
+                              <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                                <span className="group-hover:text-primary-600 transition-colors">🚀 {p.name}</span>
+                                <span className="font-black text-slate-800">{p.count.toLocaleString()} TS</span>
+                              </div>
+                              <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
+                                <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }}></div>
+                              </div>
+                            </div>
+                          );
+                        })
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {/* ROW 5: Giá trị & tuổi đời TS (Card 9 & Card 10) */}
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
+                {/* CARD 9: GIÁ TRỊ TÀI SẢN */}
+                {hasPricePermission && safeAdvanced.financials ? (
+                  <div className="lg:col-span-6 bg-slate-900 rounded-[2.5rem] p-8 text-white relative overflow-hidden shadow-2xl flex flex-col justify-between">
+                    <div className="absolute top-0 right-0 p-8 opacity-5"><DollarSign className="h-48 w-48" /></div>
+                    <div className="relative z-10 space-y-4">
+                      <div className="flex items-center justify-between">
+                        <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center">
+                          <DollarSign className="mr-2.5 h-4 w-4 text-emerald-400" />
+                          Giá trị tài sản
+                        </h3>
+                        <span className="text-[10px] font-black text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full uppercase tracking-wider">Tổng nguyên giá</span>
+                      </div>
+                      <div>
+                        <p className="text-4xl font-black tracking-tight">{formatCurrencyShort(safeAdvanced.financials.totalValue)}</p>
+                        <p className="text-xs text-slate-500 font-semibold mt-1">Giá trị nguyên giá của toàn bộ tài sản sổ sách hiện hành</p>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2 pt-6 mt-6 border-t border-slate-800">
+                      <div>
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Sử dụng</p>
+                        <p className="text-xs font-bold text-emerald-400">{formatCurrencyShort(safeAdvanced.financials.assignedValue)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Trong kho</p>
+                        <p className="text-xs font-bold text-sky-400">{formatCurrencyShort(safeAdvanced.financials.stockValue)}</p>
+                      </div>
+                      <div>
+                        <p className="text-[9px] font-black text-slate-500 uppercase tracking-widest mb-1.5">Thanh lý</p>
+                        <p className="text-xs font-bold text-slate-400">{formatCurrencyShort(safeAdvanced.financials.liquidatedValue)}</p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="lg:col-span-6 bg-slate-800 rounded-[2.5rem] p-8 text-white relative overflow-hidden flex flex-col justify-center items-center text-center">
+                    <ShieldAlert className="h-10 w-10 text-amber-400 mb-2" />
+                    <h4 className="text-sm font-black">Giá trị tài sản bảo mật</h4>
+                    <p className="text-xs text-slate-400 max-w-xs mt-1">Yêu cầu quyền hạn đặc biệt để xem dữ liệu định giá và báo cáo tài chính tài sản.</p>
+                  </div>
+                )}
+
+                {/* CARD 10: TUỔI ĐỜI & THAY THẾ THIẾT BỊ */}
+                <div className="lg:col-span-6 bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col justify-between">
+                  <div>
+                    <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
+                      <Clock className="mr-2 h-5 w-5 text-indigo-600" />
+                      Tuổi đời thiết bị
+                    </h3>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Thống kê vòng đời sử dụng dựa trên ngày mua sắm của thiết bị hoạt động</p>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+                    {[
+                      { range: '0 - 1 năm', count: safeAdvanced.ageGroups.age0_1, color: 'bg-emerald-500' },
+                      { range: '1 - 3 năm', count: safeAdvanced.ageGroups.age1_3, color: 'bg-indigo-500' },
+                      { range: '3 - 5 năm', count: safeAdvanced.ageGroups.age3_5, color: 'bg-amber-500' },
+                      { range: '> 5 năm', count: safeAdvanced.ageGroups.ageMoreThan5, color: 'bg-rose-500', isCritical: true }
+                    ].map((age, idx) => (
+                      <div key={idx} className="bg-slate-50 border border-slate-100 rounded-2xl p-4 flex flex-col justify-between h-[95px] relative overflow-hidden">
+                        <div className="absolute top-0 left-0 w-1 h-full font-black text-slate-200" style={{ backgroundColor: age.isCritical ? '#EF4444' : undefined }} />
+                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{age.range}</span>
+                        <div className="flex items-baseline space-x-1 mt-2">
+                          <span className={`text-2xl font-black ${age.isCritical ? 'text-rose-600' : 'text-slate-800'}`}>{age.count}</span>
+                          <span className="text-[10px] font-bold text-slate-400">TS</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+
+                  {safeAdvanced.ageGroups.ageMoreThan5 > 0 && (
+                    <div 
+                      onClick={() => openDrilldown('Thiết bị cần xem xét thay thế (>5 năm)', 'assets', { status: 'ALL' })}
+                      className="mt-4 flex items-center p-3 bg-amber-50 border border-amber-100 text-amber-800 rounded-xl text-[11px] font-bold cursor-pointer hover:bg-amber-100 transition-colors shrink-0"
+                    >
+                      <AlertTriangle className="mr-2 h-4 w-4 text-amber-600 shrink-0" />
+                      Có {safeAdvanced.ageGroups.ageMoreThan5} thiết bị sử dụng trên 5 năm cần xem xét thay thế 🔄
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* ORIGINAL LOWER DETAIL SECTIONS (RECENT LOGS & INVENTORY LINKS IN ROW) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-12">
+        {/* RECENT ACTIVITIES */}
+        <div className="lg:col-span-2 bg-white rounded-[2.5rem] p-8 border border-slate-200 shadow-sm flex flex-col h-full">
+          <div className="flex items-center justify-between mb-8">
+            <h3 className="text-lg font-[800] text-slate-800 flex items-center tracking-tight">
+              <TrendingUp className="mr-3 h-6 w-6 text-primary-600" />
+              Hoạt động gần đây
+            </h3>
           </div>
 
-          {/* INVENTORY CARD */}
-          <div className="bg-emerald-600 rounded-[2.5rem] p-8 text-white shadow-xl shadow-emerald-200">
+          <div className="space-y-6 overflow-y-auto max-h-[380px] pr-2">
+            {cleanLogs.length > 0 ? (
+              cleanLogs.map((log: any) => (
+                <div key={log.id} className="flex space-x-4 group">
+                  <div className={`mt-1.5 w-2.5 h-2.5 rounded-full shrink-0 ${
+                    log.action === 'CREATE' ? 'bg-emerald-500' : 
+                    log.action === 'UPDATE' ? 'bg-amber-500' : 'bg-primary-500'
+                  }`}></div>
+                  <div className="space-y-1">
+                    <p className="text-sm font-bold text-slate-800 leading-snug group-hover:text-primary-600 transition-colors">
+                      {log.performedBy} <span className="text-slate-400 font-medium">đã {log.actionVn || log.action}</span> {log.description || `${log.entityVn || log.entityType} #${log.entityId}`}
+                    </p>
+                    <p className="text-[11px] font-bold text-slate-300 uppercase tracking-widest">
+                      {format(new Date(log.createdAt), 'HH:mm • dd/MM/yyyy')}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="text-sm text-slate-400 font-medium text-center py-10 font-bold uppercase tracking-wider">Không tìm thấy hoạt động nào.</p>
+            )}
+          </div>
+
+          <button 
+            onClick={() => navigate('/activity-logs')}
+            className="mt-8 w-full py-4 bg-slate-50 rounded-2xl text-xs font-black text-slate-500 uppercase tracking-widest hover:bg-slate-100 transition-all flex items-center justify-center group"
+          >
+            Xem toàn bộ nhật ký <ChevronRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-all" />
+          </button>
+        </div>
+
+        {/* INVENTORY STATE CARD */}
+        <div className="bg-emerald-600 rounded-[2.5rem] p-8 text-white shadow-xl shadow-emerald-150 flex flex-col justify-between">
+          <div>
             <div className="flex items-center justify-between mb-6">
               <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center"><ClipboardCheck className="h-6 w-6" /></div>
               <span className="text-xs font-black uppercase tracking-widest bg-white/20 px-3 py-1 rounded-full">Live</span>
             </div>
             <h4 className="text-xl font-black mb-2 tracking-tight">Trạng thái kiểm kê</h4>
-            <p className="text-emerald-100 text-sm font-medium mb-6 leading-relaxed">Theo dõi, đối soát và cập nhật hiện trạng tài sản toàn diện theo đợt kiểm kê.</p>
-            <button 
-              onClick={() => navigate('/inventory')}
-              className="w-full py-4 bg-white text-emerald-600 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-lg"
-            >
-              Vào trang kiểm kê
-            </button>
+            <p className="text-emerald-100 text-sm font-medium leading-relaxed">Theo dõi, đối soát và cập nhật hiện trạng tài sản toàn diện theo đợt kiểm kê doanh nghiệp.</p>
           </div>
+          <button 
+            onClick={() => navigate('/inventory')}
+            className="w-full py-4 bg-white text-emerald-600 rounded-2xl text-xs font-black uppercase tracking-widest hover:bg-emerald-50 transition-all shadow-lg mt-8"
+          >
+            Vào trang kiểm kê
+          </button>
         </div>
       </div>
+
+      {/* DRILLDOWN MODALS */}
+      <AssetListDrilldownModal 
+        isOpen={drilldownModal.isOpen && drilldownModal.type === 'assets'}
+        title={drilldownModal.title}
+        loading={drilldownLoading}
+        data={drilldownData}
+        onClose={() => setDrilldownModal(prev => ({ ...prev, isOpen: false }))}
+      />
+      <CityDrilldownModal 
+        isOpen={drilldownModal.isOpen && drilldownModal.type === 'city'}
+        title={drilldownModal.title}
+        loading={drilldownLoading}
+        data={drilldownData}
+        onClose={() => setDrilldownModal(prev => ({ ...prev, isOpen: false }))}
+      />
+      <ProjectDrilldownModal 
+        isOpen={drilldownModal.isOpen && drilldownModal.type === 'project'}
+        title={drilldownModal.title}
+        loading={drilldownLoading}
+        data={drilldownData}
+        onClose={() => setDrilldownModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 };
