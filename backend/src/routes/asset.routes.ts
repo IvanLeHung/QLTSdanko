@@ -137,10 +137,10 @@ router.get('/filter-options/projects', authenticateToken, async (req, res) => {
 router.get('/filter-options/companies', authenticateToken, async (req, res) => {
   const companies = await prisma.company.findMany({
     where: { isActive: true },
-    select: { code: true, name: true },
+    select: { id: true, code: true, name: true },
     orderBy: { code: 'asc' }
   });
-  res.json(companies.map(c => ({ value: c.code, label: `${c.code} - ${c.name}` })));
+  res.json(companies.map(c => ({ id: c.id, value: c.code, label: c.name })));
 });
 
 router.get('/filter-options/suppliers', authenticateToken, async (req, res) => {

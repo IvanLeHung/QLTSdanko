@@ -75,6 +75,9 @@ export const InventoryDetail: React.FC = () => {
     cat4Id: '',
     departmentName: '',
     locationName: '',
+    cityName: '',
+    projectName: '',
+    supplierName: '',
     currentUserName: '',
     note: '',
     purchasePriceExVat: 0,
@@ -87,7 +90,23 @@ export const InventoryDetail: React.FC = () => {
   const [reviewAssetSearchResults, setReviewAssetSearchResults] = useState<any[]>([]);
   const [searchAssetLoading, setSearchAssetLoading] = useState(false);
   const [companies, setCompanies] = useState<any[]>([]);
+  const [allCategories, setAllCategories] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+
+  // Cascading category state
+  const [reviewCat1, setReviewCat1] = useState('');
+  const [reviewCat2, setReviewCat2] = useState('');
+  const [reviewCat3, setReviewCat3] = useState('');
+
+  // Department, Location, Employee dropdowns for review
+  const [reviewDepartments, setReviewDepartments] = useState<string[]>([]);
+  const [reviewLocations, setReviewLocations] = useState<string[]>([]);
+  const [reviewCities, setReviewCities] = useState<string[]>([]);
+  const [reviewProjects, setReviewProjects] = useState<string[]>([]);
+  const [reviewSuppliers, setReviewSuppliers] = useState<string[]>([]);
+  const [reviewUserQuery, setReviewUserQuery] = useState('');
+  const [reviewUserSuggestions, setReviewUserSuggestions] = useState<string[]>([]);
+  const [showReviewUserDropdown, setShowReviewUserDropdown] = useState(false);
 
   // QR Scanner modal state
   const [isScannerOpen, setIsScannerOpen] = useState(false);
@@ -155,15 +174,71 @@ export const InventoryDetail: React.FC = () => {
 
   const fetchReviewMetadata = async () => {
     try {
-      const [compRes, catRes] = await Promise.all([
-        api.get('/assets/filter-options/companies'),
-        api.get('/assets/categories/active/all')
+      const [compRes, catRes, deptRes, locRes, cityRes, projRes, suppRes] = await Promise.all([
+        api.get('/assets/companies/active'),
+        api.get('/assets/categories/active/all'),
+        api.get('/assets/filter-options/departments'),
+        api.get('/assets/filter-options/locations'),
+        api.get('/assets/filter-options/cities'),
+        api.get('/assets/filter-options/projects'),
+        api.get('/assets/filter-options/suppliers')
       ]);
       setCompanies(compRes.data);
+      setAllCategories(catRes.data);
       const level4Cats = catRes.data.filter((c: any) => c.level === 4);
       setCategories(level4Cats);
+      setReviewDepartments(deptRes.data || []);
+      setReviewLocations(locRes.data || []);
+      setReviewCities(cityRes.data || []);
+      setReviewProjects(projRes.data || []);
+      setReviewSuppliers(suppRes.data || []);
     } catch (err) {
       console.error("Lỗi tải thông tin danh mục duyệt", err);
+    }
+  };
+
+  // Cascading category helpers
+  const getCategoriesByLevel = (level: number, parentId?: number) => {
+    return allCategories.filter((c: any) => {
+      if (c.level !== level) return false;
+      if (parentId !== undefined) return c.parentId === parentId;
+      return true;
+    });
+  };
+
+  const handleReviewCat1Change = (val: string) => {
+    setReviewCat1(val);
+    setReviewCat2('');
+    setReviewCat3('');
+    setReviewForm((f: any) => ({ ...f, cat4Id: '' }));
+  };
+
+  const handleReviewCat2Change = (val: string) => {
+    setReviewCat2(val);
+    setReviewCat3('');
+    setReviewForm((f: any) => ({ ...f, cat4Id: '' }));
+  };
+
+  const handleReviewCat3Change = (val: string) => {
+    setReviewCat3(val);
+    setReviewForm((f: any) => ({ ...f, cat4Id: '' }));
+  };
+
+  // Employee search for review form
+  const handleReviewUserSearch = async (query: string) => {
+    setReviewUserQuery(query);
+    setReviewForm((f: any) => ({ ...f, currentUserName: query }));
+    if (query.trim().length === 0) {
+      setReviewUserSuggestions([]);
+      setShowReviewUserDropdown(false);
+      return;
+    }
+    try {
+      const res = await api.get(`/assets/filter-options/users?q=${encodeURIComponent(query)}`);
+      setReviewUserSuggestions(res.data || []);
+      setShowReviewUserDropdown(res.data.length > 0);
+    } catch (err) {
+      console.error(err);
     }
   };
 
@@ -1051,6 +1126,9 @@ export const InventoryDetail: React.FC = () => {
                               cat4Id: '',
                               departmentName: '',
                               locationName: item.foundLocationName || '',
+                              cityName: '',
+                              projectName: '',
+                              supplierName: '',
                               currentUserName: item.foundUserName || '',
                               note: '',
                               purchasePriceExVat: 0,
@@ -1059,6 +1137,10 @@ export const InventoryDetail: React.FC = () => {
                               assetName: item.name || '',
                               technicalSpecsJson: ''
                             });
+                            setReviewCat1('');
+                            setReviewCat2('');
+                            setReviewCat3('');
+                            setReviewUserQuery(item.foundUserName || '');
                             setReviewSearchAssetQuery('');
                             setReviewAssetSearchResults([]);
                           }}
@@ -1805,27 +1887,32 @@ export const InventoryDetail: React.FC = () => {
 
             {/* Chi tiết cho từng phương án */}
             {reviewForm.status === 'APPROVED' && (
-              <div className="p-5 border border-emerald-100 rounded-3xl bg-emerald-50/10 space-y-4">
+              <div className="p-5 border border-emerald-100 rounded-3xl bg-emerald-50/10 space-y-5">
                 <h4 className="text-[10px] font-black uppercase tracking-widest text-emerald-600 flex items-center gap-1 border-b pb-2">
-                  Thông tin tạo tài sản mới trên sổ sách
+                  <Package className="h-3.5 w-3.5" /> Thông tin tạo tài sản mới trên sổ sách
                 </h4>
+
+                {/* --- Thông tin cơ bản --- */}
+                <div className="space-y-1">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Thông tin cơ bản</span>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <label className="font-bold text-slate-500">Tên tài sản mới *</label>
                     <input 
                       type="text"
                       required
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
                       value={reviewForm.assetName}
                       onChange={e => setReviewForm({...reviewForm, assetName: e.target.value})}
                     />
                   </div>
 
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Số Serial mới</label>
+                    <label className="font-bold text-slate-500">Số Serial</label>
                     <input 
                       type="text"
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
                       value={reviewForm.serialNumber}
                       onChange={e => setReviewForm({...reviewForm, serialNumber: e.target.value})}
                     />
@@ -1837,80 +1924,229 @@ export const InventoryDetail: React.FC = () => {
                       required
                       value={reviewForm.companyId}
                       onChange={e => setReviewForm({...reviewForm, companyId: e.target.value})}
-                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
                     >
                       <option value="">-- Chọn công ty --</option>
                       {companies.map((c: any) => (
-                        <option key={c.id} value={c.id}>{c.name}</option>
+                        <option key={c.id} value={c.id}>{c.code} - {c.name}</option>
                       ))}
                     </select>
                   </div>
+                </div>
 
+                {/* --- Phân loại tài sản (Cascading) --- */}
+                <div className="space-y-1 mt-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Phân loại tài sản (chọn theo cây)</span>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Level 1 */}
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Danh mục nhóm 4 *</label>
+                    <label className="font-bold text-slate-500 text-[10px]">Nhóm 1</label>
                     <select
-                      required
-                      value={reviewForm.cat4Id}
-                      onChange={e => setReviewForm({...reviewForm, cat4Id: e.target.value})}
-                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800"
+                      value={reviewCat1}
+                      onChange={e => handleReviewCat1Change(e.target.value)}
+                      className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 text-[11px] focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
                     >
-                      <option value="">-- Chọn nhóm nhóm 4 --</option>
-                      {categories.map((c: any) => (
+                      <option value="">-- Nhóm 1 --</option>
+                      {getCategoriesByLevel(1).map((c: any) => (
                         <option key={c.id} value={c.id}>[{c.code}] {c.name}</option>
                       ))}
                     </select>
                   </div>
-
+                  {/* Level 2 */}
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Bộ phận sử dụng</label>
-                    <input 
-                      type="text"
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                      placeholder="Ví dụ: Ban Công nghệ..."
-                      value={reviewForm.departmentName}
-                      onChange={e => setReviewForm({...reviewForm, departmentName: e.target.value})}
-                    />
+                    <label className="font-bold text-slate-500 text-[10px]">Nhóm 2</label>
+                    <select
+                      value={reviewCat2}
+                      onChange={e => handleReviewCat2Change(e.target.value)}
+                      disabled={!reviewCat1}
+                      className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 text-[11px] disabled:opacity-40 disabled:bg-slate-50 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                    >
+                      <option value="">-- Nhóm 2 --</option>
+                      {reviewCat1 && getCategoriesByLevel(2, Number(reviewCat1)).map((c: any) => (
+                        <option key={c.id} value={c.id}>[{c.code}] {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Level 3 */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500 text-[10px]">Nhóm 3</label>
+                    <select
+                      value={reviewCat3}
+                      onChange={e => handleReviewCat3Change(e.target.value)}
+                      disabled={!reviewCat2}
+                      className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg font-bold text-slate-800 text-[11px] disabled:opacity-40 disabled:bg-slate-50 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                    >
+                      <option value="">-- Nhóm 3 --</option>
+                      {reviewCat2 && getCategoriesByLevel(3, Number(reviewCat2)).map((c: any) => (
+                        <option key={c.id} value={c.id}>[{c.code}] {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  {/* Level 4 */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500 text-[10px]">Nhóm 4 *</label>
+                    <select
+                      required
+                      value={reviewForm.cat4Id}
+                      onChange={e => setReviewForm({...reviewForm, cat4Id: e.target.value})}
+                      disabled={!reviewCat3}
+                      className="w-full h-9 px-2.5 bg-white border border-emerald-300 rounded-lg font-bold text-slate-800 text-[11px] disabled:opacity-40 disabled:bg-slate-50 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all ring-1 ring-emerald-100"
+                    >
+                      <option value="">-- Nhóm 4 --</option>
+                      {reviewCat3 && getCategoriesByLevel(4, Number(reviewCat3)).map((c: any) => (
+                        <option key={c.id} value={c.id}>[{c.code}] {c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {reviewForm.cat4Id && (
+                  <div className="flex items-center gap-2 px-3 py-1.5 bg-emerald-50 rounded-lg border border-emerald-100">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    <span className="text-[10px] font-bold text-emerald-700">
+                      Đã chọn: {allCategories.find((c: any) => c.id === Number(reviewForm.cat4Id))?.name || ''}
+                    </span>
+                  </div>
+                )}
+
+                {/* --- Vị trí & Phòng ban --- */}
+                <div className="space-y-1 mt-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Vị trí & Phòng ban</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Thành phố / Chi nhánh</label>
+                    <select
+                      value={reviewForm.cityName || ''}
+                      onChange={e => setReviewForm({...reviewForm, cityName: e.target.value})}
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                    >
+                      <option value="">-- Chọn thành phố --</option>
+                      {reviewCities.map((city: string, i: number) => (
+                        <option key={i} value={city}>{city}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Vị trí phòng bàn</label>
-                    <input 
-                      type="text"
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                      value={reviewForm.locationName}
+                    <label className="font-bold text-slate-500">Vị trí thực tế</label>
+                    <select
+                      value={reviewForm.locationName || ''}
                       onChange={e => setReviewForm({...reviewForm, locationName: e.target.value})}
-                    />
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                    >
+                      <option value="">-- Chọn vị trí --</option>
+                      {reviewLocations.map((loc: string, i: number) => (
+                        <option key={i} value={loc}>{loc}</option>
+                      ))}
+                    </select>
                   </div>
 
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Người sử dụng</label>
-                    <input 
-                      type="text"
-                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                      value={reviewForm.currentUserName}
-                      onChange={e => setReviewForm({...reviewForm, currentUserName: e.target.value})}
-                    />
+                    <label className="font-bold text-slate-500">Phòng ban sử dụng</label>
+                    <select
+                      value={reviewForm.departmentName || ''}
+                      onChange={e => setReviewForm({...reviewForm, departmentName: e.target.value})}
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                    >
+                      <option value="">-- Chọn phòng ban --</option>
+                      {reviewDepartments.map((dept: string, i: number) => (
+                        <option key={i} value={dept}>{dept}</option>
+                      ))}
+                    </select>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-500">Nguyên giá (ex VAT)</label>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Dự án sử dụng</label>
+                    <select
+                      value={reviewForm.projectName || ''}
+                      onChange={e => setReviewForm({...reviewForm, projectName: e.target.value})}
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                    >
+                      <option value="">-- Không thuộc dự án --</option>
+                      {reviewProjects.map((proj: string, i: number) => (
+                        <option key={i} value={proj}>{proj}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* --- Người sử dụng (Autocomplete) --- */}
+                <div className="space-y-1 mt-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Người sử dụng</span>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1 relative">
+                    <label className="font-bold text-slate-500">Người sử dụng</label>
+                    <div className="relative">
                       <input 
-                        type="number"
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                        value={reviewForm.purchasePriceExVat}
-                        onChange={e => setReviewForm({...reviewForm, purchasePriceExVat: Number(e.target.value)})}
+                        type="text"
+                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold pr-8 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                        placeholder="Tìm tên người sử dụng..."
+                        value={reviewUserQuery || reviewForm.currentUserName || ''}
+                        onChange={e => handleReviewUserSearch(e.target.value)}
+                        onFocus={() => reviewUserSuggestions.length > 0 && setShowReviewUserDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowReviewUserDropdown(false), 200)}
                       />
+                      <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                     </div>
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-500">Ngày mua</label>
-                      <input 
-                        type="date"
-                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold"
-                        value={reviewForm.purchaseDate}
-                        onChange={e => setReviewForm({...reviewForm, purchaseDate: e.target.value})}
-                      />
-                    </div>
+                    {showReviewUserDropdown && reviewUserSuggestions.length > 0 && (
+                      <div className="absolute z-30 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-32 overflow-y-auto mt-1">
+                        {reviewUserSuggestions.map((name: string, i: number) => (
+                          <button
+                            key={i}
+                            type="button"
+                            className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-emerald-50 transition-colors"
+                            onMouseDown={() => {
+                              setReviewForm({...reviewForm, currentUserName: name});
+                              setReviewUserQuery(name);
+                              setShowReviewUserDropdown(false);
+                            }}
+                          >
+                            <User className="inline h-3 w-3 mr-1.5 text-slate-400" />{name}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Nhà cung cấp</label>
+                    <select
+                      value={reviewForm.supplierName || ''}
+                      onChange={e => setReviewForm({...reviewForm, supplierName: e.target.value})}
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                    >
+                      <option value="">-- Chọn nhà cung cấp --</option>
+                      {reviewSuppliers.map((sup: string, i: number) => (
+                        <option key={i} value={sup}>{sup}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                {/* --- Tài chính --- */}
+                <div className="space-y-1 mt-2">
+                  <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Thông tin tài chính</span>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Nguyên giá (ex VAT)</label>
+                    <input 
+                      type="number"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                      value={reviewForm.purchasePriceExVat}
+                      onChange={e => setReviewForm({...reviewForm, purchasePriceExVat: Number(e.target.value)})}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Ngày mua</label>
+                    <input 
+                      type="date"
+                      className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                      value={reviewForm.purchaseDate}
+                      onChange={e => setReviewForm({...reviewForm, purchaseDate: e.target.value})}
+                    />
                   </div>
                 </div>
 
