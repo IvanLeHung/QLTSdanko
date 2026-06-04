@@ -122,15 +122,23 @@ export class InventoryService {
     note?: string;
     checkedBy: string;
     photos?: string[];
+    actualUserName?: string;
+    actualUserId?: number;
+    actualSerialNumber?: string;
+    checkCondition?: string;
+    physicalDetailsJson?: string;
+    technicalSpecsJson?: string;
+    checkStatus?: string;
   }) {
     const item = await prisma.inventoryItem.findUnique({
-      where: { id: itemId }
+      where: { id: itemId },
+      include: { asset: true }
     });
     if (!item) throw new Error("Không tìm thấy mục kiểm kê");
 
     // Dynamic result determination
     let result = 'MATCHED';
-    if (data.actualStatus === 'LOST' || data.quality === 'LOST' || data.quality === 'MISSING') {
+    if (data.checkCondition === 'MISSING' || data.actualStatus === 'LOST' || data.quality === 'LOST' || data.quality === 'MISSING') {
       result = 'MISSING';
     } else if (data.quality === 'DAMAGED' || data.quality === 'BAD' || data.actualStatus === 'DAMAGED') {
       result = 'DAMAGED';
@@ -138,6 +146,8 @@ export class InventoryService {
       result = 'WRONG_LOCATION';
     } else if (data.actualStatus !== item.expectedStatus) {
       result = 'WRONG_STATUS';
+    } else if (data.actualUserName && item.asset.currentUserName && data.actualUserName !== item.asset.currentUserName) {
+      result = 'WRONG_USER';
     }
 
     return await prisma.$transaction(async (tx) => {
@@ -150,11 +160,17 @@ export class InventoryService {
           note: data.note,
           result: result,
           photos: data.photos || [],
-          checkStatus: 'CHECKED',
+          checkStatus: data.checkStatus || 'CHECKED',
           checkedAt: new Date(),
-          checkedBy: data.checkedBy
+          checkedBy: data.checkedBy,
+          actualUserName: data.actualUserName || null,
+          actualUserId: data.actualUserId || null,
+          actualSerialNumber: data.actualSerialNumber || null,
+          checkCondition: data.checkCondition || 'FOUND',
+          physicalDetailsJson: data.physicalDetailsJson || null
         }
       });
+
 
       const session = await tx.inventoryCheck.findUnique({
         where: { id: item.inventoryCheckId }
@@ -167,12 +183,18 @@ export class InventoryService {
       }
 
       // Update last inventory info on the Asset master record
+      const assetUpdates: any = {
+        lastInventoryDate: new Date(),
+        lastInventoryStatus: result
+      };
+
+      if (data.technicalSpecsJson) {
+        assetUpdates.technicalSpecsJson = data.technicalSpecsJson;
+      }
+
       await tx.asset.update({
         where: { id: item.assetId },
-        data: {
-          lastInventoryDate: new Date(),
-          lastInventoryStatus: result
-        }
+        data: assetUpdates
       });
 
       return updatedItem;
@@ -245,5 +267,236 @@ export class InventoryService {
 
       return updated;
     });
+  }
+
+  static async reportDiscoveredAsset(
+    sessionId: number,
+    data: {
+      name: string;
+      categoryName?: string;
+      serialNumber?: string;
+      foundLocationName?: string;
+      foundUserName?: string;
+      ownershipStatus?: string;
+      photos?: string[];
+      note?: string;
+    },
+    createdById: number
+  ) {
+    const year = new Date().getFullYear();
+    const random = Math.floor(100000 + Math.random() * 900000);
+    const tempCode = `TEMP-${year}-${random}`;
+
+    return await prisma.discoveredAsset.create({
+      data: {
+        tempCode,
+        name: data.name,
+        categoryName: data.categoryName || null,
+        serialNumber: data.serialNumber || null,
+        foundLocationName: data.foundLocationName || null,
+        foundUserName: data.foundUserName || null,
+        ownershipStatus: data.ownershipStatus || 'UNKNOWN',
+        photos: data.photos || [],
+        note: data.note || null,
+        status: 'PENDING_REVIEW',
+        inventoryCheckId: sessionId,
+        createdById
+      },
+      include: {
+        createdBy: {
+          select: {
+            username: true,
+            fullName: true
+          }
+        }
+      }
+    });
+  }
+
+  static async getDiscoveredAssets(sessionId: number) {
+    return await prisma.discoveredAsset.findMany({
+      where: { inventoryCheckId: sessionId },
+      include: {
+        createdBy: {
+          select: {
+            username: true,
+            fullName: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  static async reviewDiscoveredAsset(
+    discoveredId: number,
+    data: {
+      status: 'APPROVED' | 'REJECTED' | 'MERGED';
+      assetId?: number;
+      companyId?: number;
+      cat4Id?: number;
+      departmentName?: string;
+      locationName?: string;
+      currentUserName?: string;
+      note?: string;
+      purchasePriceExVat?: number;
+      purchaseDate?: string | Date;
+      serialNumber?: string;
+      assetName?: string;
+      technicalSpecsJson?: string;
+    },
+    performedBy: string
+  ) {
+    const discovered = await prisma.discoveredAsset.findUnique({
+      where: { id: discoveredId }
+    });
+    if (!discovered) throw new Error("Không tìm thấy tài sản ghi nhận ngoài sổ");
+    if (discovered.status !== 'PENDING_REVIEW') {
+      throw new Error(`Tài sản ngoài sổ đã được xử lý với trạng thái: ${discovered.status}`);
+    }
+
+    const { AssetService } = require('./asset.service');
+
+    if (data.status === 'REJECTED') {
+      return await prisma.$transaction(async (tx) => {
+        const updated = await tx.discoveredAsset.update({
+          where: { id: discoveredId },
+          data: { status: 'REJECTED', note: data.note || discovered.note }
+        });
+        await AuditService.log({
+          entityType: 'DISCOVERED_ASSET',
+          entityId: discoveredId,
+          action: 'UPDATE',
+          details: { status: 'REJECTED', note: data.note },
+          performedBy,
+          tx
+        });
+        return updated;
+      });
+    }
+
+    if (data.status === 'MERGED') {
+      if (!data.assetId) throw new Error("Vui lòng chọn tài sản cần ghép mã");
+      return await prisma.$transaction(async (tx) => {
+        const asset = await tx.asset.findUnique({ where: { id: Number(data.assetId) } });
+        if (!asset) throw new Error("Không tìm thấy tài sản đích để ghép");
+
+        const assetUpdates: any = {
+          lastInventoryDate: new Date(),
+          lastInventoryStatus: 'MATCHED'
+        };
+
+        if (data.locationName) assetUpdates.locationName = data.locationName;
+        if (data.currentUserName) assetUpdates.currentUserName = data.currentUserName;
+        if (data.serialNumber) assetUpdates.serialNumber = data.serialNumber;
+        if (data.technicalSpecsJson) assetUpdates.technicalSpecsJson = data.technicalSpecsJson;
+
+        const updatedAsset = await tx.asset.update({
+          where: { id: asset.id },
+          data: assetUpdates
+        });
+
+        await AuditService.logAssetChange(asset.id, asset, updatedAsset, performedBy, tx, `Ghép mã tài sản ngoài sổ ${discovered.tempCode}`);
+
+        const updatedDiscovered = await tx.discoveredAsset.update({
+          where: { id: discoveredId },
+          data: {
+            status: 'MERGED',
+            note: `${data.note || ''} (Đã ghép vào tài sản ${asset.assetCode})`.trim()
+          }
+        });
+
+        return updatedDiscovered;
+      });
+    }
+
+    if (data.status === 'APPROVED') {
+      if (!data.companyId || !data.cat4Id) {
+        throw new Error("Vui lòng cung cấp Công ty và Phân loại tài sản cấp 4 để tạo tài sản mới");
+      }
+
+      return await prisma.$transaction(async (tx) => {
+        const company = await tx.company.findUnique({ where: { id: Number(data.companyId) } });
+        if (!company) throw new Error("Không tìm thấy công ty được chọn");
+
+        const cat4 = await tx.assetCategory.findUnique({ where: { id: Number(data.cat4Id) } });
+        if (!cat4 || cat4.level !== 4) throw new Error("Phân loại tài sản cấp 4 không hợp lệ");
+
+        const cat3 = await tx.assetCategory.findUnique({ where: { id: cat4.parentId || 0 } });
+        if (!cat3) throw new Error("Không tìm thấy phân loại cấp 3 cha");
+
+        const cat2 = await tx.assetCategory.findUnique({ where: { id: cat3.parentId || 0 } });
+        if (!cat2) throw new Error("Không tìm thấy phân loại cấp 2 cha");
+
+        const cat1 = await tx.assetCategory.findUnique({ where: { id: cat2.parentId || 0 } });
+        if (!cat1) throw new Error("Không tìm thấy phân loại cấp 1 cha");
+
+        const codeGen = await AssetService.generateSingleAssetCode({
+          companyCode: company.code,
+          level1Code: cat1.code,
+          level2Code: cat2.code,
+          level3Code: cat3.code,
+          level4Code: cat4.code
+        }, tx);
+
+        const assetName = data.assetName || discovered.name;
+        const serialNumber = data.serialNumber || discovered.serialNumber || null;
+
+        const newAsset = await tx.asset.create({
+          data: {
+            assetCode: codeGen.assetCode,
+            assetName,
+            assetNameShort: AssetService.generateShortName(assetName),
+            assetNameShortSource: 'RULE',
+            assetNameShortUpdatedAt: new Date(),
+            serialNumber,
+            companyCode: company.code,
+            companyName: company.name,
+            level1Code: cat1.code,
+            level1Name: cat1.name,
+            level2Code: cat2.code,
+            level2Name: cat2.name,
+            level3Code: cat3.code,
+            level3Name: cat3.name,
+            level4Code: cat4.code,
+            level4Name: cat4.name,
+            runningNo: codeGen.runningNo,
+            runningNoText: codeGen.runningNoText,
+            status: data.currentUserName || discovered.foundUserName ? 'ASSIGNED' : 'IN_STOCK',
+            unit: 'Cái',
+            purchasePriceExVat: data.purchasePriceExVat || 0,
+            purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : new Date(),
+            currentUserName: data.currentUserName || discovered.foundUserName || null,
+            locationName: data.locationName || discovered.foundLocationName || null,
+            departmentName: data.departmentName || null,
+            lastInventoryDate: new Date(),
+            lastInventoryStatus: 'MATCHED',
+            technicalSpecsJson: data.technicalSpecsJson || null,
+            documentNote: `Tạo từ tài sản ngoài sổ trong đợt kiểm kê. Mã tạm: ${discovered.tempCode}`
+          }
+        });
+
+        await AuditService.log({
+          entityType: 'ASSET',
+          entityId: newAsset.id,
+          action: 'CREATE',
+          details: { code: newAsset.assetCode, name: newAsset.assetName, method: 'DISCOVERED_APPROVAL', tempCode: discovered.tempCode },
+          performedBy,
+          tx
+        });
+
+        const updatedDiscovered = await tx.discoveredAsset.update({
+          where: { id: discoveredId },
+          data: {
+            status: 'APPROVED',
+            note: `${data.note || ''} (Đã duyệt thành tài sản chính thức ${newAsset.assetCode})`.trim()
+          }
+        });
+
+        return updatedDiscovered;
+      });
+    }
+
+    throw new Error("Trạng thái xử lý không hợp lệ");
   }
 }

@@ -77,7 +77,21 @@ router.post('/item/:id/check', authenticateToken, async (req: AuthRequest, res) 
 
 router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest, res) => {
   const checkedBy = req.user?.username || 'system';
-  const { sessionId, assetIds, actualStatus, actualLocation, quality, note, photos } = req.body;
+  const {
+    sessionId,
+    assetIds,
+    actualStatus,
+    actualLocation,
+    quality,
+    note,
+    photos,
+    actualUserName,
+    actualUserId,
+    actualSerialNumber,
+    checkCondition,
+    physicalDetailsJson
+  } = req.body;
+
   if (!sessionId || !assetIds || !Array.isArray(assetIds)) {
     return res.status(400).json({ message: 'Invalid payload' });
   }
@@ -95,16 +109,18 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
 
         // Determine result status
         let result = 'MATCHED';
-        if (actualStatus === 'LOST' || quality === 'LOST' || quality === 'MISSING') {
+        if (checkCondition === 'MISSING' || actualStatus === 'LOST' || quality === 'LOST' || quality === 'MISSING') {
           result = 'MISSING';
         } else if (quality === 'DAMAGED' || quality === 'BAD' || actualStatus === 'DAMAGED') {
           result = 'DAMAGED';
-        } else if ((actualLocation || asset.locationName) && item?.expectedLocation && (actualLocation || asset.locationName) !== item.expectedLocation) {
+        } else if ((actualLocation || asset.locationName) && (item?.expectedLocation || asset.locationName) && (actualLocation || asset.locationName) !== (item?.expectedLocation || asset.locationName)) {
           result = 'WRONG_LOCATION';
         } else if (item && actualStatus !== item.expectedStatus) {
           result = 'WRONG_STATUS';
         } else if (!item && actualStatus !== asset.status) {
           result = 'WRONG_STATUS';
+        } else if (actualUserName && asset.currentUserName && actualUserName !== asset.currentUserName) {
+          result = 'WRONG_USER';
         }
 
         if (item) {
@@ -119,7 +135,12 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
               photos: photos || [],
               checkStatus: 'CHECKED',
               checkedAt: new Date(),
-              checkedBy
+              checkedBy,
+              actualUserName: actualUserName || null,
+              actualUserId: actualUserId || null,
+              actualSerialNumber: actualSerialNumber || null,
+              checkCondition: checkCondition || 'FOUND',
+              physicalDetailsJson: physicalDetailsJson || null
             }
           });
         } else {
@@ -138,7 +159,12 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
               photos: photos || [],
               checkStatus: 'CHECKED',
               checkedAt: new Date(),
-              checkedBy
+              checkedBy,
+              actualUserName: actualUserName || null,
+              actualUserId: actualUserId || null,
+              actualSerialNumber: actualSerialNumber || null,
+              checkCondition: checkCondition || 'FOUND',
+              physicalDetailsJson: physicalDetailsJson || null
             }
           });
         }
@@ -164,6 +190,7 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
     res.status(500).json({ message: error.message });
   }
 });
+
 
 router.patch('/:id/start', authenticateToken, async (req: AuthRequest, res) => {
   const performedBy = req.user?.username || 'system';
@@ -307,4 +334,46 @@ router.get('/export-by-time', authenticateToken, requirePermission('INVENTORY_VI
   }
 });
 
+// Discovered assets routes
+router.post('/:id/discovered', authenticateToken, async (req: AuthRequest, res) => {
+  const createdById = req.user?.id;
+  if (!createdById) {
+    return res.status(401).json({ message: 'Không xác định được danh tính người dùng' });
+  }
+  try {
+    const item = await InventoryService.reportDiscoveredAsset(
+      Number(req.params.id),
+      req.body,
+      createdById
+    );
+    res.status(201).json(item);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.get('/:id/discovered', authenticateToken, async (req, res) => {
+  try {
+    const list = await InventoryService.getDiscoveredAssets(Number(req.params.id));
+    res.json(list);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/discovered/:discoveredId/review', authenticateToken, async (req: AuthRequest, res) => {
+  const performedBy = req.user?.username || 'system';
+  try {
+    const result = await InventoryService.reviewDiscoveredAsset(
+      Number(req.params.discoveredId),
+      req.body,
+      performedBy
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
 export default router;
+

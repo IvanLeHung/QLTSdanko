@@ -41,6 +41,7 @@ model User {
 
   managerUser           User?           @relation("UserManager", fields: [managerUserId], references: [id])
   subordinates          User[]          @relation("UserManager")
+  discoveredAssets      DiscoveredAsset[]
 }
 
 model Role {
@@ -230,6 +231,7 @@ model Asset {
   depreciationEndDate     DateTime?
   attachments             String?
   lastLabelPrint          DateTime?
+  technicalSpecsJson      String?
   creationBatch           CreationBatch?      @relation(fields: [creationBatchId], references: [id])
   invoiceBatchId          Int?
   invoiceLineId           Int?
@@ -307,6 +309,7 @@ model InventoryCheck {
   note               String?
   createdAt          DateTime        @default(now())
   items              InventoryItem[]
+  discoveredAssets   DiscoveredAsset[]
 }
 
 model InventoryItem {
@@ -320,14 +323,20 @@ model InventoryItem {
   actualLocation   String?
   quality          String?
   note             String?
-  result           String?        // MATCHED, MISSING, EXTRA, DAMAGED, WRONG_LOCATION, NEED_REVIEW
-  photos           String[]
-  checkStatus      String         @default("PENDING") // PENDING, CHECKED
-  checkedAt        DateTime?
-  checkedBy        String?
-  asset            Asset          @relation(fields: [assetId], references: [id])
-  inventoryCheck   InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+  result              String?        // MATCHED, MISSING, EXTRA, DAMAGED, WRONG_LOCATION, NEED_REVIEW
+  photos              String[]
+  checkStatus         String         @default("PENDING") // PENDING, CHECKED
+  checkedAt           DateTime?
+  checkedBy           String?
+  actualUserName      String?
+  actualUserId        Int?
+  actualSerialNumber  String?
+  checkCondition      String?        @default("FOUND")
+  physicalDetailsJson String?
+  asset               Asset          @relation(fields: [assetId], references: [id])
+  inventoryCheck      InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
 }
+
 
 model AssetEvent {
   id          Int      @id @default(autoincrement())
@@ -727,6 +736,26 @@ model TemplateUsageLog {
   usedById   Int?
   usedAt     DateTime @default(now())
   template   Template @relation(fields: [templateId], references: [id], onDelete: Cascade)
+}
+
+model DiscoveredAsset {
+  id                Int            @id @default(autoincrement())
+  tempCode          String         @unique
+  name              String
+  categoryName      String?
+  serialNumber      String?
+  foundLocationName String?
+  foundUserName     String?
+  ownershipStatus   String         @default("UNKNOWN") // COMPANY, PERSONAL, CUSTOMER, VENDOR, RENTAL, UNKNOWN
+  photos            String[]
+  note              String?
+  status            String         @default("PENDING_REVIEW") // PENDING_REVIEW, APPROVED, REJECTED, MERGED
+  inventoryCheckId  Int
+  createdById       Int
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  inventoryCheck    InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+  createdBy         User           @relation(fields: [createdById], references: [id])
 }
 
 
