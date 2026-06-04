@@ -337,6 +337,8 @@ export class InventoryService {
       cat4Id?: number;
       departmentName?: string;
       locationName?: string;
+      cityName?: string;
+      projectName?: string;
       currentUserName?: string;
       note?: string;
       purchasePriceExVat?: number;
@@ -387,6 +389,8 @@ export class InventoryService {
         };
 
         if (data.locationName) assetUpdates.locationName = data.locationName;
+        if (data.cityName) assetUpdates.cityName = data.cityName;
+        if (data.projectName) assetUpdates.projectName = data.projectName;
         if (data.currentUserName) assetUpdates.currentUserName = data.currentUserName;
         if (data.serialNumber) assetUpdates.serialNumber = data.serialNumber;
         if (data.technicalSpecsJson) assetUpdates.technicalSpecsJson = data.technicalSpecsJson;
@@ -468,6 +472,8 @@ export class InventoryService {
             purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : new Date(),
             currentUserName: data.currentUserName || discovered.foundUserName || null,
             locationName: data.locationName || discovered.foundLocationName || null,
+            cityName: data.cityName || null,
+            projectName: data.projectName || null,
             departmentName: data.departmentName || null,
             lastInventoryDate: new Date(),
             lastInventoryStatus: 'MATCHED',

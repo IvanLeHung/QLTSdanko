@@ -36,6 +36,41 @@ import { toast } from 'react-toastify';
 import { BaseModal } from '../components/BaseModal';
 import { useAuth } from '../context/AuthContext';
 
+const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
+  'Hà Nội': {
+    'Văn phòng C6': [
+      'Mặt trước Khối I',
+      'Mặt sau Khối I',
+      'Kho',
+      'Mặt trước Khối II',
+      'Mặt sau Khối II',
+      'Tầng 9 Khối I',
+      'Tầng 2 Khối II'
+    ],
+    'Vân Canh': ['Kho']
+  },
+  'Thái Nguyên': {
+    'Danko City': ['Trung tâm thương mại', 'Văn phòng BQLDA', 'Kho'],
+    'Danko Avenue': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho'],
+    'Danko Sun River': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
+  },
+  'Bắc Giang': {
+    'Danko Riverside': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
+  },
+  'Tuyên Quang': {
+    'Danko Center': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
+  },
+  'Thanh Hóa': {
+    'Danko Royal': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho'],
+    'Danko The Country': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
+  },
+  'Phú Thọ': {
+    'Dự án chưa hình thành': ['Văn phòng BQLDA', 'Kho']
+  },
+  'Hà Nam': {
+    'Dự án chưa hình thành': ['Văn phòng BQLDA', 'Kho']
+  }
+};
 
 export const InventoryDetail: React.FC = () => {
   const { id } = useParams();
@@ -108,6 +143,19 @@ export const InventoryDetail: React.FC = () => {
   const [reviewUserSuggestions, setReviewUserSuggestions] = useState<string[]>([]);
   const [showReviewUserDropdown, setShowReviewUserDropdown] = useState(false);
 
+  // Dependent location states for review form
+  const [reviewSelectedCity, setReviewSelectedCity] = useState('');
+  const [reviewSelectedProject, setReviewSelectedProject] = useState('');
+  const [reviewSelectedLocation, setReviewSelectedLocation] = useState('');
+
+  const [reviewCustomCity, setReviewCustomCity] = useState('');
+  const [reviewCustomProject, setReviewCustomProject] = useState('');
+  const [reviewCustomLocation, setReviewCustomLocation] = useState('');
+
+  // Department suggestion list states
+  const [showReviewDeptDropdown, setShowReviewDeptDropdown] = useState(false);
+  const [reviewDeptQuery, setReviewDeptQuery] = useState('');
+
   // QR Scanner modal state
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [scanCodeInput, setScanCodeInput] = useState('');
@@ -177,7 +225,7 @@ export const InventoryDetail: React.FC = () => {
       const [compRes, catRes, deptRes, locRes, cityRes, projRes, suppRes] = await Promise.all([
         api.get('/assets/companies/active'),
         api.get('/assets/categories/active/all'),
-        api.get('/assets/filter-options/departments'),
+        api.get('/settings/departments'),
         api.get('/assets/filter-options/locations'),
         api.get('/assets/filter-options/cities'),
         api.get('/assets/filter-options/projects'),
@@ -187,7 +235,7 @@ export const InventoryDetail: React.FC = () => {
       setAllCategories(catRes.data);
       const level4Cats = catRes.data.filter((c: any) => c.level === 4);
       setCategories(level4Cats);
-      setReviewDepartments(deptRes.data || []);
+      setReviewDepartments((deptRes.data || []).map((d: any) => d.name).filter(Boolean));
       setReviewLocations(locRes.data || []);
       setReviewCities(cityRes.data || []);
       setReviewProjects(projRes.data || []);
@@ -239,6 +287,105 @@ export const InventoryDetail: React.FC = () => {
       setShowReviewUserDropdown(res.data.length > 0);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  // Update Combined Location and City and Project whenever dependent fields change
+  useEffect(() => {
+    const cityVal = reviewSelectedCity === 'Khác' ? reviewCustomCity : reviewSelectedCity;
+    const projectVal = reviewSelectedProject === 'Khác' ? reviewCustomProject : reviewSelectedProject;
+    const locationVal = reviewSelectedLocation === 'Khác' ? reviewCustomLocation : reviewSelectedLocation;
+
+    let combinedLocation = '';
+    if (cityVal) {
+      combinedLocation += cityVal;
+      if (projectVal) {
+        combinedLocation += '-' + projectVal;
+      }
+      if (locationVal) {
+        combinedLocation += '-' + locationVal;
+      }
+    } else {
+      combinedLocation = locationVal || '';
+    }
+
+    setReviewForm((prev: any) => ({
+      ...prev,
+      cityName: cityVal,
+      projectName: projectVal,
+      locationName: combinedLocation
+    }));
+  }, [reviewSelectedCity, reviewSelectedProject, reviewSelectedLocation, reviewCustomCity, reviewCustomProject, reviewCustomLocation]);
+
+  const parseReviewLocationToStates = (fullLocation: string) => {
+    if (!fullLocation) {
+      setReviewSelectedCity('');
+      setReviewSelectedProject('');
+      setReviewSelectedLocation('');
+      setReviewCustomCity('');
+      setReviewCustomProject('');
+      setReviewCustomLocation('');
+      return;
+    }
+    const trimmed = fullLocation.trim();
+    const parts = trimmed.split(/[-/\\]/).map(p => p.trim());
+    
+    let resolvedCity = '';
+    let resolvedProject = '';
+    let resolvedLocation = '';
+    
+    if (parts.length >= 3) {
+      resolvedCity = parts[0];
+      resolvedProject = parts[1];
+      resolvedLocation = parts.slice(2).join('-');
+    } else if (parts.length === 2) {
+      resolvedCity = parts[0];
+      resolvedLocation = parts[1];
+    } else {
+      resolvedLocation = trimmed;
+    }
+
+    if (resolvedCity) {
+      if (LOCATION_HIERARCHY[resolvedCity]) {
+        setReviewSelectedCity(resolvedCity);
+        if (resolvedProject) {
+          if (LOCATION_HIERARCHY[resolvedCity][resolvedProject]) {
+            setReviewSelectedProject(resolvedProject);
+            if (resolvedLocation) {
+              if (LOCATION_HIERARCHY[resolvedCity][resolvedProject].includes(resolvedLocation)) {
+                setReviewSelectedLocation(resolvedLocation);
+              } else {
+                setReviewSelectedLocation('Khác');
+                setReviewCustomLocation(resolvedLocation);
+              }
+            }
+          } else {
+            setReviewSelectedProject('Khác');
+            setReviewCustomProject(resolvedProject);
+            setReviewSelectedLocation('Khác');
+            setReviewCustomLocation(resolvedLocation);
+          }
+        } else {
+          setReviewSelectedProject('');
+          setReviewSelectedLocation('');
+        }
+      } else {
+        setReviewSelectedCity('Khác');
+        setReviewCustomCity(resolvedCity);
+        if (resolvedProject) {
+          setReviewSelectedProject('Khác');
+          setReviewCustomProject(resolvedProject);
+        }
+        if (resolvedLocation) {
+          setReviewSelectedLocation('Khác');
+          setReviewCustomLocation(resolvedLocation);
+        }
+      }
+    } else if (resolvedLocation) {
+      setReviewSelectedCity('Khác');
+      setReviewSelectedProject('Khác');
+      setReviewSelectedLocation('Khác');
+      setReviewCustomLocation(resolvedLocation);
     }
   };
 
@@ -1143,6 +1290,7 @@ export const InventoryDetail: React.FC = () => {
                             setReviewUserQuery(item.foundUserName || '');
                             setReviewSearchAssetQuery('');
                             setReviewAssetSearchResults([]);
+                            parseReviewLocationToStates(item.foundLocationName || '');
                           }}
                           className="px-4 py-2 bg-[#0F172A] hover:bg-slate-800 text-white rounded-xl text-[10px] font-black uppercase tracking-wider"
                         >
@@ -2014,62 +2162,166 @@ export const InventoryDetail: React.FC = () => {
                   <span className="text-[9px] font-black uppercase tracking-widest text-slate-400">Vị trí & Phòng ban</span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Thành phố */}
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Thành phố / Chi nhánh</label>
+                    <label className="font-bold text-slate-500">Thành phố bàn giao đến *</label>
                     <select
-                      value={reviewForm.cityName || ''}
-                      onChange={e => setReviewForm({...reviewForm, cityName: e.target.value})}
+                      value={reviewSelectedCity}
+                      onChange={(e) => {
+                        setReviewSelectedCity(e.target.value);
+                        setReviewSelectedProject('');
+                        setReviewSelectedLocation('');
+                        setReviewCustomCity('');
+                        setReviewCustomProject('');
+                        setReviewCustomLocation('');
+                      }}
                       className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
                     >
                       <option value="">-- Chọn thành phố --</option>
-                      {reviewCities.map((city: string, i: number) => (
-                        <option key={i} value={city}>{city}</option>
+                      {Object.keys(LOCATION_HIERARCHY).map(c => (
+                        <option key={c} value={c}>{c}</option>
                       ))}
+                      <option value="Khác">Khác</option>
                     </select>
                   </div>
 
+                  {/* Dự án */}
                   <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Vị trí thực tế</label>
+                    <label className="font-bold text-slate-500">Dự án bàn giao đến *</label>
                     <select
-                      value={reviewForm.locationName || ''}
-                      onChange={e => setReviewForm({...reviewForm, locationName: e.target.value})}
-                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                      value={reviewSelectedProject}
+                      disabled={!reviewSelectedCity}
+                      onChange={(e) => {
+                        setReviewSelectedProject(e.target.value);
+                        setReviewSelectedLocation('');
+                        setReviewCustomProject('');
+                        setReviewCustomLocation('');
+                      }}
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all disabled:opacity-40"
+                    >
+                      <option value="">-- Chọn dự án --</option>
+                      {reviewSelectedCity && reviewSelectedCity !== 'Khác' && Object.keys(LOCATION_HIERARCHY[reviewSelectedCity] || {}).map(p => (
+                        <option key={p} value={p}>{p}</option>
+                      ))}
+                      <option value="Khác" disabled={!reviewSelectedCity}>Khác</option>
+                    </select>
+                  </div>
+
+                  {/* Vị trí thực tế */}
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Vị trí thực tế *</label>
+                    <select
+                      value={reviewSelectedLocation}
+                      disabled={!reviewSelectedProject}
+                      onChange={(e) => {
+                        setReviewSelectedLocation(e.target.value);
+                        setReviewCustomLocation('');
+                      }}
+                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all disabled:opacity-40"
                     >
                       <option value="">-- Chọn vị trí --</option>
-                      {reviewLocations.map((loc: string, i: number) => (
-                        <option key={i} value={loc}>{loc}</option>
+                      {reviewSelectedCity && reviewSelectedCity !== 'Khác' && reviewSelectedProject && reviewSelectedProject !== 'Khác' && (LOCATION_HIERARCHY[reviewSelectedCity]?.[reviewSelectedProject] || []).map(l => (
+                        <option key={l} value={l}>{l}</option>
                       ))}
+                      <option value="Khác" disabled={!reviewSelectedProject}>Khác</option>
                     </select>
                   </div>
 
-                  <div className="space-y-1">
+                  {/* Phòng ban sử dụng (Tự điền text + Suggestion dropdown) */}
+                  <div className="space-y-1 relative">
                     <label className="font-bold text-slate-500">Phòng ban sử dụng</label>
-                    <select
-                      value={reviewForm.departmentName || ''}
-                      onChange={e => setReviewForm({...reviewForm, departmentName: e.target.value})}
-                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
-                    >
-                      <option value="">-- Chọn phòng ban --</option>
-                      {reviewDepartments.map((dept: string, i: number) => (
-                        <option key={i} value={dept}>{dept}</option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Dự án sử dụng</label>
-                    <select
-                      value={reviewForm.projectName || ''}
-                      onChange={e => setReviewForm({...reviewForm, projectName: e.target.value})}
-                      className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
-                    >
-                      <option value="">-- Không thuộc dự án --</option>
-                      {reviewProjects.map((proj: string, i: number) => (
-                        <option key={i} value={proj}>{proj}</option>
-                      ))}
-                    </select>
+                    <div className="relative">
+                      <input 
+                        type="text"
+                        className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold pr-8 focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                        placeholder="Nhập tên phòng ban..."
+                        value={reviewForm.departmentName || ''}
+                        onChange={e => {
+                          setReviewForm({...reviewForm, departmentName: e.target.value});
+                          setReviewDeptQuery(e.target.value);
+                          setShowReviewDeptDropdown(true);
+                        }}
+                        onFocus={() => setShowReviewDeptDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowReviewDeptDropdown(false), 200)}
+                      />
+                      <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    </div>
+                    {showReviewDeptDropdown && (
+                      <div className="absolute z-30 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-32 overflow-y-auto mt-1">
+                        {reviewDepartments
+                          .filter((dept: string) => 
+                            dept.toLowerCase().includes((reviewDeptQuery || reviewForm.departmentName || '').toLowerCase())
+                          )
+                          .map((dept: string, i: number) => (
+                            <button
+                              key={i}
+                              type="button"
+                              className="w-full text-left px-4 py-2 text-xs font-bold text-slate-700 hover:bg-emerald-50 transition-colors"
+                              onMouseDown={() => {
+                                setReviewForm({...reviewForm, departmentName: dept});
+                                setReviewDeptQuery(dept);
+                                setShowReviewDeptDropdown(false);
+                              }}
+                            >
+                              {dept}
+                            </button>
+                          ))}
+                        {reviewDepartments.filter((dept: string) => 
+                          dept.toLowerCase().includes((reviewDeptQuery || reviewForm.departmentName || '').toLowerCase())
+                        ).length === 0 && (
+                          <div className="px-4 py-2 text-xs text-slate-400 italic">Không tìm thấy phòng ban nào (Gõ tự do để thêm mới)</div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
+
+                {/* --- Các trường nhập giá trị 'Khác' --- */}
+                {(reviewSelectedCity === 'Khác' || reviewSelectedProject === 'Khác' || reviewSelectedLocation === 'Khác') && (
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100 mt-3">
+                    {reviewSelectedCity === 'Khác' && (
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-500">Thành phố khác *</label>
+                        <input
+                          type="text"
+                          required
+                          value={reviewCustomCity}
+                          onChange={(e) => setReviewCustomCity(e.target.value)}
+                          placeholder="Nhập tên thành phố..."
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                        />
+                      </div>
+                    )}
+
+                    {reviewSelectedProject === 'Khác' && (
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-500">Dự án khác *</label>
+                        <input
+                          type="text"
+                          required
+                          value={reviewCustomProject}
+                          onChange={(e) => setReviewCustomProject(e.target.value)}
+                          placeholder="Nhập tên dự án..."
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                        />
+                      </div>
+                    )}
+
+                    {reviewSelectedLocation === 'Khác' && (
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-500">Vị trí khác *</label>
+                        <input
+                          type="text"
+                          required
+                          value={reviewCustomLocation}
+                          onChange={(e) => setReviewCustomLocation(e.target.value)}
+                          placeholder="Nhập vị trí chi tiết..."
+                          className="w-full px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold focus:ring-2 focus:ring-emerald-200 focus:border-emerald-400 transition-all"
+                        />
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* --- Người sử dụng (Autocomplete) --- */}
                 <div className="space-y-1 mt-2">
