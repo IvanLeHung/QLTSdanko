@@ -5,42 +5,68 @@ import { generateDocumentNo } from '../utils/document';
 
 export class ToolService {
   /**
-   * Generates CCDC tool codes in format: CCDC.{PHONGBAN}.{NAM}.{STT}
-   * STT is a 4-digit zero-padded running number unique to the department and year.
+   * Generates CCDC tool codes in format: CCDC.{NHOM}.{DONVI}.{NAM}.{STT}
+   * STT is a 5-digit zero-padded running number unique to the Nhóm, Đơn vị and year.
    */
   static async generateToolCodes(
     params: {
-      departmentName?: string | null;
+      category?: string | null;
+      branchName?: string | null;
       purchaseDate?: Date | null;
       quantity: number;
     },
     txClient?: any
   ) {
     const client = txClient || prisma;
-    const { departmentName, purchaseDate, quantity } = params;
+    const { category, branchName, purchaseDate, quantity } = params;
 
-    // 1. Resolve department code
-    let deptCode = 'HCNS';
-    if (departmentName) {
-      const dept = await client.department.findFirst({
-        where: { name: { equals: departmentName.trim(), mode: 'insensitive' } }
-      });
-      if (dept) {
-        deptCode = dept.code;
-      } else {
+    // 1. Resolve NHOM code from Category (e.g. "Event - Âm thanh" -> "EVENT")
+    let nhomCode = 'GEN';
+    if (category) {
+      const parentCat = category.split('-')[0].trim().toLowerCase();
+      if (parentCat.includes('decor')) nhomCode = 'DECOR';
+      else if (parentCat.includes('event')) nhomCode = 'EVENT';
+      else if (parentCat.includes('fb') || parentCat.includes('tiệc') || parentCat.includes('f&b')) nhomCode = 'FNB';
+      else if (parentCat.includes('nội thất')) nhomCode = 'FURNITURE';
+      else if (parentCat.includes('bất động sản') || parentCat.includes('bđs')) nhomCode = 'BDS';
+      else if (parentCat.includes('marketing')) nhomCode = 'MKT';
+      else if (parentCat.includes('media')) nhomCode = 'MEDIA';
+      else if (parentCat.includes('kỹ thuật')) nhomCode = 'TECH';
+      else if (parentCat.includes('kho vận')) nhomCode = 'KHO';
+      else if (parentCat.includes('cntt')) nhomCode = 'CNTT';
+      else if (parentCat.includes('tiêu hao')) nhomCode = 'CONSUMABLE';
+      else if (parentCat.includes('merchandise')) nhomCode = 'MERCH';
+      else if (parentCat.includes('branding')) nhomCode = 'BRAND';
+      else if (parentCat.includes('dịch vụ vận hành')) nhomCode = 'OPS';
+    }
+
+    // 2. Resolve DONVI code from Branch Name (e.g. "Hà Nội" -> "HN")
+    let donviCode = 'HQ';
+    if (branchName) {
+      const branchClean = branchName.trim().toLowerCase();
+      if (branchClean.includes('hà nội')) donviCode = 'HN';
+      else if (branchClean.includes('hồ chí minh') || branchClean.includes('hcm')) donviCode = 'HCM';
+      else if (branchClean.includes('đà nẵng')) donviCode = 'DN';
+      else if (branchClean.includes('thái nguyên')) donviCode = 'TN';
+      else if (branchClean.includes('bắc giang')) donviCode = 'BG';
+      else if (branchClean.includes('tuyên quang')) donviCode = 'TQ';
+      else if (branchClean.includes('thanh hóa')) donviCode = 'TH';
+      else if (branchClean.includes('phú thọ')) donviCode = 'PT';
+      else if (branchClean.includes('hà nam')) donviCode = 'HNM';
+      else {
         // Fallback: take first letters of each word
-        const cleanName = departmentName.trim()
+        const cleanName = branchName.trim()
           .normalize('NFD')
           .replace(/[\u0300-\u036f]/g, '')
           .replace(/[^a-zA-Z0-9\s]/g, '');
         const initials = cleanName.split(/\s+/).map(w => w[0]).join('').toUpperCase();
-        deptCode = initials.substring(0, 6) || 'GEN';
+        donviCode = initials.substring(0, 4) || 'GEN';
       }
     }
 
-    // 2. Resolve year
+    // 3. Resolve year
     const year = purchaseDate ? new Date(purchaseDate).getFullYear() : new Date().getFullYear();
-    const baseCode = `CCDC.${deptCode}.${year}`;
+    const baseCode = `CCDC.${nhomCode}.${donviCode}.${year}`;
 
     const execute = async (tx: any) => {
       // Find latest STT in the database using startsWith
@@ -66,7 +92,7 @@ export class ToolService {
       }
 
       // Also check documentCounter
-      const counterKey = `TOOL_CODE_${deptCode}_${year}`;
+      const counterKey = `TOOL_CODE_${nhomCode}_${donviCode}_${year}`;
       let counter = await tx.documentCounter.findUnique({
         where: { documentType: counterKey }
       });
@@ -87,7 +113,7 @@ export class ToolService {
 
       const codes = [];
       for (let i = startNumber; i <= endNumber; i++) {
-        const seqText = i.toString().padStart(4, '0');
+        const seqText = i.toString().padStart(5, '0');
         const toolCode = `${baseCode}.${seqText}`;
         codes.push({ runningNo: i, runningNoText: seqText, toolCode });
       }
@@ -106,7 +132,8 @@ export class ToolService {
 
   static async generateSingleToolCode(
     params: {
-      departmentName?: string | null;
+      category?: string | null;
+      branchName?: string | null;
       purchaseDate?: Date | null;
     },
     txClient?: any
@@ -174,7 +201,8 @@ export class ToolService {
       // Auto generate code if missing
       if (!data.toolCode) {
         const gen = await this.generateSingleToolCode({
-          departmentName: data.departmentName,
+          category: data.category,
+          branchName: data.branchName,
           purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null
         }, tx);
         data.toolCode = gen.toolCode;
@@ -200,7 +228,26 @@ export class ToolService {
           note: data.note,
           attachments: data.attachments,
           initialCondition: data.initialCondition,
-          industryAttributesJson: data.industryAttributesJson
+          industryAttributesJson: data.industryAttributesJson,
+
+          // CCDC Enterprise fields
+          managementType: data.managementType || 'INDIVIDUAL',
+          vat: data.vat ? Number(data.vat) : 0,
+          shippingInstallCost: data.shippingInstallCost ? Number(data.shippingInstallCost) : 0,
+          totalAmount: data.totalAmount ? Number(data.totalAmount) : 0,
+          fundingSource: data.fundingSource || 'MUA_MOI',
+          expectedUsefulLife: data.expectedUsefulLife ? Number(data.expectedUsefulLife) : null,
+          expectedResidualValue: data.expectedResidualValue ? Number(data.expectedResidualValue) : null,
+          companyName: data.companyName || null,
+          branchName: data.branchName || null,
+          buildingName: data.buildingName || null,
+          floorName: data.floorName || null,
+          areaName: data.areaName || null,
+          specificLocation: data.specificLocation || null,
+          operationalSpecsJson: data.operationalSpecsJson || null,
+          filesJson: data.filesJson || null,
+          warrantyInfoJson: data.warrantyInfoJson || null,
+          customFieldsJson: data.customFieldsJson || null
         }
       });
 
@@ -249,11 +296,16 @@ export class ToolService {
         if (norm.project) updates.projectName = norm.project;
       }
 
-      // Convert date strings
+      // Convert date strings and numbers safely
       if (updates.purchaseDate) updates.purchaseDate = new Date(updates.purchaseDate);
       if (updates.handoverDate) updates.handoverDate = new Date(updates.handoverDate);
-      if (updates.quantity) updates.quantity = Number(updates.quantity);
-      if (updates.purchasePrice) updates.purchasePrice = Number(updates.purchasePrice);
+      if (updates.quantity !== undefined && updates.quantity !== null) updates.quantity = Number(updates.quantity);
+      if (updates.purchasePrice !== undefined && updates.purchasePrice !== null) updates.purchasePrice = Number(updates.purchasePrice);
+      if (updates.vat !== undefined && updates.vat !== null) updates.vat = Number(updates.vat);
+      if (updates.shippingInstallCost !== undefined && updates.shippingInstallCost !== null) updates.shippingInstallCost = Number(updates.shippingInstallCost);
+      if (updates.totalAmount !== undefined && updates.totalAmount !== null) updates.totalAmount = Number(updates.totalAmount);
+      if (updates.expectedUsefulLife !== undefined && updates.expectedUsefulLife !== null) updates.expectedUsefulLife = Number(updates.expectedUsefulLife);
+      if (updates.expectedResidualValue !== undefined && updates.expectedResidualValue !== null) updates.expectedResidualValue = Number(updates.expectedResidualValue);
 
       const updated = await tx.toolEquipment.update({
         where: { id },
@@ -265,7 +317,11 @@ export class ToolService {
       const fieldsToTrack = [
         'status', 'currentUserName', 'departmentName', 'locationName',
         'cityName', 'projectName', 'toolName', 'purchasePrice', 'unit',
-        'purchaseDate', 'supplierName', 'toolCode', 'note', 'industryAttributesJson'
+        'purchaseDate', 'supplierName', 'toolCode', 'note', 'industryAttributesJson',
+        'managementType', 'vat', 'shippingInstallCost', 'totalAmount', 'fundingSource',
+        'expectedUsefulLife', 'expectedResidualValue', 'companyName', 'branchName',
+        'buildingName', 'floorName', 'areaName', 'specificLocation',
+        'operationalSpecsJson', 'filesJson', 'warrantyInfoJson', 'customFieldsJson'
       ];
 
       for (const field of fieldsToTrack) {

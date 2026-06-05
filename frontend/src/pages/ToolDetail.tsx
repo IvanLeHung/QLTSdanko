@@ -16,7 +16,10 @@ import {
   CheckCircle2, 
   ClipboardCheck,
   Loader2,
-  Trash
+  Trash,
+  FolderOpen,
+  ShieldCheck,
+  ClipboardList
 } from 'lucide-react';
 
 export const ToolDetail: React.FC = () => {
@@ -71,6 +74,42 @@ export const ToolDetail: React.FC = () => {
       industryAttributes = JSON.parse(tool.industryAttributesJson);
     } catch (e) {
       console.error("Lỗi parse industryAttributesJson:", e);
+    }
+  }
+
+  let operationalSpecs: Record<string, any> = {};
+  if (tool.operationalSpecsJson) {
+    try {
+      operationalSpecs = JSON.parse(tool.operationalSpecsJson);
+    } catch (e) {
+      console.error("Lỗi parse operationalSpecsJson:", e);
+    }
+  }
+
+  let filesInfo: Record<string, string> = {};
+  if (tool.filesJson) {
+    try {
+      filesInfo = JSON.parse(tool.filesJson);
+    } catch (e) {
+      console.error("Lỗi parse filesJson:", e);
+    }
+  }
+
+  let warrantyInfo: Record<string, any> = {};
+  if (tool.warrantyInfoJson) {
+    try {
+      warrantyInfo = JSON.parse(tool.warrantyInfoJson);
+    } catch (e) {
+      console.error("Lỗi parse warrantyInfoJson:", e);
+    }
+  }
+
+  let customFields: Record<string, string> = {};
+  if (tool.customFieldsJson) {
+    try {
+      customFields = JSON.parse(tool.customFieldsJson);
+    } catch (e) {
+      console.error("Lỗi parse customFieldsJson:", e);
     }
   }
 
@@ -151,12 +190,44 @@ export const ToolDetail: React.FC = () => {
               <span className="text-slate-800 font-bold">{tool.category}</span>
             </div>
             <div className="flex justify-between">
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Loại quản lý</span>
+              <span className="text-slate-800 font-bold bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
+                {tool.managementType === 'INDIVIDUAL' ? 'Từng mã' : tool.managementType === 'QUANTITY' ? 'Số lượng' : 'Theo bộ'}
+              </span>
+            </div>
+            <div className="flex justify-between">
               <span className="text-slate-400 font-bold uppercase tracking-wider">Số lượng</span>
               <span className="text-slate-800 font-bold">{tool.quantity} {tool.unit}</span>
             </div>
+            
+            <hr className="border-slate-100" />
+            
+            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tài chính & Mua sắm</h4>
             <div className="flex justify-between">
-              <span className="text-slate-400 font-bold uppercase tracking-wider">Giá trị mua</span>
-              <span className="text-slate-800 font-bold">{(tool.purchasePrice || 0).toLocaleString()} VNĐ</span>
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Đơn giá</span>
+              <span className="text-slate-800">{(tool.purchasePrice || 0).toLocaleString()} VNĐ</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Thuế VAT</span>
+              <span className="text-slate-800">{(tool.vat || 0)} %</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Chi phí vận chuyển</span>
+              <span className="text-slate-800">{(tool.shippingInstallCost || 0).toLocaleString()} VNĐ</span>
+            </div>
+            <div className="flex justify-between items-center bg-primary-50/50 p-2 rounded-xl">
+              <span className="text-primary-750 font-black uppercase tracking-wider">Tổng giá trị</span>
+              <span className="text-primary-850 font-black">{(tool.totalAmount || 0).toLocaleString()} VNĐ</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Nguồn hình thành</span>
+              <span className="text-slate-800 font-bold">{
+                tool.fundingSource === 'MUA_MOI' ? 'Mua mới' :
+                tool.fundingSource === 'DIEU_CHUYEN' ? 'Điều chuyển' :
+                tool.fundingSource === 'TU_SAN_XUAT' ? 'Tự sản xuất' :
+                tool.fundingSource === 'KHACH_HANG_BAN_GIAO' ? 'Khách hàng bàn giao' :
+                tool.fundingSource === 'TAI_TRO' ? 'Được tài trợ' : tool.fundingSource || 'Mua mới'
+              }</span>
             </div>
             <div className="flex justify-between">
               <span className="text-slate-400 font-bold uppercase tracking-wider">Ngày mua</span>
@@ -165,33 +236,44 @@ export const ToolDetail: React.FC = () => {
               </span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400 font-bold uppercase tracking-wider">Nhà cung cấp</span>
-              <span className="text-slate-800 truncate max-w-[150px]">{tool.supplierName || '---'}</span>
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Hạn dùng dự kiến</span>
+              <span className="text-slate-800">{tool.expectedUsefulLife ? `${tool.expectedUsefulLife} tháng` : '---'}</span>
             </div>
 
             <hr className="border-slate-100" />
-
+            
+            <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Định vị & Phân bổ</h4>
             <div className="flex justify-between">
               <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center"><User className="mr-1 h-3.5 w-3.5 text-slate-400" /> Người sử dụng</span>
               <span className="text-slate-800 font-bold">{tool.currentUserName || '---'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center"><Building2 className="mr-1 h-3.5 w-3.5 text-slate-400" /> Bộ phận quản lý</span>
+              <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center"><Building2 className="mr-1 h-3.5 w-3.5 text-slate-400" /> Bộ phận sử dụng</span>
               <span className="text-slate-800">{tool.departmentName || '---'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center"><MapPin className="mr-1 h-3.5 w-3.5 text-slate-400" /> Kho / Vị trí</span>
-              <span className="text-slate-800 truncate max-w-[150px]">{tool.locationName || '---'}</span>
+              <span className="text-slate-400 font-bold uppercase tracking-wider flex items-center"><MapPin className="mr-1 h-3.5 w-3.5 text-slate-400" /> Công ty thành viên</span>
+              <span className="text-slate-800 font-bold">{tool.companyName || '---'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400 font-bold uppercase tracking-wider">Tỉnh / Thành phố</span>
-              <span className="text-slate-800">{tool.cityName || '---'}</span>
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Chi nhánh / T.Phố</span>
+              <span className="text-slate-850 font-medium">{tool.branchName || '---'}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400 font-bold uppercase tracking-wider">Ngày bàn giao</span>
-              <span className="text-slate-800">
-                {tool.handoverDate ? new Date(tool.handoverDate).toLocaleDateString('vi-VN') : '---'}
-              </span>
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Tòa nhà / Dự án</span>
+              <span className="text-slate-850 font-medium">{tool.buildingName || '---'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Tầng / Vị trí</span>
+              <span className="text-slate-850 font-medium">{tool.floorName || '---'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Khu vực / Phòng</span>
+              <span className="text-slate-850 font-medium">{tool.areaName || '---'}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Vị trí chi tiết</span>
+              <span className="text-slate-850 truncate max-w-[150px]">{tool.specificLocation || '---'}</span>
             </div>
 
             {Object.keys(industryAttributes).length > 0 && (
@@ -289,6 +371,192 @@ export const ToolDetail: React.FC = () => {
                     </p>
                   </div>
                 </div>
+
+                {/* DYNAMIC SPECS SECTION */}
+                {Object.keys(operationalSpecs).length > 0 && (
+                  <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <h4 className="text-xs font-black text-primary-700 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
+                      <ClipboardList className="h-4 w-4 text-primary-500" />
+                      Thông số vận hành đặc thù
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 text-xs font-semibold pt-1">
+                      {operationalSpecs.usageCount !== undefined && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Số lần đã sử dụng</p>
+                          <p className="text-slate-800 font-black text-sm mt-0.5">{operationalSpecs.usageCount} lần</p>
+                        </div>
+                      )}
+                      {operationalSpecs.maxUsageCount !== undefined && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Số lần sử dụng tối đa</p>
+                          <p className="text-slate-800 font-black text-sm mt-0.5">{operationalSpecs.maxUsageCount} lần</p>
+                        </div>
+                      )}
+                      {operationalSpecs.lastUsedDate && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ngày dùng gần nhất</p>
+                          <p className="text-slate-800 font-bold text-sm mt-0.5">
+                            {new Date(operationalSpecs.lastUsedDate).toLocaleDateString('vi-VN')}
+                          </p>
+                        </div>
+                      )}
+                      {operationalSpecs.comboKitName && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tên bộ / combo</p>
+                          <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.comboKitName}</p>
+                        </div>
+                      )}
+                      {operationalSpecs.collectionConcept && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Concept / Bộ sưu tập</p>
+                          <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.collectionConcept}</p>
+                        </div>
+                      )}
+                      {operationalSpecs.season && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mùa vụ áp dụng</p>
+                          <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.season}</p>
+                        </div>
+                      )}
+                      {operationalSpecs.capacity && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Dung tích</p>
+                          <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.capacity}</p>
+                        </div>
+                      )}
+                      {operationalSpecs.material && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Chất liệu</p>
+                          <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.material}</p>
+                        </div>
+                      )}
+                      {operationalSpecs.color && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Màu sắc</p>
+                          <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.color}</p>
+                        </div>
+                      )}
+                      {operationalSpecs.size && (
+                        <div>
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Kích thước</p>
+                          <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.size}</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* WARRANTY INFO SECTION */}
+                {Object.keys(warrantyInfo).length > 0 && (warrantyInfo.warrantyMonths || warrantyInfo.warrantyProvider) && (
+                  <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <h4 className="text-xs font-black text-amber-800 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-amber-500" />
+                      Thông tin bảo hành sản phẩm
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 text-xs font-semibold pt-1">
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hạn bảo hành</p>
+                        <p className="text-slate-800 font-bold text-sm mt-0.5">{warrantyInfo.warrantyMonths ? `${warrantyInfo.warrantyMonths} tháng` : '---'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Đơn vị bảo hành</p>
+                        <p className="text-slate-800 font-bold text-sm mt-0.5">{warrantyInfo.warrantyProvider || '---'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">SĐT Hỗ trợ kỹ thuật</p>
+                        <p className="text-slate-800 font-bold text-sm mt-0.5">{warrantyInfo.warrantyPhone || '---'}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ghi chú bảo hành</p>
+                        <p className="text-slate-800 font-medium text-xs mt-0.5">{warrantyInfo.warrantyNote || '---'}</p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* ATTACHED FILES SECTION */}
+                {Object.keys(filesInfo).length > 0 && Object.values(filesInfo).some(Boolean) && (
+                  <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <h4 className="text-xs font-black text-emerald-850 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-emerald-500" />
+                      Hồ sơ tài liệu đính kèm
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                      {filesInfo.avatarUrl && (
+                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-3">
+                          <img src={filesInfo.avatarUrl} alt="Avatar CCDC" className="w-12 h-12 object-cover rounded-lg border" />
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ảnh đại diện CCDC</p>
+                            <a href={filesInfo.avatarUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600 hover:underline">Xem trực tiếp</a>
+                          </div>
+                        </div>
+                      )}
+                      {filesInfo.photoUrl && (
+                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-3">
+                          <img src={filesInfo.photoUrl} alt="Ảnh thực tế" className="w-12 h-12 object-cover rounded-lg border" />
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ảnh thực tế sản phẩm</p>
+                            <a href={filesInfo.photoUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600 hover:underline">Xem trực tiếp</a>
+                          </div>
+                        </div>
+                      )}
+                      {filesInfo.invoiceUrl && (
+                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-2 text-xs font-semibold">
+                          <FileText className="w-6 h-6 text-slate-450" />
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hóa đơn mua hàng / VAT</p>
+                            <a href={filesInfo.invoiceUrl} target="_blank" rel="noreferrer" className="font-bold text-primary-600 hover:underline">Tải xuống / Xem file</a>
+                          </div>
+                        </div>
+                      )}
+                      {filesInfo.warrantyCardUrl && (
+                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-2 text-xs font-semibold">
+                          <FileText className="w-6 h-6 text-slate-450" />
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Thẻ bảo hành đính kèm</p>
+                            <a href={filesInfo.warrantyCardUrl} target="_blank" rel="noreferrer" className="font-bold text-primary-600 hover:underline">Tải xuống / Xem file</a>
+                          </div>
+                        </div>
+                      )}
+                      {filesInfo.manualUrl && (
+                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-2 text-xs font-semibold">
+                          <FileText className="w-6 h-6 text-slate-450" />
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hướng dẫn sử dụng (HDSD)</p>
+                            <a href={filesInfo.manualUrl} target="_blank" rel="noreferrer" className="font-bold text-primary-600 hover:underline">Tải xuống / Xem file</a>
+                          </div>
+                        </div>
+                      )}
+                      {filesInfo.documentUrl && (
+                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-2 text-xs font-semibold">
+                          <FileText className="w-6 h-6 text-slate-450" />
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tài liệu đính kèm khác</p>
+                            <a href={filesInfo.documentUrl} target="_blank" rel="noreferrer" className="font-bold text-primary-600 hover:underline">Tải xuống / Xem file</a>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* CUSTOM FIELDS SECTION */}
+                {Object.keys(customFields).length > 0 && (
+                  <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
+                    <h4 className="text-xs font-black text-slate-700 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
+                      <FolderOpen className="h-4 w-4 text-slate-500" />
+                      Thuộc tính mở rộng tự định nghĩa
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 text-xs font-semibold pt-1">
+                      {Object.keys(customFields).map(key => (
+                        <div key={key} className="bg-white border p-3 rounded-xl border-slate-200">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">{key}</p>
+                          <p className="text-slate-800 font-black text-sm mt-0.5">{customFields[key]}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <div className="space-y-3">
                   <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Biến động trạng thái gần nhất</h4>

@@ -779,6 +779,26 @@ model ToolEquipment {
   attachments      String?                // JSON string or comma-separated file paths
   initialCondition String?
   industryAttributesJson String?       // JSON string containing custom industry attributes
+  
+  // CCDC Enterprise Upgrades
+  managementType       String?                @default("INDIVIDUAL") // INDIVIDUAL, QUANTITY, BUNDLE
+  vat                  Float?                 @default(0)
+  shippingInstallCost  Float?                 @default(0)
+  totalAmount          Float?                 @default(0)
+  fundingSource        String?                @default("MUA_MOI") // MUA_MOI, DIEU_CHUYEN, TU_SAN_XUAT, KHACH_HANG_BAN_GIAO, TAI_TRO
+  expectedUsefulLife   Int?                   // Expected months of useful life
+  expectedResidualValue Float?                // Expected residual value
+  companyName          String?                // Member company name
+  branchName           String?                // Branch (City)
+  buildingName         String?                // Building
+  floorName            String?                // Floor
+  areaName             String?                // Area
+  specificLocation     String?                // Specific location/room
+  operationalSpecsJson String?                // Operational attributes (usage count, maximum limit, concept, size, color...)
+  filesJson            String?                // Profile files list JSON
+  warrantyInfoJson     String?                // Warranty details JSON
+  customFieldsJson     String?                // Custom attributes JSON
+  
   isDeleted        Boolean                @default(false)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt

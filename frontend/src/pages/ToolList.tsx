@@ -561,6 +561,7 @@ export const ToolList: React.FC = () => {
                   </th>
                   <th className="px-6 py-4">Mã CCDC</th>
                   <th className="px-6 py-4">Tên CCDC</th>
+                  <th className="px-6 py-4">Loại quản lý</th>
                   <th className="px-6 py-4">Nhóm CCDC</th>
                   <th className="px-6 py-4 text-center">Số lượng</th>
                   <th className="px-6 py-4">Người sử dụng</th>
@@ -605,6 +606,9 @@ export const ToolList: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 border-b font-mono font-bold text-xs text-slate-800">{tool.toolCode}</td>
                       <td className="px-6 py-4 border-b font-bold text-slate-800">{tool.toolName}</td>
+                      <td className="px-6 py-4 border-b text-xs font-bold text-slate-650">
+                        {tool.managementType === 'INDIVIDUAL' ? 'Từng mã' : tool.managementType === 'QUANTITY' ? 'Số lượng' : tool.managementType === 'BUNDLE' ? 'Theo bộ' : 'Từng mã'}
+                      </td>
                       <td className="px-6 py-4 border-b text-slate-500">{tool.category}</td>
                       <td className="px-6 py-4 border-b text-center font-bold text-slate-800">{tool.quantity} {tool.unit}</td>
                       <td className="px-6 py-4 border-b text-slate-700 font-medium">{tool.currentUserName || '---'}</td>
