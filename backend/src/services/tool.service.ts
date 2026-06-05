@@ -188,8 +188,8 @@ export class ToolService {
   /**
    * Create new Tool
    */
-  static async createTool(data: any, performedBy: string) {
-    return await prisma.$transaction(async (tx) => {
+  static async createTool(data: any, performedBy: string, txClient?: any) {
+    const execute = async (tx: any) => {
       // Normalize location
       if (data.locationName) {
         const norm = parseAndNormalizeLocation(data.locationName);
@@ -315,7 +315,29 @@ export class ToolService {
       });
 
       return tool;
-    });
+    };
+
+    if (txClient) {
+      return await execute(txClient);
+    } else {
+      return await prisma.$transaction(async (tx) => {
+        return await execute(tx);
+      });
+    }
+  }
+
+  /**
+   * Create multiple tools in a single transaction (Bulk create)
+   */
+  static async createToolsBulk(dataList: any[], performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const results = [];
+      for (const data of dataList) {
+        const tool = await this.createTool(data, performedBy, tx);
+        results.push(tool);
+      }
+      return results;
+    }, { timeout: 60000 });
   }
 
   /**

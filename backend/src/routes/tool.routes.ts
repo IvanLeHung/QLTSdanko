@@ -231,8 +231,13 @@ router.get('/:id', authenticateToken, async (req, res) => {
 router.post('/', authenticateToken, async (req: any, res) => {
   try {
     const performedBy = req.user?.fullName || req.user?.username || 'system';
-    const tool = await ToolService.createTool(req.body, performedBy);
-    res.status(201).json(tool);
+    if (Array.isArray(req.body)) {
+      const tools = await ToolService.createToolsBulk(req.body, performedBy);
+      res.status(201).json(tools);
+    } else {
+      const tool = await ToolService.createTool(req.body, performedBy);
+      res.status(201).json(tool);
+    }
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }

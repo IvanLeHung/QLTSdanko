@@ -16,7 +16,9 @@ import {
   FileText,
   Trash2,
   FolderOpen,
-  AlertCircle
+  AlertCircle,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
 const CATEGORY_TREE: Record<string, string[]> = {
@@ -90,41 +92,25 @@ export const CreateTool: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [autoCode, setAutoCode] = useState(true);
 
-  // Core Form State
-  const [formData, setFormData] = useState({
-    toolCode: '',
-    toolName: '',
-    managementType: 'INDIVIDUAL', // INDIVIDUAL, QUANTITY, BUNDLE
-    quantity: 1,
-    unit: 'Cái',
-    status: 'IN_STOCK',
-    initialCondition: 'Mới 100%',
-    note: '',
-    
-    // Financial properties
-    purchasePrice: 0,
-    vat: 0,
-    shippingInstallCost: 0,
-    totalAmount: 0,
+  // Common/Shared State
+  const [commonData, setCommonData] = useState({
     purchaseDate: new Date().toISOString().split('T')[0],
     supplierName: '',
     fundingSource: 'MUA_MOI',
-    expectedUsefulLife: '',
-    expectedResidualValue: '',
-
-    // Location / User info
     companyName: 'Danko Group',
     floorName: 'Tầng 1',
     specificLocation: '',
     departmentName: '',
     currentUserName: '',
-    handoverDate: ''
+    handoverDate: '',
+    
+    warrantyMonths: '',
+    warrantyProvider: '',
+    warrantyPhone: '',
+    warrantyNote: ''
   });
 
-  // Level selections
-  const [selectedParentCategory, setSelectedParentCategory] = useState('');
-  const [selectedSubCategory, setSelectedSubCategory] = useState('');
-
+  // Level selections (shared)
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
@@ -133,43 +119,56 @@ export const CreateTool: React.FC = () => {
   const [customProject, setCustomProject] = useState('');
   const [customLocation, setCustomLocation] = useState('');
 
-  // Operational Specs State
-  const [operationalSpecs, setOperationalSpecs] = useState<Record<string, any>>({
-    // Event
-    usageCount: 0,
-    maxUsageCount: 0,
-    lastUsedDate: '',
-    comboKitName: '',
-    // Decor
-    collectionConcept: '',
-    season: 'Thường xuyên',
-    // F&B
-    capacity: '',
-    material: '',
-    color: '',
-    size: '',
-  });
+  // CCDC Items list
+  const [items, setItems] = useState<any[]>([
+    {
+      id: Math.random().toString(36).substr(2, 9),
+      toolCode: '',
+      toolName: '',
+      managementType: 'INDIVIDUAL', // INDIVIDUAL, QUANTITY, BUNDLE
+      quantity: 1,
+      unit: 'Cái',
+      status: 'IN_STOCK',
+      initialCondition: 'Mới 100%',
+      note: '',
+      
+      // Finance
+      purchasePrice: 0,
+      vat: 0,
+      shippingInstallCost: 0,
+      totalAmount: 0,
+      expectedUsefulLife: '',
+      expectedResidualValue: '',
 
-  // Warranty State
-  const [warrantyInfo, setWarrantyInfo] = useState({
-    warrantyMonths: '',
-    warrantyProvider: '',
-    warrantyPhone: '',
-    warrantyNote: ''
-  });
+      category1: '',
+      category2: '',
 
-  // Files State
-  const [files, setFiles] = useState({
-    avatarUrl: '',
-    photoUrl: '',
-    invoiceUrl: '',
-    warrantyCardUrl: '',
-    manualUrl: '',
-    documentUrl: ''
-  });
+      operationalSpecs: {
+        usageCount: 0,
+        maxUsageCount: 0,
+        lastUsedDate: '',
+        comboKitName: '',
+        collectionConcept: '',
+        season: 'Thường xuyên',
+        capacity: '',
+        material: '',
+        color: '',
+        size: '',
+      },
 
-  // Custom Fields State (dynamic key-value array)
-  const [customFields, setCustomFields] = useState<{ key: string; value: string }[]>([]);
+      files: {
+        avatarUrl: '',
+        photoUrl: '',
+        invoiceUrl: '',
+        warrantyCardUrl: '',
+        manualUrl: '',
+        documentUrl: ''
+      },
+
+      customFields: [],
+      isExpanded: true
+    }
+  ]);
 
   // Metadata from settings API
   const [departments, setDepartments] = useState<any[]>([]);
@@ -191,44 +190,140 @@ export const CreateTool: React.FC = () => {
     fetchMetadata();
   }, []);
 
-  // Reactive Total Amount Calculation
-  useEffect(() => {
-    const price = Number(formData.purchasePrice) || 0;
-    const vat = Number(formData.vat) || 0;
-    const qty = Number(formData.quantity) || 1;
-    const shipping = Number(formData.shippingInstallCost) || 0;
-    const total = (price * (1 + vat / 100) * qty) + shipping;
-    
-    setFormData(prev => ({
+  const addItem = () => {
+    setItems(prev => [
       ...prev,
-      totalAmount: total
+      {
+        id: Math.random().toString(36).substr(2, 9),
+        toolCode: '',
+        toolName: '',
+        managementType: 'INDIVIDUAL',
+        quantity: 1,
+        unit: 'Cái',
+        status: 'IN_STOCK',
+        initialCondition: 'Mới 100%',
+        note: '',
+        
+        purchasePrice: 0,
+        vat: 0,
+        shippingInstallCost: 0,
+        totalAmount: 0,
+        expectedUsefulLife: '',
+        expectedResidualValue: '',
+
+        category1: '',
+        category2: '',
+
+        operationalSpecs: {
+          usageCount: 0,
+          maxUsageCount: 0,
+          lastUsedDate: '',
+          comboKitName: '',
+          collectionConcept: '',
+          season: 'Thường xuyên',
+          capacity: '',
+          material: '',
+          color: '',
+          size: '',
+        },
+
+        files: {
+          avatarUrl: '',
+          photoUrl: '',
+          invoiceUrl: '',
+          warrantyCardUrl: '',
+          manualUrl: '',
+          documentUrl: ''
+        },
+
+        customFields: [],
+        isExpanded: true
+      }
+    ]);
+  };
+
+  const removeItem = (id: string) => {
+    if (items.length <= 1) return;
+    setItems(prev => prev.filter(item => item.id !== id));
+  };
+
+  const toggleExpand = (id: string) => {
+    setItems(prev => prev.map(item => item.id === id ? { ...item, isExpanded: !item.isExpanded } : item));
+  };
+
+  const handleItemFieldChange = (id: string, field: string, value: any) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const updated = { ...item, [field]: value };
+      
+      if (['purchasePrice', 'vat', 'quantity', 'shippingInstallCost'].includes(field)) {
+        const price = Number(updated.purchasePrice) || 0;
+        const vat = Number(updated.vat) || 0;
+        const qty = Number(updated.quantity) || 1;
+        const shipping = Number(updated.shippingInstallCost) || 0;
+        updated.totalAmount = (price * (1 + vat / 100) * qty) + shipping;
+      }
+      return updated;
     }));
-  }, [formData.purchasePrice, formData.vat, formData.quantity, formData.shippingInstallCost]);
-
-  const addCustomField = () => {
-    setCustomFields([...customFields, { key: '', value: '' }]);
   };
 
-  const removeCustomField = (index: number) => {
-    setCustomFields(customFields.filter((_, i) => i !== index));
+  const handleItemSpecsChange = (id: string, specField: string, value: any) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      return {
+        ...item,
+        operationalSpecs: {
+          ...item.operationalSpecs,
+          [specField]: value
+        }
+      };
+    }));
   };
 
-  const handleCustomFieldChange = (index: number, fieldKey: 'key' | 'value', val: string) => {
-    const updated = [...customFields];
-    updated[index][fieldKey] = val;
-    setCustomFields(updated);
+  const handleItemFilesChange = (id: string, fileField: string, value: any) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      return {
+        ...item,
+        files: {
+          ...item.files,
+          [fileField]: value
+        }
+      };
+    }));
+  };
+
+  const handleItemCustomFieldChange = (id: string, idx: number, keyOrVal: 'key' | 'value', value: string) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      const updatedFields = [...item.customFields];
+      updatedFields[idx] = { ...updatedFields[idx], [keyOrVal]: value };
+      return { ...item, customFields: updatedFields };
+    }));
+  };
+
+  const addItemCustomField = (id: string) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      return {
+        ...item,
+        customFields: [...item.customFields, { key: '', value: '' }]
+      };
+    }));
+  };
+
+  const removeItemCustomField = (id: string, idx: number) => {
+    setItems(prev => prev.map(item => {
+      if (item.id !== id) return item;
+      return {
+        ...item,
+        customFields: item.customFields.filter((_: any, i: number) => i !== idx)
+      };
+    }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!formData.toolName.trim()) {
-      toast.warn("Tên CCDC không được trống.");
-      return;
-    }
-    if (!selectedParentCategory) {
-      toast.warn("Vui lòng chọn Nhóm CCDC cấp 1.");
-      return;
-    }
 
     // Resolve location values
     const cityVal = selectedCity === 'Khác' ? customCity : selectedCity;
@@ -240,110 +335,128 @@ export const CreateTool: React.FC = () => {
       return;
     }
 
+    // Validate items
+    for (let idx = 0; idx < items.length; idx++) {
+      const item = items[idx];
+      if (!item.toolName.trim()) {
+        toast.warn(`CCDC #${idx + 1}: Vui lòng nhập tên công cụ dụng cụ.`);
+        return;
+      }
+      if (!item.category1) {
+        toast.warn(`CCDC #${idx + 1}: Vui lòng chọn Nhóm CCDC cấp 1.`);
+        return;
+      }
+      if (!autoCode && !item.toolCode.trim()) {
+        toast.warn(`CCDC #${idx + 1}: Vui lòng nhập mã định danh thủ công.`);
+        return;
+      }
+    }
+
     setLoading(true);
     try {
-      const categoryPath = selectedSubCategory 
-        ? `${selectedParentCategory} - ${selectedSubCategory}` 
-        : selectedParentCategory;
+      const payload = items.map(item => {
+        const categoryPath = item.category2 
+          ? `${item.category1} - ${item.category2}` 
+          : item.category1;
 
-      // Location full string
-      const fullLocationString = [
-        formData.companyName, 
-        cityVal, 
-        projectVal, 
-        formData.floorName, 
-        areaVal, 
-        formData.specificLocation
-      ].filter(Boolean).join(' - ');
+        const fullLocationString = [
+          commonData.companyName, 
+          cityVal, 
+          projectVal, 
+          commonData.floorName, 
+          areaVal, 
+          commonData.specificLocation
+        ].filter(Boolean).join(' - ');
 
-      // Build specific operationalSpecsJson based on category
-      const specs: Record<string, any> = {};
-      const parentLower = selectedParentCategory.toLowerCase();
-      if (parentLower.includes('event')) {
-        specs.usageCount = Number(operationalSpecs.usageCount) || 0;
-        specs.maxUsageCount = Number(operationalSpecs.maxUsageCount) || 0;
-        specs.lastUsedDate = operationalSpecs.lastUsedDate || null;
-        specs.comboKitName = operationalSpecs.comboKitName || '';
-      } else if (parentLower.includes('decor')) {
-        specs.collectionConcept = operationalSpecs.collectionConcept || '';
-        specs.season = operationalSpecs.season || 'Thường xuyên';
-        specs.usageCount = Number(operationalSpecs.usageCount) || 0;
-      } else if (parentLower.includes('fb') || parentLower.includes('tiệc') || parentLower.includes('f&b')) {
-        specs.capacity = operationalSpecs.capacity || '';
-        specs.material = operationalSpecs.material || '';
-        specs.color = operationalSpecs.color || '';
-        specs.size = operationalSpecs.size || '';
-        specs.comboKitName = operationalSpecs.comboKitName || '';
-      }
-
-      // Convert custom fields to key-value object
-      const customObj: Record<string, string> = {};
-      customFields.forEach(f => {
-        if (f.key.trim()) {
-          customObj[f.key.trim()] = f.value;
+        // Operational specs
+        const specs: Record<string, any> = {};
+        const parentLower = item.category1.toLowerCase();
+        if (parentLower.includes('event')) {
+          specs.usageCount = Number(item.operationalSpecs.usageCount) || 0;
+          specs.maxUsageCount = Number(item.operationalSpecs.maxUsageCount) || 0;
+          specs.lastUsedDate = item.operationalSpecs.lastUsedDate || null;
+          specs.comboKitName = item.operationalSpecs.comboKitName || '';
+        } else if (parentLower.includes('decor')) {
+          specs.collectionConcept = item.operationalSpecs.collectionConcept || '';
+          specs.season = item.operationalSpecs.season || 'Thường xuyên';
+          specs.usageCount = Number(item.operationalSpecs.usageCount) || 0;
+        } else if (parentLower.includes('fb') || parentLower.includes('tiệc') || parentLower.includes('f&b')) {
+          specs.capacity = item.operationalSpecs.capacity || '';
+          specs.material = item.operationalSpecs.material || '';
+          specs.color = item.operationalSpecs.color || '';
+          specs.size = item.operationalSpecs.size || '';
+          specs.comboKitName = item.operationalSpecs.comboKitName || '';
         }
+
+        const customObj: Record<string, string> = {};
+        item.customFields.forEach((f: any) => {
+          if (f.key.trim()) {
+            customObj[f.key.trim()] = f.value;
+          }
+        });
+
+        return {
+          toolCode: autoCode ? undefined : item.toolCode,
+          toolName: item.toolName,
+          category: categoryPath,
+          quantity: Number(item.quantity) || 1,
+          unit: item.unit,
+          status: item.status,
+          initialCondition: item.initialCondition,
+          note: item.note,
+          
+          // Finance
+          purchasePrice: Number(item.purchasePrice) || 0,
+          vat: Number(item.vat) || 0,
+          shippingInstallCost: Number(item.shippingInstallCost) || 0,
+          totalAmount: Number(item.totalAmount) || 0,
+          purchaseDate: commonData.purchaseDate ? new Date(commonData.purchaseDate) : null,
+          supplierName: commonData.supplierName,
+          fundingSource: commonData.fundingSource,
+          expectedUsefulLife: item.expectedUsefulLife ? Number(item.expectedUsefulLife) : null,
+          expectedResidualValue: item.expectedResidualValue ? Number(item.expectedResidualValue) : null,
+
+          // Location Info
+          companyName: commonData.companyName,
+          branchName: cityVal,
+          buildingName: projectVal,
+          floorName: commonData.floorName,
+          areaName: areaVal,
+          specificLocation: commonData.specificLocation,
+          locationName: fullLocationString,
+
+          // User / Handover
+          departmentName: commonData.departmentName,
+          currentUserName: commonData.currentUserName,
+          handoverDate: commonData.handoverDate ? new Date(commonData.handoverDate) : null,
+
+          // JSON Columns
+          managementType: item.managementType,
+          operationalSpecsJson: Object.keys(specs).length > 0 ? JSON.stringify(specs) : null,
+          filesJson: JSON.stringify(item.files),
+          warrantyInfoJson: JSON.stringify({
+            warrantyMonths: commonData.warrantyMonths ? Number(commonData.warrantyMonths) : null,
+            warrantyProvider: commonData.warrantyProvider,
+            warrantyPhone: commonData.warrantyPhone,
+            warrantyNote: commonData.warrantyNote
+          }),
+          customFieldsJson: Object.keys(customObj).length > 0 ? JSON.stringify(customObj) : null
+        };
       });
 
-      const payload = {
-        toolCode: autoCode ? undefined : formData.toolCode,
-        toolName: formData.toolName,
-        category: categoryPath,
-        quantity: Number(formData.quantity) || 1,
-        unit: formData.unit,
-        status: formData.status,
-        initialCondition: formData.initialCondition,
-        note: formData.note,
-        
-        // Finance
-        purchasePrice: Number(formData.purchasePrice) || 0,
-        vat: Number(formData.vat) || 0,
-        shippingInstallCost: Number(formData.shippingInstallCost) || 0,
-        totalAmount: Number(formData.totalAmount) || 0,
-        purchaseDate: formData.purchaseDate ? new Date(formData.purchaseDate) : null,
-        supplierName: formData.supplierName,
-        fundingSource: formData.fundingSource,
-        expectedUsefulLife: formData.expectedUsefulLife ? Number(formData.expectedUsefulLife) : null,
-        expectedResidualValue: formData.expectedResidualValue ? Number(formData.expectedResidualValue) : null,
-
-        // Location Info
-        companyName: formData.companyName,
-        branchName: cityVal,
-        buildingName: projectVal,
-        floorName: formData.floorName,
-        areaName: areaVal,
-        specificLocation: formData.specificLocation,
-        locationName: fullLocationString,
-
-        // User / Handover
-        departmentName: formData.departmentName,
-        currentUserName: formData.currentUserName,
-        handoverDate: formData.handoverDate ? new Date(formData.handoverDate) : null,
-
-        // JSON Columns (Stringified JSON as required)
-        operationalSpecsJson: Object.keys(specs).length > 0 ? JSON.stringify(specs) : null,
-        filesJson: JSON.stringify(files),
-        warrantyInfoJson: JSON.stringify({
-          warrantyMonths: warrantyInfo.warrantyMonths ? Number(warrantyInfo.warrantyMonths) : null,
-          warrantyProvider: warrantyInfo.warrantyProvider,
-          warrantyPhone: warrantyInfo.warrantyPhone,
-          warrantyNote: warrantyInfo.warrantyNote
-        }),
-        customFieldsJson: Object.keys(customObj).length > 0 ? JSON.stringify(customObj) : null
-      };
-
       await api.post('/tools', payload);
-      toast.success("Thêm mới Công cụ dụng cụ Enterprise thành công!");
+      toast.success(`Đã thêm mới thành công ${items.length} Công cụ dụng cụ!`);
       navigate('/tools');
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Lỗi khi lưu CCDC mới.");
+      toast.error(err.response?.data?.message || "Lỗi khi lưu danh sách CCDC mới.");
     } finally {
       setLoading(false);
     }
   };
 
-  const isCategoryEvent = selectedParentCategory.toLowerCase().includes('event');
-  const isCategoryDecor = selectedParentCategory.toLowerCase().includes('decor');
-  const isCategoryFnB = selectedParentCategory.toLowerCase().includes('fb') || selectedParentCategory.toLowerCase().includes('tiệc') || selectedParentCategory.toLowerCase().includes('f&b');
+  const isEventCat = (cat1: string) => cat1.toLowerCase().includes('event');
+  const isDecorCat = (cat1: string) => cat1.toLowerCase().includes('decor');
+  const isFnBCat = (cat1: string) => cat1.toLowerCase().includes('fb') || cat1.toLowerCase().includes('tiệc') || cat1.toLowerCase().includes('f&b');
 
   return (
     <div className="max-w-7xl mx-auto space-y-8 pb-20 px-4">
@@ -361,462 +474,41 @@ export const CreateTool: React.FC = () => {
             Thêm mới Công cụ dụng cụ Enterprise
           </h1>
           <p className="text-slate-500 text-xs">
-            Hệ thống quản lý CCDC, Thiết bị sự kiện, Decor và F&B phân cấp nâng cao.
+            Hệ thống quản lý CCDC, Thiết bị sự kiện, Decor và F&B phân cấp nâng cao. Hỗ trợ tạo đồng loạt nhiều CCDC cùng lúc.
           </p>
         </div>
       </div>
 
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         
-        {/* LEFT COLUMN: CORE INFO, FINANCE, DOCUMENTS & WARRANTY */}
-        <div className="space-y-8">
+        {/* LEFT 5 COLUMNS: SHARED/COMMON SETTINGS */}
+        <div className="lg:col-span-5 space-y-8">
           
-          {/* SECTION 1: CORE INFO */}
+          {/* SHARED LOCATION & HANDOVER */}
           <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 border-b border-slate-100 pb-3">
-              <ClipboardList className="h-5 w-5 text-primary-500" />
-              1. Thông tin chung
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tên công cụ dụng cụ *</label>
-                <input 
-                  type="text" 
-                  required
-                  placeholder="Ví dụ: Micro không dây Shure A, Ly rượu vang đỏ..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.toolName}
-                  onChange={e => setFormData({ ...formData, toolName: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Loại quản lý</label>
-                <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1 rounded-2xl">
-                  {[
-                    { value: 'INDIVIDUAL', label: 'Từng mã' },
-                    { value: 'QUANTITY', label: 'Số lượng' },
-                    { value: 'BUNDLE', label: 'Theo bộ/combo' }
-                  ].map(item => (
-                    <button
-                      key={item.value}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, managementType: item.value })}
-                      className={`py-2 px-3 rounded-xl text-xs font-bold transition-all ${
-                        formData.managementType === item.value 
-                          ? 'bg-white text-primary-700 shadow-sm' 
-                          : 'text-slate-500 hover:text-slate-800 hover:bg-slate-50/50'
-                      }`}
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {formData.managementType === 'QUANTITY' && (
-                <div className="md:col-span-2 bg-primary-50/40 border border-primary-100 p-4 rounded-2xl text-xs font-semibold text-primary-800 animate-in fade-in duration-200">
-                  <p className="font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                    <AlertCircle className="h-4 w-4 text-primary-600" />
-                    Quản lý số lượng & Biến động kho
-                  </p>
-                  <p>Hệ thống sẽ tự động khởi tạo lô nhập hàng đầu tiên <strong>(LOT001)</strong> với số lượng và đơn giá khai báo dưới đây, đồng thời tạo bảng cân đối tồn kho khả dụng tại địa điểm bàn giao.</p>
-                </div>
-              )}
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Đơn vị tính</label>
-                <input 
-                  type="text" 
-                  placeholder="Cái, chiếc, ly, bộ..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.unit}
-                  onChange={e => setFormData({ ...formData, unit: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Số lượng</label>
-                <input 
-                  type="number" 
-                  min={1}
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.quantity}
-                  onChange={e => setFormData({ ...formData, quantity: parseInt(e.target.value, 10) || 1 })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Trạng thái khởi tạo</label>
-                <select 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
-                  value={formData.status}
-                  onChange={e => setFormData({ ...formData, status: e.target.value })}
-                >
-                  <option value="IN_STOCK">Trong kho (Chờ cấp)</option>
-                  <option value="USING">Đang sử dụng</option>
-                  <option value="DAMAGED">Báo hỏng</option>
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tình trạng ban đầu</label>
-                <input 
-                  type="text" 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  placeholder="Mới 100%, cũ hỏng nhẹ..."
-                  value={formData.initialCondition}
-                  onChange={e => setFormData({ ...formData, initialCondition: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Ghi chú</label>
-                <textarea 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 h-24"
-                  placeholder="Nhập thông tin mô tả bổ sung..."
-                  value={formData.note}
-                  onChange={e => setFormData({ ...formData, note: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 2: FINANCE */}
-          <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 border-b border-slate-100 pb-3">
-              <Coins className="h-5 w-5 text-primary-500" />
-              2. Thông tin tài chính & Hạch toán
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Đơn giá mua (VNĐ)</label>
-                <input 
-                  type="number" 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.purchasePrice || ''}
-                  onChange={e => setFormData({ ...formData, purchasePrice: Number(e.target.value) || 0 })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Thuế VAT (%)</label>
-                <input 
-                  type="number" 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.vat || ''}
-                  onChange={e => setFormData({ ...formData, vat: Number(e.target.value) || 0 })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Phí vận chuyển/lắp đặt (VNĐ)</label>
-                <input 
-                  type="number" 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.shippingInstallCost || ''}
-                  onChange={e => setFormData({ ...formData, shippingInstallCost: Number(e.target.value) || 0 })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tổng giá trị (Tự động tính)</label>
-                <div className="w-full bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3 text-sm font-black text-slate-800">
-                  {formData.totalAmount.toLocaleString()} VNĐ
-                </div>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Ngày mua</label>
-                <input 
-                  type="date" 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.purchaseDate}
-                  onChange={e => setFormData({ ...formData, purchaseDate: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Nhà cung cấp</label>
-                <input 
-                  type="text" 
-                  placeholder="Tên nhà cung cấp..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.supplierName}
-                  onChange={e => setFormData({ ...formData, supplierName: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Nguồn hình thành</label>
-                <select 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
-                  value={formData.fundingSource}
-                  onChange={e => setFormData({ ...formData, fundingSource: e.target.value })}
-                >
-                  <option value="MUA_MOI">Mua mới</option>
-                  <option value="DIEU_CHUYEN">Điều chuyển nội bộ</option>
-                  <option value="TU_SAN_XUAT">Tự sản xuất</option>
-                  <option value="KHACH_HANG_BAN_GIAO">Khách hàng bàn giao</option>
-                  <option value="TAI_TRO">Được tài trợ</option>
-                </select>
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Hạn dùng (Tháng)</label>
-                  <input 
-                    type="number" 
-                    placeholder="Ví dụ: 36..."
-                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                    value={formData.expectedUsefulLife}
-                    onChange={e => setFormData({ ...formData, expectedUsefulLife: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-1.5">
-                  <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">G.trị còn lại dự kiến</label>
-                  <input 
-                    type="number" 
-                    placeholder="Giá trị thanh lý..."
-                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                    value={formData.expectedResidualValue}
-                    onChange={e => setFormData({ ...formData, expectedResidualValue: e.target.value })}
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 3: WARRANTY & FILES */}
-          <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 border-b border-slate-100 pb-3">
-              <ShieldCheck className="h-5 w-5 text-primary-500" />
-              3. Bảo hành & Hồ sơ đính kèm
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Hạn bảo hành (Tháng)</label>
-                <input 
-                  type="number" 
-                  placeholder="Ví dụ: 12..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                  value={warrantyInfo.warrantyMonths}
-                  onChange={e => setWarrantyInfo({ ...warrantyInfo, warrantyMonths: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Đơn vị bảo hành</label>
-                <input 
-                  type="text" 
-                  placeholder="Tên trung tâm bảo hành..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                  value={warrantyInfo.warrantyProvider}
-                  onChange={e => setWarrantyInfo({ ...warrantyInfo, warrantyProvider: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">SĐT Hỗ trợ kỹ thuật</label>
-                <input 
-                  type="text" 
-                  placeholder="SĐT liên hệ bảo hành..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                  value={warrantyInfo.warrantyPhone}
-                  onChange={e => setWarrantyInfo({ ...warrantyInfo, warrantyPhone: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Ghi chú bảo hành</label>
-                <input 
-                  type="text" 
-                  placeholder="Điều kiện bảo hành..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                  value={warrantyInfo.warrantyNote}
-                  onChange={e => setWarrantyInfo({ ...warrantyInfo, warrantyNote: e.target.value })}
-                />
-              </div>
-
-              <hr className="md:col-span-2 border-slate-100" />
-              <h3 className="md:col-span-2 text-xs font-bold text-slate-400 uppercase tracking-widest">Hồ sơ tài liệu đính kèm (Nhập Link URL)</h3>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Link ảnh đại diện CCDC</label>
-                <input 
-                  type="text" 
-                  placeholder="https://..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs py-3 px-4 bg-slate-50/50"
-                  value={files.avatarUrl}
-                  onChange={e => setFiles({ ...files, avatarUrl: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Link ảnh thực tế sản phẩm</label>
-                <input 
-                  type="text" 
-                  placeholder="https://..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs py-3 px-4 bg-slate-50/50"
-                  value={files.photoUrl}
-                  onChange={e => setFiles({ ...files, photoUrl: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Link hóa đơn mua hàng / VAT</label>
-                <input 
-                  type="text" 
-                  placeholder="https://..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs py-3 px-4 bg-slate-50/50"
-                  value={files.invoiceUrl}
-                  onChange={e => setFiles({ ...files, invoiceUrl: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Link thẻ bảo hành</label>
-                <input 
-                  type="text" 
-                  placeholder="https://..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs py-3 px-4 bg-slate-50/50"
-                  value={files.warrantyCardUrl}
-                  onChange={e => setFiles({ ...files, warrantyCardUrl: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Link sách hướng dẫn sử dụng (HDSD)</label>
-                <input 
-                  type="text" 
-                  placeholder="https://..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs py-3 px-4 bg-slate-50/50"
-                  value={files.manualUrl}
-                  onChange={e => setFiles({ ...files, manualUrl: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Tài liệu kỹ thuật khác</label>
-                <input 
-                  type="text" 
-                  placeholder="https://..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs py-3 px-4 bg-slate-50/50"
-                  value={files.documentUrl}
-                  onChange={e => setFiles({ ...files, documentUrl: e.target.value })}
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* RIGHT COLUMN: CATEGORIZATION, LOCATION, OPERATIONAL SPECS & CUSTOM FIELDS */}
-        <div className="space-y-8">
-          
-          {/* SECTION 4: CLASSIFICATION & IDENTIFICATION */}
-          <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 border-b border-slate-100 pb-3">
-              <Tag className="h-5 w-5 text-primary-500" />
-              4. Phân loại & Mã định danh
-            </h2>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Nhóm CCDC cấp 1 *</label>
-                <select 
-                  required
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
-                  value={selectedParentCategory}
-                  onChange={e => {
-                    setSelectedParentCategory(e.target.value);
-                    setSelectedSubCategory('');
-                  }}
-                >
-                  <option value="">-- Chọn nhóm cấp 1 --</option>
-                  {Object.keys(CATEGORY_TREE).map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Nhóm CCDC cấp 2 *</label>
-                <select 
-                  required
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
-                  value={selectedSubCategory}
-                  onChange={e => setSelectedSubCategory(e.target.value)}
-                  disabled={!selectedParentCategory}
-                >
-                  <option value="">-- Chọn nhóm cấp 2 --</option>
-                  {selectedParentCategory && CATEGORY_TREE[selectedParentCategory].map(sc => (
-                    <option key={sc} value={sc}>{sc}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="md:col-span-2 border-t border-slate-100 pt-4 space-y-4">
-                <h3 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Mã định danh CCDC</h3>
-                <div className="flex items-center gap-3">
-                  <input 
-                    type="checkbox" 
-                    id="autoCodeCheck"
-                    checked={autoCode}
-                    onChange={e => setAutoCode(e.target.checked)}
-                    className="rounded border-slate-300 h-4 w-4 text-primary-600 focus:ring-primary-500"
-                  />
-                  <label htmlFor="autoCodeCheck" className="text-xs font-black text-slate-700 cursor-pointer">
-                    Tự động sinh mã (Đề xuất)
-                  </label>
-                </div>
-
-                {!autoCode ? (
-                  <div className="space-y-1.5 animate-in fade-in duration-200">
-                    <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Mã định danh thủ công *</label>
-                    <input 
-                      type="text" 
-                      required={!autoCode}
-                      className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-mono font-bold uppercase py-3.5 px-4 bg-slate-50"
-                      placeholder="CCDC.DECOR.HN.2026.00001"
-                      value={formData.toolCode}
-                      onChange={e => setFormData({ ...formData, toolCode: e.target.value })}
-                    />
-                  </div>
-                ) : (
-                  <p className="text-[11px] text-slate-400 font-semibold leading-relaxed">
-                    Mã sẽ tự động khởi tạo dạng <code className="font-mono text-primary-650 bg-slate-50 px-1 py-0.5 rounded">CCDC.&#123;NHOM&#125;.&#123;DONVI&#125;.&#123;NAM&#125;.&#123;STT&#125;</code> sau khi bấm Lưu.
-                  </p>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* SECTION 5: LOCATION HIERARCHY */}
-          <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6">
-            <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 border-b border-slate-100 pb-3">
+            <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3 border-b border-slate-100 pb-3">
               <MapPin className="h-5 w-5 text-primary-500" />
-              5. Vị trí phân cấp & Bàn giao
+              1. Vị trí chung & Bàn giao
             </h2>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Công ty thành viên *</label>
+            <div className="grid grid-cols-1 gap-4">
+              <div className="space-y-1">
+                <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Công ty thành viên *</label>
                 <select 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
-                  value={formData.companyName}
-                  onChange={e => setFormData({ ...formData, companyName: e.target.value })}
+                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5"
+                  value={commonData.companyName}
+                  onChange={e => setCommonData({ ...commonData, companyName: e.target.value })}
                 >
                   {MEMBER_COMPANIES.map(c => <option key={c} value={c}>{c}</option>)}
                 </select>
               </div>
 
-              {/* 1. Thành phố / Chi nhánh */}
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Chi nhánh / Thành phố *</label>
+              {/* Chi nhánh / Thành phố */}
+              <div className="space-y-1">
+                <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Chi nhánh / Thành phố *</label>
                 <select 
                   required
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
+                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5"
                   value={selectedCity}
                   onChange={e => {
                     setSelectedCity(e.target.value);
@@ -836,26 +528,26 @@ export const CreateTool: React.FC = () => {
               </div>
 
               {selectedCity === 'Khác' && (
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tên chi nhánh khác *</label>
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tên chi nhánh khác *</label>
                   <input 
                     type="text"
                     required
                     placeholder="Nhập tên chi nhánh..."
-                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5 bg-slate-50"
                     value={customCity}
                     onChange={e => setCustomCity(e.target.value)}
                   />
                 </div>
               )}
 
-              {/* 2. Dự án / Tòa nhà */}
+              {/* Tòa nhà / Dự án */}
               {selectedCity && (
-                <div className="space-y-1.5">
-                  <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tòa nhà / Dự án *</label>
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tòa nhà / Dự án *</label>
                   <select 
                     required
-                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5"
                     value={selectedProject}
                     onChange={e => {
                       setSelectedProject(e.target.value);
@@ -874,26 +566,26 @@ export const CreateTool: React.FC = () => {
               )}
 
               {selectedProject === 'Khác' && (
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tên dự án/tòa nhà khác *</label>
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tên dự án/tòa nhà khác *</label>
                   <input 
                     type="text"
                     required
                     placeholder="Nhập tên dự án/tòa nhà..."
-                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5 bg-slate-50"
                     value={customProject}
                     onChange={e => setCustomProject(e.target.value)}
                   />
                 </div>
               )}
 
-              {/* 3. Tầng */}
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tầng</label>
+              {/* Tầng */}
+              <div className="space-y-1">
+                <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tầng</label>
                 <select 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
-                  value={formData.floorName}
-                  onChange={e => setFormData({ ...formData, floorName: e.target.value })}
+                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5"
+                  value={commonData.floorName}
+                  onChange={e => setCommonData({ ...commonData, floorName: e.target.value })}
                 >
                   {['Tầng hầm B2', 'Tầng hầm B1', 'Tầng 1', 'Tầng 2', 'Tầng 3', 'Tầng 4', 'Tầng 5', 'Tầng 6', 'Tầng 7', 'Tầng 8', 'Tầng 9', 'Tầng 10', 'Tầng kỹ thuật', 'Khác'].map(f => (
                     <option key={f} value={f}>{f}</option>
@@ -901,13 +593,13 @@ export const CreateTool: React.FC = () => {
                 </select>
               </div>
 
-              {/* 4. Khu vực đặt */}
+              {/* Khu vực đặt */}
               {selectedProject && (
-                <div className="space-y-1.5">
-                  <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Khu vực đặt *</label>
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Khu vực đặt *</label>
                   <select 
                     required
-                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4"
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5"
                     value={selectedLocation}
                     onChange={e => {
                       setSelectedLocation(e.target.value);
@@ -924,271 +616,717 @@ export const CreateTool: React.FC = () => {
               )}
 
               {selectedLocation === 'Khác' && (
-                <div className="space-y-1.5 md:col-span-2">
-                  <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tên khu vực khác *</label>
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Tên khu vực khác *</label>
                   <input 
                     type="text"
                     required
                     placeholder="Nhập khu vực..."
-                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5 bg-slate-50"
                     value={customLocation}
                     onChange={e => setCustomLocation(e.target.value)}
                   />
                 </div>
               )}
 
-              {/* 5. Vị trí chi tiết */}
-              <div className="space-y-1.5 md:col-span-2">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Vị trí chi tiết / Số phòng</label>
+              {/* Vị trí chi tiết */}
+              <div className="space-y-1">
+                <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Vị trí chi tiết / Số phòng</label>
                 <input 
                   type="text" 
                   placeholder="Ví dụ: Phòng họp tầng 9, Phòng Kế toán..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                  value={formData.specificLocation}
-                  onChange={e => setFormData({ ...formData, specificLocation: e.target.value })}
+                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5 bg-slate-50"
+                  value={commonData.specificLocation}
+                  onChange={e => setCommonData({ ...commonData, specificLocation: e.target.value })}
                 />
               </div>
 
-              <hr className="md:col-span-2 border-slate-100" />
+              <hr className="border-slate-100 my-2" />
 
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Phòng ban sử dụng</label>
+              {/* Phòng ban sử dụng */}
+              <div className="space-y-1">
+                <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Phòng ban sử dụng</label>
                 <input 
                   type="text"
                   list="department-suggestions"
                   placeholder="Nhập hoặc chọn phòng ban..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.departmentName}
-                  onChange={e => setFormData({ ...formData, departmentName: e.target.value })}
+                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5"
+                  value={commonData.departmentName}
+                  onChange={e => setCommonData({ ...commonData, departmentName: e.target.value })}
                 />
                 <datalist id="department-suggestions">
                   {departments.map(d => <option key={d.id} value={d.name} />)}
                 </datalist>
               </div>
 
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Người sử dụng</label>
-                <input 
-                  type="text" 
-                  placeholder="Họ tên người nhận bàn giao..."
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.currentUserName}
-                  onChange={e => setFormData({ ...formData, currentUserName: e.target.value })}
-                />
-              </div>
-
-              <div className="space-y-1.5">
-                <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Ngày bàn giao</label>
-                <input 
-                  type="date" 
-                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4"
-                  value={formData.handoverDate}
-                  onChange={e => setFormData({ ...formData, handoverDate: e.target.value })}
-                />
+              {/* Người sử dụng & Ngày bàn giao */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Người sử dụng</label>
+                  <input 
+                    type="text" 
+                    placeholder="Họ tên..."
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5"
+                    value={commonData.currentUserName}
+                    onChange={e => setCommonData({ ...commonData, currentUserName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Ngày bàn giao</label>
+                  <input 
+                    type="date" 
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3"
+                    value={commonData.handoverDate}
+                    onChange={e => setCommonData({ ...commonData, handoverDate: e.target.value })}
+                  />
+                </div>
               </div>
             </div>
           </div>
 
-          {/* SECTION 6: OPERATIONAL SPECS (DYNAMIC BY CATEGORY) */}
-          {(isCategoryEvent || isCategoryDecor || isCategoryFnB) && (
-            <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6 animate-in fade-in duration-350">
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-3 border-b border-slate-100 pb-3">
-                <ClipboardList className="h-5 w-5 text-primary-500" />
-                6. Thông số vận hành đặc thù
-              </h2>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {isCategoryEvent && (
-                  <>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Số lần đã sử dụng</label>
-                      <input 
-                        type="number" 
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.usageCount}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, usageCount: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Số lần sử dụng tối đa</label>
-                      <input 
-                        type="number" 
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.maxUsageCount}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, maxUsageCount: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Ngày sử dụng gần nhất</label>
-                      <input 
-                        type="date" 
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.lastUsedDate}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, lastUsedDate: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Tên bộ / combo sự kiện</label>
-                      <input 
-                        type="text" 
-                        placeholder="Bộ backdrop, combo âm thanh..."
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.comboKitName}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, comboKitName: e.target.value })}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {isCategoryDecor && (
-                  <>
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Bộ sưu tập / concept thiết kế</label>
-                      <input 
-                        type="text" 
-                        placeholder="Ví dụ: Concept Giáng sinh 2025, Hoa văn cổ điển..."
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.collectionConcept}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, collectionConcept: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Mùa vụ áp dụng</label>
-                      <select 
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4 bg-slate-50"
-                        value={operationalSpecs.season}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, season: e.target.value })}
-                      >
-                        <option value="Thường xuyên">Thường xuyên</option>
-                        <option value="Tết Nguyên Đán">Tết Nguyên Đán</option>
-                        <option value="Trung thu">Trung thu</option>
-                        <option value="Noel / Giáng sinh">Noel / Giáng sinh</option>
-                        <option value="Mùa hè">Mùa hè</option>
-                        <option value="Khác">Khác</option>
-                      </select>
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Số lần sử dụng thực tế</label>
-                      <input 
-                        type="number" 
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.usageCount}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, usageCount: e.target.value })}
-                      />
-                    </div>
-                  </>
-                )}
-
-                {isCategoryFnB && (
-                  <>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Dung tích (ml / lít)</label>
-                      <input 
-                        type="text" 
-                        placeholder="Ví dụ: 350ml, 1.5L..."
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.capacity}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, capacity: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Chất liệu</label>
-                      <input 
-                        type="text" 
-                        placeholder="Thủy tinh, sứ, nhựa melamine..."
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.material}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, material: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Màu sắc</label>
-                      <input 
-                        type="text" 
-                        placeholder="Trong suốt, đỏ ruby..."
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.color}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, color: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Kích thước</label>
-                      <input 
-                        type="text" 
-                        placeholder="Đường kính, chiều cao..."
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.size}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, size: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-1.5 md:col-span-2">
-                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Bộ combo tiệc áp dụng</label>
-                      <input 
-                        type="text" 
-                        placeholder="Bộ chén dĩa tiệc cưới, combo ly vang..."
-                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
-                        value={operationalSpecs.comboKitName}
-                        onChange={e => setOperationalSpecs({ ...operationalSpecs, comboKitName: e.target.value })}
-                      />
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* SECTION 7: CUSTOM FIELDS */}
+          {/* SHARED PURCHASE & WARRANTY */}
           <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6">
-            <div className="flex justify-between items-center border-b border-slate-100 pb-3">
-              <h2 className="text-lg font-black text-slate-900 flex items-center gap-3">
-                <FolderOpen className="h-5 w-5 text-primary-500" />
-                7. Thuộc tính tự định nghĩa
-              </h2>
-              <button 
-                type="button"
-                onClick={addCustomField}
-                className="flex items-center gap-1 px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all"
-              >
-                <Plus className="h-3.5 w-3.5" /> Thêm trường
-              </button>
-            </div>
+            <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3 border-b border-slate-100 pb-3">
+              <Coins className="h-5 w-5 text-primary-500" />
+              2. Mua hàng & Bảo hành chung
+            </h2>
 
-            <div className="space-y-4">
-              {customFields.map((field, idx) => (
-                <div key={idx} className="flex gap-3 items-center animate-in slide-in-from-top-2 duration-150">
+            <div className="grid grid-cols-1 gap-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Ngày mua</label>
                   <input 
-                    type="text" 
-                    placeholder="Tên thuộc tính (e.g. Công suất, Cổng kết nối)"
-                    className="flex-1 rounded-xl border-slate-200 text-xs font-semibold py-2 px-3 bg-slate-50"
-                    value={field.key}
-                    onChange={e => handleCustomFieldChange(idx, 'key', e.target.value)}
+                    type="date" 
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3"
+                    value={commonData.purchaseDate}
+                    onChange={e => setCommonData({ ...commonData, purchaseDate: e.target.value })}
                   />
-                  <input 
-                    type="text" 
-                    placeholder="Giá trị"
-                    className="flex-1 rounded-xl border-slate-200 text-xs font-semibold py-2 px-3 bg-slate-50"
-                    value={field.value}
-                    onChange={e => handleCustomFieldChange(idx, 'value', e.target.value)}
-                  />
-                  <button 
-                    type="button"
-                    onClick={() => removeCustomField(idx)}
-                    className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors border-0 bg-transparent cursor-pointer"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
                 </div>
-              ))}
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Nguồn hình thành</label>
+                  <select 
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3"
+                    value={commonData.fundingSource}
+                    onChange={e => setCommonData({ ...commonData, fundingSource: e.target.value })}
+                  >
+                    <option value="MUA_MOI">Mua mới</option>
+                    <option value="DIEU_CHUYEN">Điều chuyển nội bộ</option>
+                    <option value="TU_SAN_XUAT">Tự sản xuất</option>
+                    <option value="KHACH_HANG_BAN_GIAO">Khách hàng bàn giao</option>
+                    <option value="TAI_TRO">Được tài trợ</option>
+                  </select>
+                </div>
+              </div>
 
-              {customFields.length === 0 && (
-                <p className="text-xs text-slate-400 font-semibold italic text-center py-4">Chưa thêm thuộc tính mở rộng nào.</p>
-              )}
+              <div className="space-y-1">
+                <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Nhà cung cấp chung</label>
+                <input 
+                  type="text" 
+                  placeholder="Nhà cung cấp..."
+                  className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3.5"
+                  value={commonData.supplierName}
+                  onChange={e => setCommonData({ ...commonData, supplierName: e.target.value })}
+                />
+              </div>
+
+              <hr className="border-slate-100 my-1" />
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Hạn bảo hành (Tháng)</label>
+                  <input 
+                    type="number" 
+                    placeholder="Ví dụ: 12"
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3 bg-slate-50"
+                    value={commonData.warrantyMonths}
+                    onChange={e => setCommonData({ ...commonData, warrantyMonths: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Đơn vị bảo hành</label>
+                  <input 
+                    type="text" 
+                    placeholder="Tên TT bảo hành..."
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3 bg-slate-50"
+                    value={commonData.warrantyProvider}
+                    onChange={e => setCommonData({ ...commonData, warrantyProvider: e.target.value })}
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">SĐT kỹ thuật</label>
+                  <input 
+                    type="text" 
+                    placeholder="SĐT..."
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3 bg-slate-50"
+                    value={commonData.warrantyPhone}
+                    onChange={e => setCommonData({ ...commonData, warrantyPhone: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="block text-slate-400 text-[10px] font-bold uppercase tracking-wider">Ghi chú bảo hành</label>
+                  <input 
+                    type="text" 
+                    placeholder="Điều kiện..."
+                    className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3 bg-slate-50"
+                    value={commonData.warrantyNote}
+                    onChange={e => setCommonData({ ...commonData, warrantyNote: e.target.value })}
+                  />
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
+        {/* RIGHT 7 COLUMNS: ITEMS DYNAMIC LIST */}
+        <div className="lg:col-span-7 space-y-6">
+          <div className="flex justify-between items-center bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+            <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+              <ClipboardList className="h-5 w-5 text-primary-500" />
+              Danh sách Công cụ dụng cụ cần thêm ({items.length})
+            </h2>
+            <div className="flex items-center gap-3">
+              <input 
+                type="checkbox" 
+                id="autoCodeGlobal"
+                checked={autoCode}
+                onChange={e => setAutoCode(e.target.checked)}
+                className="rounded border-slate-300 h-4 w-4 text-primary-600 focus:ring-primary-500"
+              />
+              <label htmlFor="autoCodeGlobal" className="text-xs font-black text-slate-700 cursor-pointer">
+                Tự động sinh mã
+              </label>
+            </div>
+          </div>
+
+          <div className="space-y-6">
+            {items.map((item, index) => {
+              const showEvent = isEventCat(item.category1);
+              const showDecor = isDecorCat(item.category1);
+              const showFnB = isFnBCat(item.category1);
+
+              return (
+                <div 
+                  key={item.id} 
+                  className={`bg-white border rounded-[2rem] shadow-sm transition-all duration-200 overflow-hidden ${
+                    item.isExpanded ? 'border-primary-200 ring-1 ring-primary-100' : 'border-slate-200 hover:border-slate-300'
+                  }`}
+                >
+                  {/* CARD HEADER */}
+                  <div className="p-5 bg-slate-50/70 border-b flex justify-between items-center">
+                    <div className="flex items-center gap-3">
+                      <span className="flex items-center justify-center h-6 w-6 rounded-full bg-slate-200 text-slate-700 text-xs font-bold">
+                        {index + 1}
+                      </span>
+                      <h3 className="text-sm font-black text-slate-800 tracking-tight">
+                        {item.toolName || <span className="text-slate-400 italic">Chưa nhập tên CCDC</span>}
+                      </h3>
+                      {item.managementType === 'QUANTITY' && (
+                        <span className="bg-emerald-50 text-emerald-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          Số lượng
+                        </span>
+                      )}
+                      {item.managementType === 'INDIVIDUAL' && (
+                        <span className="bg-sky-50 text-sky-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          Từng mã
+                        </span>
+                      )}
+                      {item.managementType === 'BUNDLE' && (
+                        <span className="bg-violet-50 text-violet-700 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          Theo bộ
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <button 
+                        type="button"
+                        onClick={() => toggleExpand(item.id)}
+                        className="p-1.5 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"
+                        title={item.isExpanded ? "Thu gọn chi tiết" : "Mở rộng chi tiết"}
+                      >
+                        {item.isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                      </button>
+                      {items.length > 1 && (
+                        <button 
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors border-0 bg-transparent cursor-pointer"
+                          title="Xóa CCDC này"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* CARD BODY */}
+                  <div className="p-6 space-y-6">
+                    
+                    {/* BASIC ITEM INFORMATION */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Tên công cụ dụng cụ *</label>
+                        <input 
+                          type="text" 
+                          required
+                          placeholder="Ví dụ: Micro không dây Shure A, Bàn làm việc..."
+                          className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3"
+                          value={item.toolName}
+                          onChange={e => handleItemFieldChange(item.id, 'toolName', e.target.value)}
+                        />
+                      </div>
+
+                      {/* Phân loại cấp 1 & 2 */}
+                      <div className="space-y-1">
+                        <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Nhóm cấp 1 *</label>
+                        <select 
+                          required
+                          className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3"
+                          value={item.category1}
+                          onChange={e => {
+                            handleItemFieldChange(item.id, 'category1', e.target.value);
+                            handleItemFieldChange(item.id, 'category2', '');
+                          }}
+                        >
+                          <option value="">-- Chọn nhóm cấp 1 --</option>
+                          {Object.keys(CATEGORY_TREE).map(c => <option key={c} value={c}>{c}</option>)}
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Nhóm cấp 2 *</label>
+                        <select 
+                          required
+                          className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3"
+                          value={item.category2}
+                          onChange={e => handleItemFieldChange(item.id, 'category2', e.target.value)}
+                          disabled={!item.category1}
+                        >
+                          <option value="">-- Chọn nhóm cấp 2 --</option>
+                          {item.category1 && CATEGORY_TREE[item.category1].map(sc => (
+                            <option key={sc} value={sc}>{sc}</option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {/* Loại quản lý */}
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Loại quản lý</label>
+                        <div className="grid grid-cols-3 gap-1 bg-slate-100 p-1 rounded-xl">
+                          {[
+                            { value: 'INDIVIDUAL', label: 'Từng mã' },
+                            { value: 'QUANTITY', label: 'Số lượng' },
+                            { value: 'BUNDLE', label: 'Theo bộ/combo' }
+                          ].map(opt => (
+                            <button
+                              key={opt.value}
+                              type="button"
+                              onClick={() => handleItemFieldChange(item.id, 'managementType', opt.value)}
+                              className={`py-1.5 px-2 rounded-lg text-[10px] font-bold transition-all ${
+                                item.managementType === opt.value 
+                                  ? 'bg-white text-primary-700 shadow-sm' 
+                                  : 'text-slate-500 hover:text-slate-800'
+                              }`}
+                            >
+                              {opt.label}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {item.managementType === 'QUANTITY' && (
+                        <div className="md:col-span-2 bg-emerald-50 border border-emerald-100 p-3.5 rounded-xl text-[10px] font-semibold text-emerald-800 animate-in fade-in duration-200 leading-normal">
+                          <p className="font-bold uppercase tracking-wider mb-0.5 flex items-center gap-1.5">
+                            <AlertCircle className="h-3.5 w-3.5 text-emerald-600 animate-pulse" />
+                            Loại Quản lý Số lượng & biến động kho
+                          </p>
+                          Hệ thống tự động tạo lô <strong>LOT001</strong> với giá nhập và số lượng của CCDC này tại kho lưu trữ.
+                        </div>
+                      )}
+
+                      {/* Số lượng, Đơn vị tính */}
+                      <div className="grid grid-cols-2 gap-4 md:col-span-2">
+                        <div className="space-y-1">
+                          <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Đơn vị tính</label>
+                          <input 
+                            type="text" 
+                            placeholder="Cái, chiếc, ly, bộ..."
+                            className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3"
+                            value={item.unit}
+                            onChange={e => handleItemFieldChange(item.id, 'unit', e.target.value)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Số lượng</label>
+                          <input 
+                            type="number" 
+                            min={1}
+                            className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3"
+                            value={item.quantity}
+                            onChange={e => handleItemFieldChange(item.id, 'quantity', parseInt(e.target.value, 10) || 1)}
+                          />
+                        </div>
+                      </div>
+
+                      {/* Tài chính chi tiết */}
+                      <div className="grid grid-cols-3 gap-2 md:col-span-2 bg-slate-50 p-4 rounded-xl border border-slate-100">
+                        <div className="space-y-1">
+                          <label className="block text-slate-500 text-[9px] font-bold uppercase tracking-wider">Đơn giá (VNĐ)</label>
+                          <input 
+                            type="number" 
+                            className="w-full rounded-lg border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-[11px] py-1.5 px-2 bg-white"
+                            value={item.purchasePrice || ''}
+                            onChange={e => handleItemFieldChange(item.id, 'purchasePrice', Number(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-500 text-[9px] font-bold uppercase tracking-wider">Thuế VAT (%)</label>
+                          <input 
+                            type="number" 
+                            className="w-full rounded-lg border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-[11px] py-1.5 px-2 bg-white"
+                            value={item.vat || ''}
+                            onChange={e => handleItemFieldChange(item.id, 'vat', Number(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="block text-slate-500 text-[9px] font-bold uppercase tracking-wider">Phí V/chuyển (VNĐ)</label>
+                          <input 
+                            type="number" 
+                            className="w-full rounded-lg border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-[11px] py-1.5 px-2 bg-white"
+                            value={item.shippingInstallCost || ''}
+                            onChange={e => handleItemFieldChange(item.id, 'shippingInstallCost', Number(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div className="col-span-3 pt-2 mt-1 border-t border-slate-200/60 flex justify-between items-center">
+                          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tổng giá trị:</span>
+                          <span className="text-xs font-black text-slate-800">
+                            {item.totalAmount.toLocaleString()} VNĐ
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Mã định danh thủ công */}
+                      {!autoCode && (
+                        <div className="space-y-1 md:col-span-2 animate-in fade-in duration-150">
+                          <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Mã định danh thủ công *</label>
+                          <input 
+                            type="text" 
+                            required={!autoCode}
+                            placeholder="Mã CCDC tự gõ..."
+                            className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-mono font-bold uppercase py-2.5 px-3 bg-slate-50"
+                            value={item.toolCode}
+                            onChange={e => handleItemFieldChange(item.id, 'toolCode', e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      {/* Trạng thái, Tình trạng ban đầu */}
+                      <div className="space-y-1">
+                        <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Trạng thái khởi tạo</label>
+                        <select 
+                          className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3"
+                          value={item.status}
+                          onChange={e => handleItemFieldChange(item.id, 'status', e.target.value)}
+                        >
+                          <option value="IN_STOCK">Trong kho (Chờ cấp)</option>
+                          <option value="USING">Đang sử dụng</option>
+                          <option value="DAMAGED">Báo hỏng</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Tình trạng ban đầu</label>
+                        <input 
+                          type="text" 
+                          className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2.5 px-3"
+                          placeholder="Mới 100%, cũ..."
+                          value={item.initialCondition}
+                          onChange={e => handleItemFieldChange(item.id, 'initialCondition', e.target.value)}
+                        />
+                      </div>
+
+                      <div className="space-y-1 md:col-span-2">
+                        <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Ghi chú</label>
+                        <textarea 
+                          className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3 h-16"
+                          placeholder="Thông tin ghi chú cho CCDC này..."
+                          value={item.note}
+                          onChange={e => handleItemFieldChange(item.id, 'note', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    {/* EXPANDABLE ADVANCED ATTRIBUTES */}
+                    {item.isExpanded && (
+                      <div className="pt-4 border-t border-slate-100 space-y-6 animate-in fade-in slide-in-from-top-3 duration-250">
+                        
+                        {/* Hạn dùng & Khấu hao */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Hạn dùng (Tháng)</label>
+                            <input 
+                              type="number" 
+                              placeholder="Ví dụ: 36"
+                              className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3 bg-slate-50/50"
+                              value={item.expectedUsefulLife}
+                              onChange={e => handleItemFieldChange(item.id, 'expectedUsefulLife', e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="block text-slate-400 text-[9px] font-bold uppercase tracking-wider">Giá trị còn lại dự kiến</label>
+                            <input 
+                              type="number" 
+                              placeholder="Giá trị thanh lý..."
+                              className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-xs font-semibold py-2 px-3 bg-slate-50/50"
+                              value={item.expectedResidualValue}
+                              onChange={e => handleItemFieldChange(item.id, 'expectedResidualValue', e.target.value)}
+                            />
+                          </div>
+                        </div>
+
+                        {/* Operational Specs (Dynamic) */}
+                        {(showEvent || showDecor || showFnB) && (
+                          <div className="space-y-3 bg-slate-50/80 p-4 rounded-2xl border border-slate-100">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                              <ClipboardList className="h-3.5 w-3.5 text-primary-500" />
+                              Thông số vận hành đặc thù
+                            </h4>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              {showEvent && (
+                                <>
+                                  <div className="space-y-1">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Số lần đã sử dụng</label>
+                                    <input 
+                                      type="number" 
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1.5 px-2 bg-white"
+                                      value={item.operationalSpecs.usageCount}
+                                      onChange={e => handleItemSpecsChange(item.id, 'usageCount', e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Số lần tối đa</label>
+                                    <input 
+                                      type="number" 
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1.5 px-2 bg-white"
+                                      value={item.operationalSpecs.maxUsageCount}
+                                      onChange={e => handleItemSpecsChange(item.id, 'maxUsageCount', e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="space-y-1 col-span-2">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Tên bộ combo sự kiện</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Combo âm thanh..."
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1.5 px-2 bg-white"
+                                      value={item.operationalSpecs.comboKitName}
+                                      onChange={e => handleItemSpecsChange(item.id, 'comboKitName', e.target.value)}
+                                    />
+                                  </div>
+                                </>
+                              )}
+
+                              {showDecor && (
+                                <>
+                                  <div className="space-y-1 col-span-2">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Bộ sưu tập / Concept thiết kế</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Concept Noel 2025..."
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1.5 px-2 bg-white"
+                                      value={item.operationalSpecs.collectionConcept}
+                                      onChange={e => handleItemSpecsChange(item.id, 'collectionConcept', e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Mùa vụ áp dụng</label>
+                                    <select 
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1 px-2 bg-white"
+                                      value={item.operationalSpecs.season}
+                                      onChange={e => handleItemSpecsChange(item.id, 'season', e.target.value)}
+                                    >
+                                      <option value="Thường xuyên">Thường xuyên</option>
+                                      <option value="Tết Nguyên Đán">Tết Nguyên Đán</option>
+                                      <option value="Trung thu">Trung thu</option>
+                                      <option value="Noel / Giáng sinh">Noel / Giáng sinh</option>
+                                      <option value="Khác">Khác</option>
+                                    </select>
+                                  </div>
+                                </>
+                              )}
+
+                              {showFnB && (
+                                <>
+                                  <div className="space-y-1">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Dung tích</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="350ml..."
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1.5 px-2 bg-white"
+                                      value={item.operationalSpecs.capacity}
+                                      onChange={e => handleItemSpecsChange(item.id, 'capacity', e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Chất liệu</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Thủy tinh, sứ..."
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1.5 px-2 bg-white"
+                                      value={item.operationalSpecs.material}
+                                      onChange={e => handleItemSpecsChange(item.id, 'material', e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Màu sắc</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Trong suốt..."
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1.5 px-2 bg-white"
+                                      value={item.operationalSpecs.color}
+                                      onChange={e => handleItemSpecsChange(item.id, 'color', e.target.value)}
+                                    />
+                                  </div>
+                                  <div className="space-y-1">
+                                    <label className="block text-slate-500 text-[9px] font-semibold">Kích thước</label>
+                                    <input 
+                                      type="text" 
+                                      placeholder="Chiều cao..."
+                                      className="w-full rounded-lg border-slate-200 text-xs py-1.5 px-2 bg-white"
+                                      value={item.operationalSpecs.size}
+                                      onChange={e => handleItemSpecsChange(item.id, 'size', e.target.value)}
+                                    />
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Custom Fields */}
+                        <div className="space-y-3">
+                          <div className="flex justify-between items-center">
+                            <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                              <FolderOpen className="h-3.5 w-3.5 text-primary-500" />
+                              Thuộc tính tự định nghĩa
+                            </h4>
+                            <button 
+                              type="button"
+                              onClick={() => addItemCustomField(item.id)}
+                              className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[9px] font-bold border-0 cursor-pointer"
+                            >
+                              + Thêm trường
+                            </button>
+                          </div>
+
+                          <div className="space-y-2">
+                            {item.customFields.map((field: any, idx: number) => (
+                              <div key={idx} className="flex gap-2 items-center">
+                                <input 
+                                  type="text" 
+                                  placeholder="Tên thuộc tính"
+                                  className="flex-1 rounded-lg border-slate-200 text-[11px] py-1.5 px-2 bg-slate-50"
+                                  value={field.key}
+                                  onChange={e => handleItemCustomFieldChange(item.id, idx, 'key', e.target.value)}
+                                />
+                                <input 
+                                  type="text" 
+                                  placeholder="Giá trị"
+                                  className="flex-1 rounded-lg border-slate-200 text-[11px] py-1.5 px-2 bg-slate-50"
+                                  value={field.value}
+                                  onChange={e => handleItemCustomFieldChange(item.id, idx, 'value', e.target.value)}
+                                />
+                                <button 
+                                  type="button"
+                                  onClick={() => removeItemCustomField(item.id, idx)}
+                                  className="p-1 text-red-500 hover:bg-red-50 rounded border-0 bg-transparent cursor-pointer"
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            ))}
+                            {item.customFields.length === 0 && (
+                              <p className="text-[10px] text-slate-400 font-semibold italic text-center py-2">Chưa thêm thuộc tính mở rộng nào.</p>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Files Links */}
+                        <div className="space-y-3 border-t border-slate-100 pt-4">
+                          <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+                            <FileText className="h-3.5 w-3.5 text-primary-500" />
+                            Hồ sơ tài liệu đính kèm (URL Links)
+                          </h4>
+
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                              <label className="block text-slate-500 text-[9px] font-semibold">Ảnh đại diện CCDC</label>
+                              <input 
+                                type="text" 
+                                placeholder="https://..."
+                                className="w-full rounded-lg border-slate-200 text-[10px] py-1.5 px-2 bg-slate-50/50"
+                                value={item.files.avatarUrl}
+                                onChange={e => handleItemFilesChange(item.id, 'avatarUrl', e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-slate-500 text-[9px] font-semibold">Ảnh thực tế sản phẩm</label>
+                              <input 
+                                type="text" 
+                                placeholder="https://..."
+                                className="w-full rounded-lg border-slate-200 text-[10px] py-1.5 px-2 bg-slate-50/50"
+                                value={item.files.photoUrl}
+                                onChange={e => handleItemFilesChange(item.id, 'photoUrl', e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-slate-500 text-[9px] font-semibold">Hóa đơn mua hàng / VAT</label>
+                              <input 
+                                type="text" 
+                                placeholder="https://..."
+                                className="w-full rounded-lg border-slate-200 text-[10px] py-1.5 px-2 bg-slate-50/50"
+                                value={item.files.invoiceUrl}
+                                onChange={e => handleItemFilesChange(item.id, 'invoiceUrl', e.target.value)}
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <label className="block text-slate-500 text-[9px] font-semibold">Thẻ bảo hành</label>
+                              <input 
+                                type="text" 
+                                placeholder="https://..."
+                                className="w-full rounded-lg border-slate-200 text-[10px] py-1.5 px-2 bg-slate-50/50"
+                                value={item.files.warrantyCardUrl}
+                                onChange={e => handleItemFilesChange(item.id, 'warrantyCardUrl', e.target.value)}
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                      </div>
+                    )}
+
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* ADD ROW BUTTON */}
+          <button 
+            type="button"
+            onClick={addItem}
+            className="w-full py-4 border-2 border-dashed border-slate-300 hover:border-primary-500 rounded-[2rem] text-slate-500 hover:text-primary-600 bg-slate-50/50 hover:bg-primary-50/20 text-xs font-black uppercase tracking-widest flex items-center justify-center gap-2 transition-all cursor-pointer"
+          >
+            <Plus className="h-4 w-4" /> Thêm CCDC khác (Thêm dòng)
+          </button>
+        </div>
+
         {/* BOTTOM ACTION BAR */}
-        <div className="lg:col-span-2 flex justify-end gap-3 bg-slate-50 p-6 rounded-[2rem] border border-slate-200">
+        <div className="lg:col-span-12 flex justify-end gap-3 bg-slate-50 p-6 rounded-[2rem] border border-slate-200 mt-4">
           <button 
             type="button" 
             onClick={() => navigate('/tools')}
@@ -1202,7 +1340,7 @@ export const CreateTool: React.FC = () => {
             className="flex items-center gap-2 px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold transition-all shadow-lg shadow-primary-100 disabled:opacity-50"
           >
             {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Lưu thông tin CCDC
+            Lưu danh sách CCDC ({items.length})
           </button>
         </div>
       </form>
