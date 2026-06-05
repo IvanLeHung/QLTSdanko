@@ -492,7 +492,31 @@ export class ToolService {
 
     const where: any = { isDeleted: false };
 
-    if (status && status !== 'ALL') where.status = status;
+    if (status && status !== 'ALL') {
+      if (status === 'IN_STOCK') {
+        where.OR = [
+          { status: 'IN_STOCK', managementType: { not: 'QUANTITY' } },
+          { managementType: 'QUANTITY', stocks: { some: { quantityAvailable: { gt: 0 } } } }
+        ];
+      } else if (status === 'USING') {
+        where.OR = [
+          { status: 'USING', managementType: { not: 'QUANTITY' } },
+          { managementType: 'QUANTITY', stocks: { some: { quantityUsing: { gt: 0 } } } }
+        ];
+      } else if (status === 'DAMAGED') {
+        where.OR = [
+          { status: 'DAMAGED', managementType: { not: 'QUANTITY' } },
+          { managementType: 'QUANTITY', stocks: { some: { OR: [ { quantityBroken: { gt: 0 } }, { quantityRepairing: { gt: 0 } } ] } } }
+        ];
+      } else if (status === 'LOST') {
+        where.OR = [
+          { status: 'LOST', managementType: { not: 'QUANTITY' } },
+          { managementType: 'QUANTITY', stocks: { some: { quantityLost: { gt: 0 } } } }
+        ];
+      } else {
+        where.status = status;
+      }
+    }
     if (category && category !== 'ALL') where.category = category;
     if (departmentName && departmentName !== 'ALL') where.departmentName = departmentName;
     if (locationName && locationName !== 'ALL') where.locationName = { contains: locationName };

@@ -773,21 +773,65 @@ export const ToolList: React.FC = () => {
                   let statusBadge = 'bg-slate-100 text-slate-700';
                   let statusText = tool.status;
 
-                  if (tool.status === 'IN_STOCK') {
-                    statusBadge = 'bg-blue-50 text-blue-700 border-blue-100 border';
-                    statusText = 'Trong kho';
-                  } else if (tool.status === 'USING') {
-                    statusBadge = 'bg-green-50 text-green-700 border-green-100 border';
-                    statusText = 'Đang dùng';
-                  } else if (tool.status === 'DAMAGED') {
-                    statusBadge = 'bg-amber-50 text-amber-700 border-amber-100 border';
-                    statusText = 'Hỏng';
-                  } else if (tool.status === 'LOST') {
-                    statusBadge = 'bg-red-50 text-red-700 border-red-100 border';
-                    statusText = 'Mất';
-                  } else if (tool.status === 'LIQUIDATED') {
-                    statusBadge = 'bg-slate-100 text-slate-500';
-                    statusText = 'Đã thanh lý';
+                  if (tool.managementType === 'QUANTITY' && tool.stocks && tool.stocks.length > 0) {
+                    let available = 0;
+                    let using = 0;
+                    let broken = 0;
+                    let lost = 0;
+                    let destroyed = 0;
+                    let transit = 0;
+                    let repairing = 0;
+
+                    tool.stocks.forEach((s: any) => {
+                      available += s.quantityAvailable || 0;
+                      using += s.quantityUsing || 0;
+                      broken += s.quantityBroken || 0;
+                      lost += s.quantityLost || 0;
+                      destroyed += s.quantityDestroyed || 0;
+                      transit += s.quantityTransit || 0;
+                      repairing += s.quantityRepairing || 0;
+                    });
+
+                    const activeBroken = broken + repairing;
+
+                    if (using > 0 && available > 0) {
+                      statusBadge = 'bg-indigo-50 text-indigo-700 border-indigo-100 border';
+                      statusText = `Trong kho: ${available} | Đang dùng: ${using}`;
+                      if (activeBroken > 0) statusText += ` | Hỏng: ${activeBroken}`;
+                      if (lost > 0) statusText += ` | Mất: ${lost}`;
+                    } else if (using > 0 && available === 0) {
+                      statusBadge = 'bg-green-50 text-green-700 border-green-100 border';
+                      statusText = `Đang dùng: ${using}`;
+                      if (activeBroken > 0) statusText += ` | Hỏng: ${activeBroken}`;
+                      if (lost > 0) statusText += ` | Mất: ${lost}`;
+                    } else if (available > 0 && using === 0) {
+                      statusBadge = 'bg-blue-50 text-blue-700 border-blue-100 border';
+                      statusText = `Trong kho: ${available}`;
+                      if (activeBroken > 0) statusText += ` | Hỏng: ${activeBroken}`;
+                      if (lost > 0) statusText += ` | Mất: ${lost}`;
+                    } else {
+                      statusBadge = 'bg-slate-100 text-slate-500';
+                      statusText = 'Không khả dụng';
+                      if (activeBroken > 0) statusText = `Hỏng: ${activeBroken}`;
+                      if (lost > 0) statusText = `Mất: ${lost}`;
+                    }
+                  } else {
+                    if (tool.status === 'IN_STOCK') {
+                      statusBadge = 'bg-blue-50 text-blue-700 border-blue-100 border';
+                      statusText = 'Trong kho';
+                    } else if (tool.status === 'USING') {
+                      statusBadge = 'bg-green-50 text-green-700 border-green-100 border';
+                      statusText = 'Đang dùng';
+                    } else if (tool.status === 'DAMAGED') {
+                      statusBadge = 'bg-amber-50 text-amber-700 border-amber-100 border';
+                      statusText = 'Hỏng';
+                    } else if (tool.status === 'LOST') {
+                      statusBadge = 'bg-red-50 text-red-700 border-red-100 border';
+                      statusText = 'Mất';
+                    } else if (tool.status === 'LIQUIDATED') {
+                      statusBadge = 'bg-slate-100 text-slate-500';
+                      statusText = 'Đã thanh lý';
+                    }
                   }
 
                   return (
