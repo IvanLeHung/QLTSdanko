@@ -517,7 +517,10 @@ export class ToolService {
         where,
         skip,
         take: limit,
-        orderBy: { [sortBy]: sortOrder }
+        orderBy: { [sortBy]: sortOrder },
+        include: {
+          stocks: true
+        }
       }),
       prisma.toolEquipment.count({ where })
     ]);
@@ -1746,6 +1749,213 @@ export class ToolService {
         entityId: data.toolId,
         action: 'ADJUST_STOCK' as any,
         details: { action: data.action, actual: data.actualQuantity, diff, location: data.locationName },
+        performedBy,
+        tx
+      });
+    });
+  }
+
+  static async splitStock(data: {
+    toolId: number;
+    fromLocation: string;
+    splits: {
+      quantity: number;
+      toLocation: string;
+    }[];
+    createChildCodes?: boolean;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const parentTool = await tx.toolEquipment.findUnique({ where: { id: data.toolId } });
+      if (!parentTool) throw new Error('Không tìm thấy CCDC.');
+      if (parentTool.managementType !== 'QUANTITY') {
+        throw new Error('CCDC không phải loại quản lý số lượng.');
+      }
+
+      // Calculate total split quantity
+      const totalSplitQty = data.splits.reduce((sum, s) => sum + s.quantity, 0);
+
+      // Check source stock
+      const sourceStock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.fromLocation } }
+      });
+      if (!sourceStock || sourceStock.quantityAvailable < totalSplitQty) {
+        throw new Error(`Số lượng khả dụng tại nguồn không đủ để thực hiện tách (Hiện có: ${sourceStock?.quantityAvailable || 0}, Cần tách: ${totalSplitQty}).`);
+      }
+
+      // 1. Decrement source stock
+      await tx.toolStock.update({
+        where: { id: sourceStock.id },
+        data: { quantityAvailable: { decrement: totalSplitQty } }
+      });
+
+      // 2. Perform splits
+      if (data.createChildCodes) {
+        // Decrement parent's total quantity
+        await tx.toolEquipment.update({
+          where: { id: data.toolId },
+          data: { quantity: { decrement: totalSplitQty } }
+        });
+
+        // Generate child codes starting with parentCode-
+        const existingChildren = await tx.toolEquipment.findMany({
+          where: { toolCode: { startsWith: `${parentTool.toolCode}-` } },
+          select: { toolCode: true }
+        });
+
+        let maxSuffix = 0;
+        for (const child of existingChildren) {
+          const parts = child.toolCode.split('-');
+          const lastPart = parts[parts.length - 1];
+          const num = parseInt(lastPart, 10);
+          if (!isNaN(num) && num > maxSuffix) {
+            maxSuffix = num;
+          }
+        }
+
+        let nextIndex = maxSuffix + 1;
+
+        for (const splitItem of data.splits) {
+          const qty = splitItem.quantity;
+          const toLoc = splitItem.toLocation;
+
+          // Create qty number of individual tools
+          for (let i = 0; i < qty; i++) {
+            const childCode = `${parentTool.toolCode}-${String(nextIndex).padStart(2, '0')}`;
+            nextIndex++;
+
+            const norm = parseAndNormalizeLocation(toLoc);
+
+            const childTool = await tx.toolEquipment.create({
+              data: {
+                toolCode: childCode,
+                toolName: parentTool.toolName,
+                category: parentTool.category,
+                quantity: 1,
+                unit: parentTool.unit,
+                purchasePrice: parentTool.purchasePrice,
+                purchaseDate: parentTool.purchaseDate,
+                supplierName: parentTool.supplierName,
+                currentUserName: null,
+                departmentName: null,
+                locationName: norm.fullFormatted,
+                cityName: norm.city || parentTool.cityName,
+                projectName: norm.project || parentTool.projectName,
+                status: 'IN_STOCK',
+                handoverDate: null,
+                note: data.note || `Tách từ ${parentTool.toolCode}`,
+                initialCondition: parentTool.initialCondition,
+                industryAttributesJson: parentTool.industryAttributesJson,
+                managementType: 'INDIVIDUAL',
+                vat: parentTool.vat,
+                shippingInstallCost: parentTool.shippingInstallCost,
+                totalAmount: parentTool.totalAmount,
+                fundingSource: parentTool.fundingSource,
+                expectedUsefulLife: parentTool.expectedUsefulLife,
+                expectedResidualValue: parentTool.expectedResidualValue,
+                companyName: parentTool.companyName,
+                branchName: parentTool.branchName,
+                buildingName: parentTool.buildingName,
+                floorName: parentTool.floorName,
+                areaName: parentTool.areaName,
+                specificLocation: parentTool.specificLocation,
+                operationalSpecsJson: parentTool.operationalSpecsJson,
+                filesJson: parentTool.filesJson,
+                warrantyInfoJson: parentTool.warrantyInfoJson,
+                customFieldsJson: parentTool.customFieldsJson
+              }
+            });
+
+            await tx.toolHistory.create({
+              data: {
+                toolId: childTool.id,
+                toolCode: childTool.toolCode,
+                eventTime: new Date(),
+                actionType: 'CREATE',
+                newStatus: childTool.status,
+                newLocationName: childTool.locationName,
+                newCityName: childTool.cityName,
+                newNote: `Khởi tạo do tách từ CCDC số lượng ${parentTool.toolCode}`
+              }
+            });
+
+            await AuditService.log({
+              entityType: 'TOOL_EQUIPMENT',
+              entityId: childTool.id,
+              action: 'CREATE',
+              details: { toolCode: childTool.toolCode, parentCode: parentTool.toolCode },
+              performedBy,
+              tx
+            });
+          }
+
+          // Create stock transaction for this split destination
+          await tx.toolStockTransaction.create({
+            data: {
+              toolId: data.toolId,
+              type: 'TRANSFER',
+              quantity: qty,
+              fromLocation: data.fromLocation,
+              toLocation: toLoc,
+              performedBy,
+              note: data.note || `Tách ${qty} cái thành mã con tại ${toLoc}`
+            }
+          });
+        }
+      } else {
+        // Do normal transfer splits (just stock transfers, no new code creation)
+        for (const splitItem of data.splits) {
+          const qty = splitItem.quantity;
+          const toLoc = splitItem.toLocation;
+
+          const norm = parseAndNormalizeLocation(toLoc);
+          const normalizedToLoc = norm.fullFormatted;
+
+          await tx.toolStock.upsert({
+            where: { toolId_locationName: { toolId: data.toolId, locationName: normalizedToLoc } },
+            create: {
+              toolId: data.toolId,
+              locationName: normalizedToLoc,
+              quantityAvailable: qty
+            },
+            update: {
+              quantityAvailable: { increment: qty }
+            }
+          });
+
+          await tx.toolStockTransaction.create({
+            data: {
+              toolId: data.toolId,
+              type: 'TRANSFER',
+              quantity: qty,
+              fromLocation: data.fromLocation,
+              toLocation: normalizedToLoc,
+              performedBy,
+              note: data.note || `Tách số lượng: Chuyển ${qty} cái tới ${normalizedToLoc}`
+            }
+          });
+        }
+      }
+
+      await tx.toolHistory.create({
+        data: {
+          toolId: parentTool.id,
+          toolCode: parentTool.toolCode,
+          eventTime: new Date(),
+          actionType: 'TRANSFER',
+          oldStatus: parentTool.status,
+          newStatus: parentTool.status,
+          oldLocationName: data.fromLocation,
+          newLocationName: data.fromLocation,
+          newNote: `Thực hiện tách ${totalSplitQty} cái sang địa điểm mới. (Tạo mã con: ${data.createChildCodes ? 'Có' : 'Không'})`
+        }
+      });
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: parentTool.id,
+        action: 'TRANSFER_STOCK' as any,
+        details: { from: data.fromLocation, totalSplitQty, createChildCodes: data.createChildCodes },
         performedBy,
         tx
       });

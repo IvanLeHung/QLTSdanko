@@ -129,7 +129,7 @@ export const ToolList: React.FC = () => {
   
   // Modal forms state
   const [handoverForm, setHandoverForm] = useState({
-    type: 'HANDOVER' as 'HANDOVER' | 'TRANSFER' | 'RECALL',
+    type: 'TRANSFER' as 'TRANSFER' | 'RECALL' | 'SPLIT',
     recipientName: '',
     recipientDepartment: '',
     recipientPosition: '',
@@ -138,6 +138,129 @@ export const ToolList: React.FC = () => {
     note: '',
     reason: ''
   });
+
+  // Upgraded modal list items state
+  const [modalItems, setModalItems] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (activeModal === 'HANDOVER') {
+      const selected = tools.filter(t => selectedIds.includes(t.id));
+      const initialItems = selected.map(tool => {
+        let defaultSrc = '';
+        let maxQty = tool.quantity || 1;
+
+        if (tool.managementType === 'QUANTITY' && tool.stocks && tool.stocks.length > 0) {
+          const isRecall = handoverForm.type === 'RECALL';
+          const validStock = tool.stocks.find((s: any) => isRecall ? s.quantityUsing > 0 : s.quantityAvailable > 0);
+          if (validStock) {
+            defaultSrc = validStock.locationName;
+            maxQty = isRecall ? validStock.quantityUsing : validStock.quantityAvailable;
+          } else {
+            defaultSrc = tool.stocks[0].locationName;
+            maxQty = isRecall ? tool.stocks[0].quantityUsing : tool.stocks[0].quantityAvailable;
+          }
+        } else {
+          defaultSrc = tool.locationName || '';
+          maxQty = 1;
+        }
+
+        return {
+          toolId: tool.id,
+          toolCode: tool.toolCode,
+          toolName: tool.toolName,
+          managementType: tool.managementType || 'INDIVIDUAL',
+          stocks: tool.stocks || [],
+          sourceLocation: defaultSrc,
+          maxQty: maxQty,
+          quantityProcessed: maxQty > 0 ? maxQty : 0,
+          note: '',
+          qtyGood: maxQty > 0 ? maxQty : 0,
+          qtyBroken: 0,
+          qtyLost: 0,
+          splits: [{ quantity: maxQty > 0 ? maxQty : 0, toLocation: '' }],
+          createChildCodes: false
+        };
+      });
+      setModalItems(initialItems);
+    }
+  }, [activeModal, handoverForm.type, selectedIds, tools]);
+
+  const handleItemFieldChange = (toolId: number, field: string, value: any) => {
+    setModalItems(prev => prev.map(item => {
+      if (item.toolId !== toolId) return item;
+      let updated = { ...item, [field]: value };
+
+      if (field === 'sourceLocation') {
+        const isRecall = handoverForm.type === 'RECALL';
+        if (item.managementType === 'QUANTITY') {
+          const stock = item.stocks.find((s: any) => s.locationName === value);
+          if (stock) {
+            updated.maxQty = isRecall ? stock.quantityUsing : stock.quantityAvailable;
+          } else {
+            updated.maxQty = 0;
+          }
+        } else {
+          updated.maxQty = 1;
+        }
+        updated.quantityProcessed = updated.maxQty;
+        updated.qtyGood = updated.maxQty;
+        updated.qtyBroken = 0;
+        updated.qtyLost = 0;
+        updated.splits = [{ quantity: updated.maxQty, toLocation: '' }];
+      }
+
+      if (field === 'qtyGood' || field === 'qtyBroken' || field === 'qtyLost') {
+        const g = field === 'qtyGood' ? Number(value) || 0 : updated.qtyGood;
+        const b = field === 'qtyBroken' ? Number(value) || 0 : updated.qtyBroken;
+        const l = field === 'qtyLost' ? Number(value) || 0 : updated.qtyLost;
+        updated.qtyGood = g;
+        updated.qtyBroken = b;
+        updated.qtyLost = l;
+        updated.quantityProcessed = g + b + l;
+      }
+
+      return updated;
+    }));
+  };
+
+  const handleSplitChange = (toolId: number, splitIdx: number, subField: string, value: any) => {
+    setModalItems(prev => prev.map(item => {
+      if (item.toolId !== toolId) return item;
+      const newSplits = item.splits.map((split: any, idx: number) => {
+        if (idx !== splitIdx) return split;
+        return { ...split, [subField]: subField === 'quantity' ? (Number(value) || 0) : value };
+      });
+      const totalSplit = newSplits.reduce((sum: number, s: any) => sum + s.quantity, 0);
+      return {
+        ...item,
+        splits: newSplits,
+        quantityProcessed: totalSplit
+      };
+    }));
+  };
+
+  const addSplitDestination = (toolId: number) => {
+    setModalItems(prev => prev.map(item => {
+      if (item.toolId !== toolId) return item;
+      return {
+        ...item,
+        splits: [...item.splits, { quantity: 0, toLocation: '' }]
+      };
+    }));
+  };
+
+  const removeSplitDestination = (toolId: number, splitIdx: number) => {
+    setModalItems(prev => prev.map(item => {
+      if (item.toolId !== toolId) return item;
+      const newSplits = item.splits.filter((_: any, idx: number) => idx !== splitIdx);
+      const totalSplit = newSplits.reduce((sum: number, s: any) => sum + s.quantity, 0);
+      return {
+        ...item,
+        splits: newSplits,
+        quantityProcessed: totalSplit
+      };
+    }));
+  };
 
   const [damageForm, setDamageForm] = useState({
     reportedBy: '',
@@ -254,34 +377,101 @@ export const ToolList: React.FC = () => {
 
   const handleHandoverSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (selectedIds.length === 0) return;
+    if (modalItems.length === 0) return;
 
-    // Validate location inputs
-    const cityVal = selectedCity === 'Khác' ? customCity : selectedCity;
-    const projectVal = selectedProject === 'Khác' ? customProject : selectedProject;
-    const locationVal = selectedLocation === 'Khác' ? customLocation : selectedLocation;
+    const type = handoverForm.type;
 
-    if (!cityVal || !projectVal || !locationVal) {
-      toast.warn("Vui lòng chọn đầy đủ Thành phố, Dự án và Vị trí chi tiết.");
-      return;
+    let destinationLocation = '';
+    if (type !== 'SPLIT') {
+      const cityVal = selectedCity === 'Khác' ? customCity : selectedCity;
+      const projectVal = selectedProject === 'Khác' ? customProject : selectedProject;
+      const locationVal = selectedLocation === 'Khác' ? customLocation : selectedLocation;
+
+      if (!cityVal || !projectVal || !locationVal) {
+        toast.warn("Vui lòng chọn đầy đủ Thành phố, Dự án và Vị trí chi tiết.");
+        return;
+      }
+      destinationLocation = `${cityVal}-${projectVal}-${locationVal}`;
     }
 
-    try {
-      const fullLocation = `${cityVal}-${projectVal}-${locationVal}`;
+    // Validate each item
+    for (const item of modalItems) {
+      if (item.quantityProcessed <= 0) {
+        toast.error(`Số lượng xử lý của CCDC "${item.toolName}" phải lớn hơn 0.`);
+        return;
+      }
+      if (item.quantityProcessed > item.maxQty) {
+        toast.error(`Số lượng xử lý của CCDC "${item.toolName}" (${item.quantityProcessed}) không được lớn hơn số lượng hiện có (${item.maxQty}).`);
+        return;
+      }
 
-      await api.post('/tools/handover', {
-        ...handoverForm,
-        newLocation: fullLocation,
-        toolIds: selectedIds,
-        autoComplete: true
-      });
-      toast.success("Đã hoàn tất bàn giao/luân chuyển CCDC!");
+      if (type === 'RECALL') {
+        if (item.qtyGood + item.qtyBroken + item.qtyLost !== item.quantityProcessed) {
+          toast.error(`Tổng số lượng tốt, hỏng, mất của CCDC "${item.toolName}" không khớp số lượng xử lý.`);
+          return;
+        }
+      }
+
+      if (type === 'SPLIT') {
+        if (item.splits.length === 0) {
+          toast.error(`CCDC "${item.toolName}" chưa chọn địa điểm tách.`);
+          return;
+        }
+        for (const s of item.splits) {
+          if (!s.toLocation) {
+            toast.error(`Vui lòng chọn địa điểm nhận cho tất cả các dòng tách của CCDC "${item.toolName}".`);
+            return;
+          }
+          if (s.quantity <= 0) {
+            toast.error(`Số lượng tách của CCDC "${item.toolName}" tại địa điểm "${s.toLocation}" phải lớn hơn 0.`);
+            return;
+          }
+        }
+      }
+    }
+
+    setLoading(true);
+    try {
+      for (const item of modalItems) {
+        if (type === 'TRANSFER') {
+          await api.post('/tools/stock/transfer', {
+            toolId: item.toolId,
+            quantity: item.quantityProcessed,
+            fromLocation: item.sourceLocation,
+            toLocation: destinationLocation,
+            note: item.note || handoverForm.note
+          });
+        } else if (type === 'RECALL') {
+          await api.post('/tools/stock/recall', {
+            toolId: item.toolId,
+            quantity: item.quantityProcessed,
+            fromLocation: item.sourceLocation,
+            toLocation: destinationLocation,
+            qtyGood: item.qtyGood,
+            qtyBroken: item.qtyBroken,
+            qtyLost: item.qtyLost,
+            note: item.note || handoverForm.note
+          });
+        } else if (type === 'SPLIT') {
+          await api.post('/tools/stock/split', {
+            toolId: item.toolId,
+            fromLocation: item.sourceLocation,
+            splits: item.splits,
+            createChildCodes: item.createChildCodes,
+            note: item.note || handoverForm.note
+          });
+        }
+      }
+
+      toast.success("Đã hoàn tất xử lý biến động CCDC thành công!");
       setActiveModal('NONE');
       setSelectedIds([]);
       resetHandoverLocationStates();
       fetchTools();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Lỗi giao dịch bàn giao.");
+      toast.error(err.response?.data?.message || "Lỗi xử lý giao dịch.");
+    } finally {
+      setLoading(false);
     }
   };
   const handleDamageSubmit = async (e: React.FormEvent) => {
@@ -471,7 +661,7 @@ export const ToolList: React.FC = () => {
           <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
             <button 
               onClick={() => {
-                setHandoverForm({ ...handoverForm, type: 'HANDOVER' });
+                setHandoverForm({ ...handoverForm, type: 'TRANSFER' });
                 setActiveModal('HANDOVER');
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-xl transition-colors"
@@ -665,206 +855,442 @@ export const ToolList: React.FC = () => {
       {/* A. HANDOVER / LUÂN CHUYỂN / THU HỒI MODAL */}
       {activeModal === 'HANDOVER' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+          <div className="bg-white rounded-3xl w-full max-w-4xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <h3 className="text-lg font-black text-slate-850 uppercase tracking-wider flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-primary-500" />
-                Biên bản {handoverForm.type === 'HANDOVER' ? 'Bàn giao' : (handoverForm.type === 'TRANSFER' ? 'Luân chuyển' : 'Thu hồi')} CCDC
+                Biên bản luân chuyển / thu hồi CCDC theo số lượng
               </h3>
-              <button onClick={() => setActiveModal('NONE')} className="p-1 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700">
+              <button onClick={() => setActiveModal('NONE')} className="p-1 hover:bg-slate-200 rounded-xl text-slate-400 hover:text-slate-700 transition-colors">
                 <X className="h-5 w-5" />
               </button>
             </div>
             
             <form onSubmit={handleHandoverSubmit}>
-              <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-                <div className="bg-slate-50 p-4 rounded-2xl border border-slate-100 text-xs font-bold text-slate-500">
-                  CCDC đang chọn thực hiện: {selectedToolsToPrint.map(t => `${t.toolName} (${t.toolCode})`).join(', ')}
-                </div>
-
-                {handoverForm.type !== 'RECALL' && (
-                  <>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Họ tên người nhận *</label>
-                      <input 
-                        type="text" 
-                        required
-                        className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
-                        placeholder="Nhập tên nhân sự nhận..."
-                        value={handoverForm.recipientName}
-                        onChange={e => setHandoverForm({ ...handoverForm, recipientName: e.target.value })}
-                      />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bộ phận / Phòng ban</label>
-                        <input 
-                          type="text" 
-                          list="handover-dept-suggestions"
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
-                          placeholder="Nhập hoặc chọn phòng ban..."
-                          value={handoverForm.recipientDepartment}
-                          onChange={e => setHandoverForm({ ...handoverForm, recipientDepartment: e.target.value })}
-                        />
-                        <datalist id="handover-dept-suggestions">
-                          {departments.map(d => <option key={d.id} value={d.name} />)}
-                        </datalist>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chức vụ</label>
-                        <input 
-                          type="text" 
-                          className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
-                          placeholder="Nhập chức vụ..."
-                          value={handoverForm.recipientPosition}
-                          onChange={e => setHandoverForm({ ...handoverForm, recipientPosition: e.target.value })}
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {/* 1. Thành phố */}
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thành phố *</label>
-                  <select 
-                    required
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold"
-                    value={selectedCity}
-                    onChange={e => {
-                      setSelectedCity(e.target.value);
-                      setSelectedProject('');
-                      setSelectedLocation('');
-                      setCustomCity('');
-                      setCustomProject('');
-                      setCustomLocation('');
-                    }}
-                  >
-                    <option value="">-- Chọn thành phố --</option>
-                    {Object.keys(LOCATION_HIERARCHY).map(c => (
-                      <option key={c} value={c}>{c}</option>
+              <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+                
+                {/* 1. NGHIỆP VỤ SELECTOR */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Loại nghiệp vụ</label>
+                  <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/60">
+                    {[
+                      { key: 'TRANSFER', label: 'Luân chuyển' },
+                      { key: 'RECALL', label: 'Thu hồi' },
+                      { key: 'SPLIT', label: 'Tách số lượng' }
+                    ].map(opt => (
+                      <button
+                        key={opt.key}
+                        type="button"
+                        onClick={() => setHandoverForm({ ...handoverForm, type: opt.key as any })}
+                        className={`flex-1 py-2 px-4 rounded-xl text-xs font-bold transition-all duration-200 ${
+                          handoverForm.type === opt.key
+                            ? 'bg-white text-slate-800 shadow-sm border border-slate-200/30'
+                            : 'text-slate-500 hover:text-slate-800'
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
                     ))}
-                    <option value="Khác">Khác</option>
-                  </select>
+                  </div>
                 </div>
 
-                {selectedCity === 'Khác' && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi rõ thành phố khác *</label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="Nhập tên thành phố..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
-                      value={customCity}
-                      onChange={e => setCustomCity(e.target.value)}
-                    />
-                  </div>
-                )}
+                {/* 2. CCDC TABLE */}
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Bảng CCDC đã chọn *</label>
+                  <div className="border border-slate-150 rounded-2xl overflow-hidden bg-white shadow-sm overflow-x-auto">
+                    <table className="w-full text-left border-collapse text-xs min-w-[700px]">
+                      <thead>
+                        <tr className="bg-slate-50 border-b border-slate-150 text-slate-500 font-bold uppercase tracking-wider">
+                          <th className="px-4 py-3">CCDC</th>
+                          <th className="px-4 py-3">Vị trí nguồn</th>
+                          <th className="px-4 py-3">Tồn / Đang giữ</th>
+                          {handoverForm.type === 'RECALL' ? (
+                            <>
+                              <th className="px-3 py-3 text-center w-16">Tốt</th>
+                              <th className="px-3 py-3 text-center w-16">Hỏng</th>
+                              <th className="px-3 py-3 text-center w-16">Mất</th>
+                            </>
+                          ) : handoverForm.type === 'TRANSFER' ? (
+                            <th className="px-4 py-3 text-center w-24">SL xử lý *</th>
+                          ) : (
+                            <th className="px-4 py-3 w-48">Cấu hình tách</th>
+                          )}
+                          <th className="px-4 py-3">Ghi chú</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 font-semibold text-slate-700">
+                        {modalItems.map((item) => {
+                          const isQuantity = item.managementType === 'QUANTITY';
+                          return (
+                            <React.Fragment key={item.toolId}>
+                              <tr className="hover:bg-slate-50/50">
+                                <td className="px-4 py-4">
+                                  <div className="font-bold text-slate-850">{item.toolName}</div>
+                                  <div className="font-mono text-[10px] text-slate-400 mt-0.5">{item.toolCode}</div>
+                                  <div className="text-[9px] px-1.5 py-0.5 mt-1 bg-slate-100 text-slate-500 rounded font-bold inline-block uppercase">
+                                    {isQuantity ? 'Số lượng' : 'Từng mã'}
+                                  </div>
+                                </td>
+                                <td className="px-4 py-4">
+                                  {isQuantity ? (
+                                    <select
+                                      className="bg-slate-50 border border-slate-200 rounded-xl px-2 py-1.5 text-xs font-semibold w-full max-w-[180px]"
+                                      value={item.sourceLocation}
+                                      onChange={e => handleItemFieldChange(item.toolId, 'sourceLocation', e.target.value)}
+                                    >
+                                      {item.stocks.map((s: any) => (
+                                        <option key={s.id} value={s.locationName}>
+                                          {s.locationName.split(' - ').slice(-1)[0]} ({handoverForm.type === 'RECALL' ? `Dùng: ${s.quantityUsing}` : `Khả dụng: ${s.quantityAvailable}`})
+                                        </option>
+                                      ))}
+                                    </select>
+                                  ) : (
+                                    <span className="text-slate-500 text-[11px]">
+                                      {item.sourceLocation.split(' - ').slice(-1)[0] || '---'}
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-4 text-slate-500">
+                                  <strong className="text-slate-800">{item.maxQty}</strong> {item.unit || 'cái'}
+                                </td>
+                                
+                                {handoverForm.type === 'RECALL' ? (
+                                  <>
+                                    <td className="px-3 py-4 text-center">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={item.maxQty}
+                                        className="w-12 bg-slate-50 border border-slate-200 rounded-lg px-1 py-1 text-center font-bold text-green-700"
+                                        value={item.qtyGood}
+                                        onChange={e => handleItemFieldChange(item.toolId, 'qtyGood', e.target.value)}
+                                      />
+                                    </td>
+                                    <td className="px-3 py-4 text-center">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={item.maxQty}
+                                        className="w-12 bg-slate-50 border border-slate-200 rounded-lg px-1 py-1 text-center font-bold text-amber-700"
+                                        value={item.qtyBroken}
+                                        onChange={e => handleItemFieldChange(item.toolId, 'qtyBroken', e.target.value)}
+                                      />
+                                    </td>
+                                    <td className="px-3 py-4 text-center">
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        max={item.maxQty}
+                                        className="w-12 bg-slate-50 border border-slate-200 rounded-lg px-1 py-1 text-center font-bold text-red-700"
+                                        value={item.qtyLost}
+                                        onChange={e => handleItemFieldChange(item.toolId, 'qtyLost', e.target.value)}
+                                      />
+                                    </td>
+                                  </>
+                                ) : handoverForm.type === 'TRANSFER' ? (
+                                  <td className="px-4 py-4 text-center">
+                                    <input
+                                      type="number"
+                                      min={1}
+                                      max={item.maxQty}
+                                      required
+                                      disabled={!isQuantity}
+                                      className="w-16 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-center font-bold"
+                                      value={item.quantityProcessed}
+                                      onChange={e => handleItemFieldChange(item.toolId, 'quantityProcessed', e.target.value)}
+                                    />
+                                  </td>
+                                ) : (
+                                  <td className="px-4 py-4">
+                                    <div className="flex flex-col gap-1">
+                                      <span className="text-[10px] text-slate-500">
+                                        Tổng tách: <strong className="text-slate-800">{item.quantityProcessed}</strong> / {item.maxQty}
+                                      </span>
+                                      <label className="flex items-center gap-1 cursor-pointer">
+                                        <input
+                                          type="checkbox"
+                                          className="rounded border-slate-350"
+                                          checked={item.createChildCodes}
+                                          onChange={e => handleItemFieldChange(item.toolId, 'createChildCodes', e.target.checked)}
+                                        />
+                                        <span className="text-[9px] text-slate-650 font-bold select-none">Tạo mã con (-01, -02)</span>
+                                      </label>
+                                    </div>
+                                  </td>
+                                )}
 
-                {/* 2. Dự án */}
-                {selectedCity && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Dự án *</label>
-                    <select 
-                      required
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold"
-                      value={selectedProject}
-                      onChange={e => {
-                        setSelectedProject(e.target.value);
-                        setSelectedLocation('');
-                        setCustomProject('');
-                        setCustomLocation('');
-                      }}
-                    >
-                      <option value="">-- Chọn dự án --</option>
-                      {selectedCity !== 'Khác' && Object.keys(LOCATION_HIERARCHY[selectedCity] || {}).map(p => (
-                        <option key={p} value={p}>{p}</option>
-                      ))}
-                      <option value="Khác">Khác</option>
-                    </select>
-                  </div>
-                )}
+                                <td className="px-4 py-4">
+                                  <input
+                                    type="text"
+                                    placeholder="Ghi chú..."
+                                    className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"
+                                    value={item.note}
+                                    onChange={e => handleItemFieldChange(item.toolId, 'note', e.target.value)}
+                                  />
+                                </td>
+                              </tr>
 
-                {selectedProject === 'Khác' && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi rõ dự án khác *</label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="Nhập tên dự án..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
-                      value={customProject}
-                      onChange={e => setCustomProject(e.target.value)}
-                    />
+                              {handoverForm.type === 'SPLIT' && (
+                                <tr className="bg-slate-50/40">
+                                  <td colSpan={5} className="px-4 py-3 border-b">
+                                    <div className="space-y-2 pl-6 border-l-2 border-primary-500">
+                                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest flex justify-between items-center">
+                                        <span>Danh sách vị trí nhận tách:</span>
+                                        <button
+                                          type="button"
+                                          onClick={() => addSplitDestination(item.toolId)}
+                                          className="text-primary-600 hover:text-primary-800 text-[10px] font-black uppercase flex items-center gap-1"
+                                        >
+                                          + Thêm vị trí nhận
+                                        </button>
+                                      </div>
+                                      {item.splits.map((split: any, sIdx: number) => (
+                                        <div key={sIdx} className="flex gap-3 items-center">
+                                          <div className="flex-1">
+                                            <input
+                                              type="text"
+                                              list="split-location-suggestions"
+                                              placeholder="Chọn hoặc nhập vị trí nhận..."
+                                              className="w-full bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs font-semibold"
+                                              value={split.toLocation}
+                                              onChange={e => handleSplitChange(item.toolId, sIdx, 'toLocation', e.target.value)}
+                                            />
+                                          </div>
+                                          <div className="w-24 flex items-center gap-1.5">
+                                            <span className="text-xs text-slate-400">SL:</span>
+                                            <input
+                                              type="number"
+                                              min={1}
+                                              max={item.maxQty}
+                                              className="w-16 bg-white border border-slate-200 rounded-lg px-2 py-1 text-center font-bold text-xs"
+                                              value={split.quantity}
+                                              onChange={e => handleSplitChange(item.toolId, sIdx, 'quantity', e.target.value)}
+                                            />
+                                          </div>
+                                          {item.splits.length > 1 && (
+                                            <button
+                                              type="button"
+                                              onClick={() => removeSplitDestination(item.toolId, sIdx)}
+                                              className="text-red-500 hover:text-red-700 p-1"
+                                            >
+                                              <Trash2 className="h-3.5 w-3.5" />
+                                            </button>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                    <datalist id="split-location-suggestions">
+                      {locations.map(l => <option key={l.id} value={l.name} />)}
+                    </datalist>
                   </div>
-                )}
-
-                {/* 3. Vị trí chi tiết */}
-                {selectedProject && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
-                      {handoverForm.type === 'RECALL' ? 'Thu hồi về vị trí chi tiết *' : 'Vị trí chi tiết bàn giao *'}
-                    </label>
-                    <select 
-                      required
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-3 text-sm font-semibold"
-                      value={selectedLocation}
-                      onChange={e => {
-                        setSelectedLocation(e.target.value);
-                        setCustomLocation('');
-                      }}
-                    >
-                      <option value="">-- Chọn vị trí --</option>
-                      {selectedCity !== 'Khác' && selectedProject !== 'Khác' && (LOCATION_HIERARCHY[selectedCity]?.[selectedProject] || []).map(l => (
-                        <option key={l} value={l}>{l}</option>
-                      ))}
-                      <option value="Khác">Khác</option>
-                    </select>
-                  </div>
-                )}
-
-                {selectedLocation === 'Khác' && (
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi rõ vị trí khác *</label>
-                    <input 
-                      type="text"
-                      required
-                      placeholder="Nhập vị trí chi tiết..."
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
-                      value={customLocation}
-                      onChange={e => setCustomLocation(e.target.value)}
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lý do bàn giao/luân chuyển</label>
-                  <input 
-                    type="text" 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
-                    placeholder="Lý do..."
-                    value={handoverForm.reason}
-                    onChange={e => setHandoverForm({ ...handoverForm, reason: e.target.value })}
-                  />
                 </div>
 
-                <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú</label>
-                  <textarea 
-                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold h-20"
-                    placeholder="Ghi chú thêm..."
-                    value={handoverForm.note}
-                    onChange={e => setHandoverForm({ ...handoverForm, note: e.target.value })}
-                  />
+                {/* 3. VỊ TRÍ ĐÍCH & NGƯỜI NHẬN (LUÂN CHUYỂN / THU HỒI) */}
+                {handoverForm.type !== 'SPLIT' && (
+                  <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200/60 space-y-4">
+                    <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider border-b border-slate-200 pb-2">
+                      Thông tin nơi nhận / đích đến
+                    </h4>
+
+                    {handoverForm.type === 'TRANSFER' && (
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Người nhận</label>
+                          <input 
+                            type="text" 
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                            placeholder="Nhập tên..."
+                            value={handoverForm.recipientName}
+                            onChange={e => setHandoverForm({ ...handoverForm, recipientName: e.target.value })}
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bộ phận</label>
+                          <input 
+                            type="text" 
+                            list="handover-dept-suggestions"
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                            placeholder="Phòng ban..."
+                            value={handoverForm.recipientDepartment}
+                            onChange={e => setHandoverForm({ ...handoverForm, recipientDepartment: e.target.value })}
+                          />
+                          <datalist id="handover-dept-suggestions">
+                            {departments.map(d => <option key={d.id} value={d.name} />)}
+                          </datalist>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chức vụ</label>
+                          <input 
+                            type="text" 
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                            placeholder="Chức vụ..."
+                            value={handoverForm.recipientPosition}
+                            onChange={e => setHandoverForm({ ...handoverForm, recipientPosition: e.target.value })}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-3 gap-4">
+                      {/* Thành phố */}
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thành phố *</label>
+                        <select 
+                          required
+                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                          value={selectedCity}
+                          onChange={e => {
+                            setSelectedCity(e.target.value);
+                            setSelectedProject('');
+                            setSelectedLocation('');
+                            setCustomCity('');
+                            setCustomProject('');
+                            setCustomLocation('');
+                          }}
+                        >
+                          <option value="">-- Chọn thành phố --</option>
+                          {Object.keys(LOCATION_HIERARCHY).map(c => (
+                            <option key={c} value={c}>{c}</option>
+                          ))}
+                          <option value="Khác">Khác</option>
+                        </select>
+                      </div>
+
+                      {/* Dự án */}
+                      {selectedCity && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Dự án *</label>
+                          <select 
+                            required
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                            value={selectedProject}
+                            onChange={e => {
+                              setSelectedProject(e.target.value);
+                              setSelectedLocation('');
+                              setCustomProject('');
+                              setCustomLocation('');
+                            }}
+                          >
+                            <option value="">-- Chọn dự án --</option>
+                            {selectedCity !== 'Khác' && Object.keys(LOCATION_HIERARCHY[selectedCity] || {}).map(p => (
+                              <option key={p} value={p}>{p}</option>
+                            ))}
+                            <option value="Khác">Khác</option>
+                          </select>
+                        </div>
+                      )}
+
+                      {/* Vị trí chi tiết */}
+                      {selectedProject && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">
+                            {handoverForm.type === 'RECALL' ? 'Vị trí đích thu hồi *' : 'Vị trí chi tiết nhận *'}
+                          </label>
+                          <select 
+                            required
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                            value={selectedLocation}
+                            onChange={e => {
+                              setSelectedLocation(e.target.value);
+                              setCustomLocation('');
+                            }}
+                          >
+                            <option value="">-- Chọn vị trí --</option>
+                            {selectedCity !== 'Khác' && selectedProject !== 'Khác' && (LOCATION_HIERARCHY[selectedCity]?.[selectedProject] || []).map(l => (
+                              <option key={l} value={l}>{l}</option>
+                            ))}
+                            <option value="Khác">Khác</option>
+                          </select>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Custom Text Fields for "Khác" */}
+                    <div className="grid grid-cols-3 gap-4">
+                      {selectedCity === 'Khác' && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tên thành phố khác *</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="Nhập thành phố..."
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                            value={customCity}
+                            onChange={e => setCustomCity(e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      {selectedProject === 'Khác' && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tên dự án khác *</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="Nhập dự án..."
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                            value={customProject}
+                            onChange={e => setCustomProject(e.target.value)}
+                          />
+                        </div>
+                      )}
+
+                      {selectedLocation === 'Khác' && (
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tên vị trí khác *</label>
+                          <input 
+                            type="text"
+                            required
+                            placeholder="Nhập vị trí chi tiết..."
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold"
+                            value={customLocation}
+                            onChange={e => setCustomLocation(e.target.value)}
+                          />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. CHUNG METADATA */}
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lý do giao dịch</label>
+                    <input 
+                      type="text" 
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
+                      placeholder="Lý do..."
+                      value={handoverForm.reason}
+                      onChange={e => setHandoverForm({ ...handoverForm, reason: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú chung biên bản</label>
+                    <input 
+                      type="text"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
+                      placeholder="Ghi chú thêm..."
+                      value={handoverForm.note}
+                      onChange={e => setHandoverForm({ ...handoverForm, note: e.target.value })}
+                    />
+                  </div>
                 </div>
+
               </div>
 
               <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                <button type="button" onClick={() => setActiveModal('NONE')} className="px-4 py-2 text-slate-500 hover:bg-slate-200 rounded-xl text-sm font-bold">
+                <button type="button" onClick={() => setActiveModal('NONE')} className="px-4 py-2 text-slate-500 hover:bg-slate-200 rounded-xl text-sm font-bold transition-colors">
                   Hủy
                 </button>
-                <button type="submit" className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-md">
+                <button type="submit" className="px-6 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all">
                   Xác nhận
                 </button>
               </div>

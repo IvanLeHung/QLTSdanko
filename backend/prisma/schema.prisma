@@ -1070,7 +1070,9 @@ model ToolStock {
   locationName      String        // e.g. "Danko Group - Hà Nội - Văn phòng C6 - Tầng 1 - Kho"
   quantityAvailable Int           @default(0) // Khả dụng
   quantityUsing     Int           @default(0) // Đang sử dụng
-  quantityBroken    Int           @default(0) // Đang sửa
+  quantityTransit   Int           @default(0) // Đang luân chuyển
+  quantityRepairing Int           @default(0) // Đang sửa
+  quantityBroken    Int           @default(0) // Hỏng chờ xử lý
   quantityLost      Int           @default(0) // Mất
   quantityDestroyed Int           @default(0) // Đã hủy
   tool              ToolEquipment @relation(fields: [toolId], references: [id], onDelete: Cascade)

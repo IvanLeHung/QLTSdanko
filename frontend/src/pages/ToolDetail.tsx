@@ -176,7 +176,9 @@ export const ToolDetail: React.FC = () => {
   // Stock quantities breakdown calculation for QUANTITY mode
   let totalStock = 0;
   let totalAvailable = 0;
+  let totalTransit = 0;
   let totalUsing = 0;
+  let totalRepairing = 0;
   let totalBroken = 0;
   let totalLost = 0;
   let totalDestroyed = 0;
@@ -184,12 +186,14 @@ export const ToolDetail: React.FC = () => {
   if (tool.stocks && tool.stocks.length > 0) {
     tool.stocks.forEach((s: any) => {
       totalAvailable += s.quantityAvailable || 0;
+      totalTransit += s.quantityTransit || 0;
       totalUsing += s.quantityUsing || 0;
+      totalRepairing += s.quantityRepairing || 0;
       totalBroken += s.quantityBroken || 0;
       totalLost += s.quantityLost || 0;
       totalDestroyed += s.quantityDestroyed || 0;
     });
-    totalStock = totalAvailable + totalUsing + totalBroken + totalLost + totalDestroyed;
+    totalStock = totalAvailable + totalTransit + totalUsing + totalRepairing + totalBroken + totalLost + totalDestroyed;
   } else {
     totalStock = tool.quantity || 0;
     if (tool.status === 'IN_STOCK') totalAvailable = tool.quantity;
@@ -482,7 +486,7 @@ export const ToolDetail: React.FC = () => {
                       <Warehouse className="h-4 w-4 text-primary-600" />
                       Trạng thái cân đối tồn kho hiện tại
                     </h3>
-                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
+                    <div className="grid grid-cols-2 sm:grid-cols-8 gap-3 text-center">
                       <div className="bg-white p-3 rounded-2xl border">
                         <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tổng nhập</p>
                         <p className="text-xl font-black text-slate-800 mt-1">{totalStock}</p>
@@ -491,12 +495,20 @@ export const ToolDetail: React.FC = () => {
                         <p className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Khả dụng</p>
                         <p className="text-xl font-black text-green-700 mt-1">{totalAvailable}</p>
                       </div>
+                      <div className="bg-indigo-50/50 p-3 rounded-2xl border border-indigo-100">
+                        <p className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">Đang luân chuyển</p>
+                        <p className="text-xl font-black text-indigo-700 mt-1">{totalTransit}</p>
+                      </div>
                       <div className="bg-blue-50/50 p-3 rounded-2xl border border-blue-100">
                         <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Đang dùng</p>
                         <p className="text-xl font-black text-blue-700 mt-1">{totalUsing}</p>
                       </div>
+                      <div className="bg-teal-50/50 p-3 rounded-2xl border border-teal-100">
+                        <p className="text-[10px] font-bold text-teal-600 uppercase tracking-wider">Đang sửa</p>
+                        <p className="text-xl font-black text-teal-700 mt-1">{totalRepairing}</p>
+                      </div>
                       <div className="bg-amber-50/50 p-3 rounded-2xl border border-amber-100">
-                        <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Đang sửa</p>
+                        <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Hỏng chờ XL</p>
                         <p className="text-xl font-black text-amber-700 mt-1">{totalBroken}</p>
                       </div>
                       <div className="bg-red-50/50 p-3 rounded-2xl border border-red-100">
