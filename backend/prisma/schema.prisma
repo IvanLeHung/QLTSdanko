@@ -758,5 +758,288 @@ model DiscoveredAsset {
   createdBy         User           @relation(fields: [createdById], references: [id])
 }
 
+model ToolEquipment {
+  id               Int                    @id @default(autoincrement())
+  toolCode         String                 @unique
+  toolName         String
+  category         String                 // Nhóm CCDC (Bàn ghế, thiết bị văn phòng, vật dụng hỗ trợ...)
+  quantity         Int                    @default(1)
+  unit             String?                @default("Cái")
+  purchasePrice    Float?                 @default(0)
+  purchaseDate     DateTime?
+  supplierName     String?
+  currentUserName  String?
+  departmentName   String?
+  locationName     String?
+  cityName         String?
+  projectName      String?
+  status           String                 @default("IN_STOCK") // IN_STOCK, USING, DAMAGED, LOST, WAITING_LIQUIDATION, LIQUIDATED
+  handoverDate     DateTime?
+  note             String?
+  attachments      String?                // JSON string or comma-separated file paths
+  initialCondition String?
+  isDeleted        Boolean                @default(false)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+  
+  assignments      ToolAssignment[]
+  repairTickets    ToolRepairTicket[]
+  damageReports    ToolDamageReportItem[]
+  inventoryItems   ToolInventoryItem[]
+  liquidations     ToolLiquidationItem[]
+  lostReports      ToolLostReport[]
+  histories        ToolHistory[]
+  handoverItems    ToolHandoverItem[]
+  repairLogs       ToolRepairLog[]
+}
+
+model ToolAssignment {
+  id                Int           @id @default(autoincrement())
+  toolId            Int
+  previousUserName  String?
+  newUserName       String
+  newPosition       String?
+  newDepartmentName String?
+  newLocationName   String?
+  newCityName       String?
+  newStatus         String
+  effectiveAt       DateTime
+  note              String?
+  createdAt         DateTime      @default(now())
+  tool              ToolEquipment @relation(fields: [toolId], references: [id])
+}
+
+model ToolHandoverDocument {
+  id                   Int                  @id @default(autoincrement())
+  documentNo           String               @unique
+  documentDate         DateTime             @default(now())
+  type                 String               @default("HANDOVER") // HANDOVER, TRANSFER, RECALL
+  status               String               @default("DRAFT")    // DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED
+  recipientName        String
+  recipientPosition    String?
+  recipientDepartment  String?
+  recipientPhone       String?
+  receiverId           Int?
+  receiverDepartmentId Int?
+  senderName           String?
+  senderDepartment     String?
+  senderPosition       String?
+  senderId             Int?
+  newLocation          String?
+  newCity              String?
+  targetLocationId     Int?
+  reason               String?
+  note                 String?
+  attachments          String?
+  createdAt            DateTime             @default(now())
+  confirmedAt          DateTime?
+  cancelledAt          DateTime?
+  items                ToolHandoverItem[]
+}
+
+model ToolHandoverItem {
+  id                   Int                  @id @default(autoincrement())
+  handoverDocumentId   Int
+  toolId               Int
+  toolCode             String
+  toolName             String
+  unit                 String?
+  oldStatus            String?
+  newStatus            String?
+  handoverDocument     ToolHandoverDocument @relation(fields: [handoverDocumentId], references: [id])
+  tool                 ToolEquipment        @relation(fields: [toolId], references: [id])
+}
+
+model ToolDamageReport {
+  id              Int                    @id @default(autoincrement())
+  reportCode      String                 @unique
+  reportDate      DateTime               @default(now())
+  damageLevel     String?
+  description     String?
+  solution        String?
+  repairVendor    String?
+  repairCost      Float?                 @default(0)
+  repairStartDate DateTime?
+  repairEndDate   DateTime?
+  status          String                 @default("DRAFT")
+  note            String?
+  attachments     String?
+  createdAt       DateTime               @default(now())
+  items           ToolDamageReportItem[]
+}
+
+model ToolDamageReportItem {
+  id             Int              @id @default(autoincrement())
+  damageReportId Int
+  toolId         Int
+  tool           ToolEquipment    @relation(fields: [toolId], references: [id])
+  damageReport   ToolDamageReport @relation(fields: [damageReportId], references: [id])
+}
+
+model ToolLostReport {
+  id                       Int           @id @default(autoincrement())
+  lostCode                 String        @unique
+  toolId                   Int
+  reportedDate             DateTime      @default(now())
+  reportedBy               String?
+  lostDetectedDate         DateTime?
+  lastSeenDate             DateTime?
+  responsibleUser          String?
+  responsibleDepartment    String?
+  lastKnownLocation        String?
+  incidentDescription      String?
+  remainingValue           Float?        @default(0)
+  compensationNote         String?
+  foundDate                DateTime?
+  foundLocation            String?
+  conditionWhenFound       String?
+  newStatusAfterFound      String?
+  status                   String        @default("LOST")
+  note                     String?
+  attachments              String?
+  createdAt                DateTime      @default(now())
+  updatedAt                DateTime      @updatedAt
+  completedAt              DateTime?
+  tool                     ToolEquipment @relation(fields: [toolId], references: [id])
+}
+
+model ToolLiquidationRecord {
+  id              Int                    @id @default(autoincrement())
+  liquidationCode String                 @unique
+  liquidationDate DateTime               @default(now())
+  liquidationType String?
+  reason          String?
+  buyerName       String?
+  documentNo      String?
+  totalValue      Float?                 @default(0)
+  status          String                 @default("DRAFT")
+  note            String?
+  attachments     String?
+  createdAt       DateTime               @default(now())
+  items           ToolLiquidationItem[]
+}
+
+model ToolLiquidationItem {
+  id                  Int                   @id @default(autoincrement())
+  liquidationRecordId Int
+  toolId              Int
+  toolValue           Float?                @default(0)
+  tool                ToolEquipment         @relation(fields: [toolId], references: [id])
+  liquidationRecord   ToolLiquidationRecord @relation(fields: [liquidationRecordId], references: [id])
+}
+
+model ToolInventoryCheck {
+  id                 Int                 @id @default(autoincrement())
+  inventoryCode      String              @unique
+  inventoryName      String
+  inventoryDate      DateTime
+  status             String              @default("DRAFT") // DRAFT, OPEN, IN_PROGRESS, COMPLETED, CANCELLED
+  scopeType          String?
+  scopeValue         String?
+  expectedFinishDate DateTime?
+  responsiblePerson  String?
+  note               String?
+  createdAt          DateTime            @default(now())
+  items              ToolInventoryItem[]
+}
+
+model ToolInventoryItem {
+  id                  Int                @id @default(autoincrement())
+  inventoryCheckId    Int
+  toolId              Int
+  toolCode            String
+  expectedStatus      String?
+  actualStatus        String?
+  expectedLocation    String?
+  actualLocation      String?
+  quality             String?
+  note                String?
+  result              String?            // MATCHED, MISSING, EXTRA, DAMAGED, WRONG_LOCATION, NEED_REVIEW
+  photos              String[]
+  checkStatus         String             @default("PENDING") // PENDING, CHECKED
+  checkedAt           DateTime?
+  checkedBy           String?
+  actualUserName      String?
+  actualUserId        Int?
+  checkCondition      String?            @default("FOUND")
+  physicalDetailsJson String?
+  tool                ToolEquipment      @relation(fields: [toolId], references: [id])
+  inventoryCheck      ToolInventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+}
+
+model ToolRepairTicket {
+  id                  Int              @id @default(autoincrement())
+  repairCode          String           @unique
+  toolId              Int
+  reportedDate        DateTime         @default(now())
+  reportedBy          String
+  damageLevel         String?
+  damageDescription   String
+  cause               String?
+  canContinueUsing    Boolean          @default(true)
+  repairAction        String?
+  repairVendor        String?
+  responsiblePerson   String?
+  estimatedCost       Float?           @default(0)
+  actualCost          Float?           @default(0)
+  sentToRepairDate    DateTime?
+  expectedFinishDate  DateTime?
+  actualFinishDate    DateTime?
+  result              String?
+  status              String           @default("OPEN")
+  previousToolStatus  String?
+  note                String?
+  attachments         String?
+  createdAt           DateTime         @default(now())
+  updatedAt           DateTime         @updatedAt
+  logs                ToolRepairLog[]
+  tool                ToolEquipment    @relation(fields: [toolId], references: [id])
+}
+
+model ToolRepairLog {
+  id             Int              @id @default(autoincrement())
+  repairTicketId Int
+  toolId         Int
+  logDate        DateTime         @default(now())
+  action         String
+  oldStatus      String?
+  newStatus      String?
+  description    String?
+  cost           Float?           @default(0)
+  performedBy    String
+  createdAt      DateTime         @default(now())
+  tool           ToolEquipment    @relation(fields: [toolId], references: [id])
+  repairTicket   ToolRepairTicket @relation(fields: [repairTicketId], references: [id])
+}
+
+model ToolHistory {
+  id                  Int           @id @default(autoincrement())
+  toolId              Int
+  toolCode            String
+  eventTime           DateTime
+  source              String        @default("SYSTEM") // SYSTEM, IMPORT_EXCEL_HISTORY
+  actionType          String        @default("STATUS_LOCATION_USER_CHANGE")
+  oldStatus           String?
+  newStatus           String?
+  oldUserName         String?
+  newUserName         String?
+  oldLocationName     String?
+  newLocationName     String?
+  oldDepartmentName   String?
+  newDepartmentName   String?
+  oldProjectName      String?
+  newProjectName      String?
+  oldCityName         String?
+  newCityName         String?
+  oldNote             String?
+  newNote             String?
+  toolNameSnapshot    String?
+  rawImportJson       String?
+  importedById        Int?
+  importedAt          DateTime?     @default(now())
+  tool                ToolEquipment @relation(fields: [toolId], references: [id])
+}
+
+
 
 

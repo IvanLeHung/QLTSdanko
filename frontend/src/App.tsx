@@ -27,6 +27,12 @@ import { ActivityLogs } from './pages/ActivityLogs';
 import { UserPermissions } from './pages/UserPermissions';
 import { ForceChangePassword } from './pages/ForceChangePassword';
 
+// Import CCDC (Tools & Equipment) components
+import { ToolList } from './pages/ToolList';
+import { CreateTool } from './pages/CreateTool';
+import { ToolDetail } from './pages/ToolDetail';
+import { ImportTools } from './pages/ImportTools';
+
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
   
@@ -56,6 +62,12 @@ function App() {
           <Route path="/assets/new" element={<PrivateRoute><CreateAsset /></PrivateRoute>} />
           <Route path="/assets/:id" element={<PrivateRoute><AssetDetail /></PrivateRoute>} />
           <Route path="/assets/assign" element={<PrivateRoute><AssetAssign /></PrivateRoute>} />
+          
+          {/* CCDC (Tools & Equipment) Routes */}
+          <Route path="/tools" element={<PrivateRoute><ToolList /></PrivateRoute>} />
+          <Route path="/tools/new" element={<PrivateRoute><CreateTool /></PrivateRoute>} />
+          <Route path="/tools/:id" element={<PrivateRoute><ToolDetail /></PrivateRoute>} />
+          <Route path="/tools/import" element={<PrivateRoute><ImportTools /></PrivateRoute>} />
           
           <Route path="/settings/classification" element={<PrivateRoute><ClassificationSettings /></PrivateRoute>} />
           <Route path="/settings/companies" element={<PrivateRoute><CompanySettings /></PrivateRoute>} />

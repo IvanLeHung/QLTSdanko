@@ -39,12 +39,16 @@ export const ENTITY_MAP: Record<string, string> = {
   DOCUMENT: 'Tài liệu',
   API: 'Hệ thống API',
   TEMPLATE: 'Biểu mẫu',
+  TOOL: 'Công cụ dụng cụ',
+  TOOL_EQUIPMENT: 'Công cụ dụng cụ',
 };
 
 export const STATUS_MAP: Record<string, string> = {
   ASSIGNED: 'Đang sử dụng',
+  USING: 'Đang sử dụng',
   IN_STOCK: 'Trong kho',
   BROKEN: 'Báo hỏng',
+  DAMAGED: 'Hỏng',
   LOST: 'Mất / thất thoát',
   LIQUIDATED: 'Đã thanh lý',
   DRAFT: 'Bản nháp',
@@ -69,6 +73,11 @@ export const FIELD_MAP: Record<string, string> = {
   supplierName: 'Nhà cung cấp',
   companyCode: 'Công ty',
   assetCode: 'Mã tài sản',
+  toolCode: 'Mã CCDC',
+  toolName: 'Tên CCDC',
+  category: 'Nhóm CCDC',
+  quantity: 'Số lượng',
+  purchasePrice: 'Giá trị',
   note: 'Ghi chú',
   type: 'Loại nghiệp vụ',
   documentNo: 'Mã hồ sơ',
@@ -149,8 +158,8 @@ export class AuditParser {
       return `${actionVn} ${entityVn}.`;
     }
 
-    // Special parsing for ASSET updates
-    if (log.entityType === 'ASSET' && log.action === 'UPDATE' && parsed.changes) {
+    // Special parsing for ASSET & TOOL updates
+    if ((log.entityType === 'ASSET' || log.entityType === 'TOOL' || log.entityType === 'TOOL_EQUIPMENT') && log.action === 'UPDATE' && parsed.changes) {
       const changeTexts: string[] = [];
       for (const [key, val] of Object.entries(parsed.changes)) {
         const v = val as { old: any; new: any };
@@ -167,7 +176,8 @@ export class AuditParser {
         changeTexts.push(`${fieldVn} từ [${oldValStr}] sang [${newValStr}]`);
       }
       if (changeTexts.length > 0) {
-        return `Cập nhật tài sản: ${changeTexts.join('; ')}.`;
+        const label = log.entityType === 'ASSET' ? 'tài sản' : 'công cụ dụng cụ';
+        return `Cập nhật ${label}: ${changeTexts.join('; ')}.`;
       }
     }
 

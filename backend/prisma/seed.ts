@@ -83,6 +83,35 @@ async function main() {
     { action: 'TEMPLATE_DELETE', description: 'Xóa biểu mẫu' },
     { action: 'TEMPLATE_PREVIEW', description: 'Xem trước biểu mẫu' },
     { action: 'TEMPLATE_EXPORT', description: 'Xuất bản mẫu biểu mẫu' },
+
+    // CCDC (Tool) Permissions
+    { action: 'TOOL_VIEW', description: 'Xem công cụ dụng cụ' },
+    { action: 'TOOL_VIEW_PRICE', description: 'Xem giá mua công cụ dụng cụ' },
+    { action: 'TOOL_CREATE', description: 'Thêm mới công cụ dụng cụ' },
+    { action: 'TOOL_UPDATE', description: 'Sửa thông tin công cụ dụng cụ' },
+    { action: 'TOOL_DELETE', description: 'Xóa công cụ dụng cụ' },
+    { action: 'TOOL_EXPORT', description: 'Xuất Excel công cụ dụng cụ' },
+    { action: 'TOOL_PRINT_LABEL', description: 'In tem công cụ dụng cụ' },
+    
+    { action: 'TOOL_TRANSFER_VIEW', description: 'Xem hồ sơ bàn giao/luân chuyển CCDC' },
+    { action: 'TOOL_TRANSFER_CREATE', description: 'Bàn giao/luân chuyển CCDC' },
+    { action: 'TOOL_TRANSFER_COMPLETE', description: 'Hoàn tất bàn giao CCDC' },
+    { action: 'TOOL_TRANSFER_CANCEL', description: 'Hủy hồ sơ bàn giao CCDC' },
+    
+    { action: 'TOOL_REPAIR_VIEW', description: 'Xem phiếu sửa chữa CCDC' },
+    { action: 'TOOL_REPAIR_CREATE', description: 'Tạo phiếu sửa chữa/báo hỏng CCDC' },
+    { action: 'TOOL_REPAIR_UPDATE', description: 'Cập nhật phiếu sửa chữa CCDC' },
+    { action: 'TOOL_REPAIR_COMPLETE', description: 'Hoàn tất sửa chữa CCDC' },
+    
+    { action: 'TOOL_LOST_VIEW', description: 'Xem báo mất CCDC' },
+    { action: 'TOOL_LOST_CREATE', description: 'Báo mất CCDC' },
+    
+    { action: 'TOOL_LIQUIDATION_VIEW', description: 'Xem thanh lý CCDC' },
+    { action: 'TOOL_LIQUIDATION_CREATE', description: 'Thanh lý CCDC' },
+    
+    { action: 'TOOL_INVENTORY_VIEW', description: 'Xem phiếu kiểm kê CCDC' },
+    { action: 'TOOL_INVENTORY_CREATE', description: 'Tạo phiếu kiểm kê CCDC' },
+    { action: 'TOOL_INVENTORY_COMPLETE', description: 'Hoàn tất kiểm kê CCDC' },
   ];
 
   for (const perm of permissions) {

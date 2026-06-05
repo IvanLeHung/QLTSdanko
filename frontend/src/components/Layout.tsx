@@ -32,6 +32,7 @@ function cn(...inputs: ClassValue[]) {
 const navItems = [
   { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, requiredPermission: 'REPORT_VIEW' },
   { name: 'Sổ tài sản', path: '/assets', icon: Package, requiredPermission: 'ASSET_VIEW' },
+  { name: 'Công cụ dụng cụ', path: '/tools', icon: Package, requiredPermission: 'TOOL_VIEW' },
   { name: 'Cấp mới / Nhập lô', path: '/assets/new', icon: PlusCircle, requiredPermission: 'ASSET_CREATE' },
   { name: 'Bàn giao / Điều chuyển', path: '/handover', icon: UserPlus, requiredPermission: 'TRANSFER_VIEW' },
   { name: 'Báo hỏng / Sửa chữa', path: '/operational/damage', icon: AlertTriangle, requiredPermission: 'REPAIR_VIEW' },

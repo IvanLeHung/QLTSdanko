@@ -20,6 +20,7 @@ import auditRoutes from './routes/audit.routes';
 import adminRoutes from './routes/admin.routes';
 import historyImportRoutes from './routes/history-import.routes';
 import templateRoutes from './routes/template.routes';
+import toolRoutes from './routes/tool.routes';
 import { auditMiddleware } from './middleware/audit.middleware';
 import { authenticateToken, loadPermissions } from './middleware/auth.middleware';
 
@@ -46,6 +47,7 @@ protectedApi.use(loadPermissions);
 protectedApi.use('/admin', adminRoutes);
 protectedApi.use('/assets/history-import', historyImportRoutes);
 protectedApi.use('/assets', assetRoutes);
+protectedApi.use('/tools', toolRoutes);
 protectedApi.use('/settings', settingsRoutes);
 protectedApi.use('/dashboard', dashboardRoutes);
 protectedApi.use('/inventory', inventoryRoutes);
