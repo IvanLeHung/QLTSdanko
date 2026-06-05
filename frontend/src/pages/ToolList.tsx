@@ -67,6 +67,7 @@ export const ToolList: React.FC = () => {
 
   // State Variables
   const [tools, setTools] = useState<any[]>([]);
+  const [hoveredImage, setHoveredImage] = useState<{ url: string; name: string; x: number; y: number } | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -129,7 +130,7 @@ export const ToolList: React.FC = () => {
   
   // Modal forms state
   const [handoverForm, setHandoverForm] = useState({
-    type: 'TRANSFER' as 'TRANSFER' | 'RECALL' | 'SPLIT',
+    type: 'TRANSFER' as 'TRANSFER' | 'RECALL' | 'SPLIT' | 'ALLOCATE',
     recipientName: '',
     recipientDepartment: '',
     recipientPosition: '',
@@ -447,6 +448,21 @@ export const ToolList: React.FC = () => {
             toLocation: destinationLocation,
             note: item.note || handoverForm.note
           });
+        } else if (type === 'ALLOCATE') {
+          const noteText = [
+            handoverForm.recipientName ? `Người nhận: ${handoverForm.recipientName}` : '',
+            handoverForm.recipientDepartment ? `Bộ phận: ${handoverForm.recipientDepartment}` : '',
+            handoverForm.recipientPosition ? `Chức vụ: ${handoverForm.recipientPosition}` : '',
+            item.note || handoverForm.note ? `Ghi chú: ${item.note || handoverForm.note}` : ''
+          ].filter(Boolean).join(' | ');
+
+          await api.post('/tools/stock/use', {
+            toolId: item.toolId,
+            quantity: item.quantityProcessed,
+            fromLocation: item.sourceLocation,
+            toLocation: destinationLocation,
+            note: noteText || 'Bàn giao sử dụng'
+          });
         } else if (type === 'RECALL') {
           await api.post('/tools/stock/recall', {
             toolId: item.toolId,
@@ -667,7 +683,7 @@ export const ToolList: React.FC = () => {
           <div className="flex flex-wrap gap-2 mt-2 sm:mt-0">
             <button 
               onClick={() => {
-                setHandoverForm({ ...handoverForm, type: 'TRANSFER' });
+                setHandoverForm({ ...handoverForm, type: 'ALLOCATE' });
                 setActiveModal('HANDOVER');
               }}
               className="flex items-center gap-1.5 px-3 py-1.5 bg-primary-600 hover:bg-primary-700 text-white text-xs font-bold rounded-xl transition-colors"
@@ -845,7 +861,38 @@ export const ToolList: React.FC = () => {
                         />
                       </td>
                       <td className="px-6 py-4 border-b font-mono font-bold text-xs text-slate-800">{tool.toolCode}</td>
-                      <td className="px-6 py-4 border-b font-bold text-slate-800">{tool.toolName}</td>
+                      <td className="px-6 py-4 border-b font-bold text-slate-800">
+                        {(() => {
+                          let imageUrl = '';
+                          if (tool.filesJson) {
+                            try {
+                              const files = JSON.parse(tool.filesJson);
+                              imageUrl = files.avatarUrl || files.photoUrl || '';
+                            } catch (e) {}
+                          }
+                          return imageUrl ? (
+                            <span 
+                              className="hover:text-primary-600 transition-colors cursor-pointer border-b border-dashed border-slate-300 pb-0.5"
+                              onMouseEnter={(e) => {
+                                setHoveredImage({
+                                  url: imageUrl,
+                                  name: tool.toolName,
+                                  x: e.clientX,
+                                  y: e.clientY
+                                });
+                              }}
+                              onMouseMove={(e) => {
+                                setHoveredImage(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+                              }}
+                              onMouseLeave={() => setHoveredImage(null)}
+                            >
+                              {tool.toolName}
+                            </span>
+                          ) : (
+                            tool.toolName
+                          );
+                        })()}
+                      </td>
                       <td className="px-6 py-4 border-b text-xs font-bold text-slate-650">
                         {tool.managementType === 'INDIVIDUAL' ? 'Từng mã' : tool.managementType === 'QUANTITY' ? 'Số lượng' : tool.managementType === 'BUNDLE' ? 'Theo bộ' : 'Từng mã'}
                       </td>
@@ -853,7 +900,77 @@ export const ToolList: React.FC = () => {
                       <td className="px-6 py-4 border-b text-center font-bold text-slate-800">{tool.quantity} {tool.unit}</td>
                       <td className="px-6 py-4 border-b text-slate-700 font-medium">{tool.currentUserName || '---'}</td>
                       <td className="px-6 py-4 border-b text-slate-500">{tool.departmentName || '---'}</td>
-                      <td className="px-6 py-4 border-b text-slate-500">{tool.locationName || '---'}</td>
+                      <td className="px-6 py-4 border-b text-slate-500 max-w-[250px] truncate" title={(() => {
+                        if (tool.managementType === 'QUANTITY' && tool.stocks && tool.stocks.length > 0) {
+                          const activeStocks = tool.stocks.filter((s: any) => 
+                            (s.quantityAvailable || 0) + 
+                            (s.quantityUsing || 0) + 
+                            (s.quantityTransit || 0) + 
+                            (s.quantityRepairing || 0) + 
+                            (s.quantityBroken || 0) + 
+                            (s.quantityLost || 0) > 0
+                          );
+                          if (activeStocks.length > 0) {
+                            return activeStocks.map((s: any) => {
+                              const parts = s.locationName.split(' - ');
+                              const shortName = parts[parts.length - 1] || s.locationName;
+                              let qtyText = '';
+                              if (s.quantityAvailable > 0) qtyText += `Kho: ${s.quantityAvailable}`;
+                              if (s.quantityUsing > 0) {
+                                if (qtyText) qtyText += ', ';
+                                qtyText += `Dùng: ${s.quantityUsing}`;
+                              }
+                              if (s.quantityBroken > 0 || s.quantityRepairing > 0) {
+                                if (qtyText) qtyText += ', ';
+                                qtyText += `Hỏng: ${(s.quantityBroken || 0) + (s.quantityRepairing || 0)}`;
+                              }
+                              if (s.quantityLost > 0) {
+                                if (qtyText) qtyText += ', ';
+                                qtyText += `Mất: ${s.quantityLost}`;
+                              }
+                              return `${shortName} (${qtyText})`;
+                            }).join(' | ');
+                          }
+                        }
+                        return tool.locationName || '';
+                      })()}>
+                        {(() => {
+                          if (tool.managementType === 'QUANTITY' && tool.stocks && tool.stocks.length > 0) {
+                            const activeStocks = tool.stocks.filter((s: any) => 
+                              (s.quantityAvailable || 0) + 
+                              (s.quantityUsing || 0) + 
+                              (s.quantityTransit || 0) + 
+                              (s.quantityRepairing || 0) + 
+                              (s.quantityBroken || 0) + 
+                              (s.quantityLost || 0) > 0
+                            );
+                            if (activeStocks.length > 0) {
+                              return activeStocks.map((s: any) => {
+                                const parts = s.locationName.split(' - ');
+                                const shortName = parts[parts.length - 1] || s.locationName;
+                                let qtyText = '';
+                                if (s.quantityAvailable > 0) qtyText += `Kho: ${s.quantityAvailable}`;
+                                if (s.quantityUsing > 0) {
+                                  if (qtyText) qtyText += ', ';
+                                  qtyText += `Dùng: ${s.quantityUsing}`;
+                                }
+                                if (s.quantityBroken > 0 || s.quantityRepairing > 0) {
+                                  if (qtyText) qtyText += ', ';
+                                  qtyText += `Hỏng: ${(s.quantityBroken || 0) + (s.quantityRepairing || 0)}`;
+                                }
+                                if (s.quantityLost > 0) {
+                                  if (qtyText) qtyText += ', ';
+                                  qtyText += `Mất: ${s.quantityLost}`;
+                                }
+                                return `${shortName} (${qtyText})`;
+                              }).join(' | ');
+                            } else {
+                              return 'Không có tồn kho';
+                            }
+                          }
+                          return tool.locationName || '---';
+                        })()}
+                      </td>
                       <td className="px-6 py-4 border-b">
                         <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusBadge}`}>
                           {statusText}
@@ -924,6 +1041,7 @@ export const ToolList: React.FC = () => {
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest block">Loại nghiệp vụ</label>
                   <div className="flex bg-slate-100 p-1.5 rounded-2xl border border-slate-200/60">
                     {[
+                      { key: 'ALLOCATE', label: 'Bàn giao' },
                       { key: 'TRANSFER', label: 'Luân chuyển' },
                       { key: 'RECALL', label: 'Thu hồi' },
                       { key: 'SPLIT', label: 'Tách số lượng' }
@@ -960,7 +1078,7 @@ export const ToolList: React.FC = () => {
                               <th className="px-3 py-3 text-center w-16">Hỏng</th>
                               <th className="px-3 py-3 text-center w-16">Mất</th>
                             </>
-                          ) : handoverForm.type === 'TRANSFER' ? (
+                          ) : (handoverForm.type === 'TRANSFER' || handoverForm.type === 'ALLOCATE') ? (
                             <th className="px-4 py-3 text-center w-24">SL xử lý *</th>
                           ) : (
                             <th className="px-4 py-3 w-48">Cấu hình tách</th>
@@ -1037,7 +1155,7 @@ export const ToolList: React.FC = () => {
                                       />
                                     </td>
                                   </>
-                                ) : handoverForm.type === 'TRANSFER' ? (
+                                ) : (handoverForm.type === 'TRANSFER' || handoverForm.type === 'ALLOCATE') ? (
                                   <td className="px-4 py-4 text-center">
                                     <input
                                       type="number"
@@ -1150,7 +1268,7 @@ export const ToolList: React.FC = () => {
                       Thông tin nơi nhận / đích đến
                     </h4>
 
-                    {handoverForm.type === 'TRANSFER' && (
+                    {(handoverForm.type === 'TRANSFER' || handoverForm.type === 'ALLOCATE') && (
                       <div className="grid grid-cols-3 gap-4">
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Người nhận</label>
@@ -1661,6 +1779,22 @@ export const ToolList: React.FC = () => {
                 </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+      {hoveredImage && (
+        <div 
+          className="fixed z-50 bg-white border border-slate-200 p-2 rounded-2xl shadow-2xl w-64 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
+          style={{
+            left: `${Math.min(hoveredImage.x + 15, window.innerWidth - 280)}px`,
+            top: `${hoveredImage.y - 210 < 10 ? hoveredImage.y + 20 : hoveredImage.y - 210}px`,
+          }}
+        >
+          <div className="relative w-full h-40 bg-slate-50 rounded-xl overflow-hidden">
+            <img src={hoveredImage.url} alt={hoveredImage.name} className="w-full h-full object-cover" />
+          </div>
+          <div className="text-[10px] text-slate-500 font-bold mt-2 text-center truncate px-1">
+            {hoveredImage.name}
           </div>
         </div>
       )}
