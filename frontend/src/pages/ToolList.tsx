@@ -99,7 +99,25 @@ export const ToolList: React.FC = () => {
   const [currentUserName, setCurrentUserName] = useState('ALL');
   
   // Lists for dropdown filters
-  const [categories, setCategories] = useState<string[]>([]);
+  const [categories, setCategories] = useState<string[]>([
+    '01 Nội thất',
+    '02 Decor / Trang trí',
+    '03 Bất động sản - Tòa nhà',
+    '04 Marketing / POSM',
+    '05 Branding',
+    '06 Event Equipment',
+    '07 F&B / Tiệc',
+    '08 Dịch vụ vận hành',
+    '09 IT & Digital',
+    '10 Media Production',
+    '11 Kho vận',
+    '12 Costume / Đạo cụ',
+    '13 Công cụ kỹ thuật',
+    '14 Safety / PCCC',
+    '15 Vật tư tiêu hao',
+    '16 Merchandise',
+    '99 Khác'
+  ]);
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
 

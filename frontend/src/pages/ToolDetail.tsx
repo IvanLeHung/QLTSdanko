@@ -65,6 +65,28 @@ export const ToolDetail: React.FC = () => {
 
   if (!tool) return null;
 
+  let industryAttributes: Record<string, any> = {};
+  if (tool.industryAttributesJson) {
+    try {
+      industryAttributes = JSON.parse(tool.industryAttributesJson);
+    } catch (e) {
+      console.error("Lỗi parse industryAttributesJson:", e);
+    }
+  }
+
+  const attributeLabels: Record<string, string> = {
+    applicableBranch: 'Chi nhánh áp dụng',
+    placementArea: 'Khu vực đặt',
+    maintenanceSchedule: 'Lịch bảo dưỡng',
+    usageCount: 'Số lần sử dụng',
+    collectionConcept: 'Bộ sưu tập/concept',
+    season: 'Mùa vụ',
+    clientProject: 'Khách hàng/dự án',
+    availableQuantity: 'Số lượng khả dụng',
+    postEventCondition: 'Tình trạng sau sự kiện',
+    comboKit: 'Bộ combo'
+  };
+
   let statusBadge = 'bg-slate-100 text-slate-700';
   let statusText = tool.status;
   if (tool.status === 'IN_STOCK') {
@@ -171,6 +193,30 @@ export const ToolDetail: React.FC = () => {
                 {tool.handoverDate ? new Date(tool.handoverDate).toLocaleDateString('vi-VN') : '---'}
               </span>
             </div>
+
+            {Object.keys(industryAttributes).length > 0 && (
+              <>
+                <hr className="border-slate-100" />
+                <div className="space-y-3">
+                  <span className="text-primary-600 font-black text-[10px] uppercase tracking-widest block">Thuộc tính đặc thù ngành</span>
+                  <div className="space-y-2">
+                    {Object.keys(industryAttributes).map((key) => {
+                      const label = attributeLabels[key] || key;
+                      let val = industryAttributes[key];
+                      if (key === 'maintenanceSchedule' && val) {
+                        val = new Date(val).toLocaleDateString('vi-VN');
+                      }
+                      return (
+                        <div key={key} className="flex justify-between items-center text-xs">
+                          <span className="text-slate-400 font-bold uppercase tracking-wider">{label}</span>
+                          <span className="text-slate-800 font-black bg-slate-50 px-2.5 py-1 rounded-lg border border-slate-100">{val}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              </>
+            )}
 
             <hr className="border-slate-100" />
 

@@ -14,6 +14,94 @@ import {
   ClipboardList
 } from 'lucide-react';
 
+interface AttributeConfig {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'date' | 'select';
+  options?: string[];
+}
+
+const INDUSTRY_ATTRIBUTES_MAP: Record<string, AttributeConfig[]> = {
+  '01 Nội thất': [
+    { key: 'applicableBranch', label: 'Chi nhánh áp dụng', type: 'text' },
+    { key: 'placementArea', label: 'Khu vực đặt', type: 'text' },
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' }
+  ],
+  '02 Decor / Trang trí': [
+    { key: 'usageCount', label: 'Số lần sử dụng', type: 'number' },
+    { key: 'collectionConcept', label: 'Bộ sưu tập/concept', type: 'text' },
+    { key: 'season', label: 'Mùa vụ', type: 'select', options: ['Noel', 'Tết', 'Trung thu', 'Mùa hè', 'Khác'] },
+    { key: 'placementArea', label: 'Khu vực đặt', type: 'text' }
+  ],
+  '03 Bất động sản - Tòa nhà': [
+    { key: 'applicableBranch', label: 'Chi nhánh áp dụng', type: 'text' },
+    { key: 'placementArea', label: 'Khu vực đặt', type: 'text' },
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' }
+  ],
+  '04 Marketing / POSM': [
+    { key: 'clientProject', label: 'Khách hàng/dự án', type: 'text' },
+    { key: 'season', label: 'Mùa vụ', type: 'select', options: ['Noel', 'Tết', 'Trung thu', 'Mùa hè', 'Khác'] },
+    { key: 'availableQuantity', label: 'Số lượng khả dụng', type: 'number' }
+  ],
+  '05 Branding': [
+    { key: 'clientProject', label: 'Khách hàng/dự án', type: 'text' },
+    { key: 'availableQuantity', label: 'Số lượng khả dụng', type: 'number' }
+  ],
+  '06 Event Equipment': [
+    { key: 'usageCount', label: 'Số lần sử dụng', type: 'number' },
+    { key: 'clientProject', label: 'Khách hàng/dự án', type: 'text' },
+    { key: 'postEventCondition', label: 'Tình trạng sau sự kiện', type: 'text' },
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' },
+    { key: 'comboKit', label: 'Bộ combo', type: 'text' },
+    { key: 'availableQuantity', label: 'Số lượng khả dụng', type: 'number' }
+  ],
+  '07 F&B / Tiệc': [
+    { key: 'usageCount', label: 'Số lần sử dụng', type: 'number' },
+    { key: 'comboKit', label: 'Bộ combo', type: 'text' },
+    { key: 'availableQuantity', label: 'Số lượng khả dụng', type: 'number' }
+  ],
+  '08 Dịch vụ vận hành': [
+    { key: 'applicableBranch', label: 'Chi nhánh áp dụng', type: 'text' },
+    { key: 'placementArea', label: 'Khu vực đặt', type: 'text' },
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' }
+  ],
+  '09 IT & Digital': [
+    { key: 'applicableBranch', label: 'Chi nhánh áp dụng', type: 'text' },
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' }
+  ],
+  '10 Media Production': [
+    { key: 'usageCount', label: 'Số lần sử dụng', type: 'number' },
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' },
+    { key: 'clientProject', label: 'Khách hàng/dự án', type: 'text' }
+  ],
+  '11 Kho vận': [
+    { key: 'availableQuantity', label: 'Số lượng khả dụng', type: 'number' },
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' }
+  ],
+  '12 Costume / Đạo cụ': [
+    { key: 'usageCount', label: 'Số lần sử dụng', type: 'number' },
+    { key: 'collectionConcept', label: 'Bộ sưu tập/concept', type: 'text' },
+    { key: 'clientProject', label: 'Khách hàng/dự án', type: 'text' },
+    { key: 'postEventCondition', label: 'Tình trạng sau sự kiện', type: 'text' }
+  ],
+  '13 Công cụ kỹ thuật': [
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' },
+    { key: 'availableQuantity', label: 'Số lượng khả dụng', type: 'number' }
+  ],
+  '14 Safety / PCCC': [
+    { key: 'maintenanceSchedule', label: 'Lịch bảo dưỡng', type: 'date' },
+    { key: 'applicableBranch', label: 'Chi nhánh áp dụng', type: 'text' },
+    { key: 'placementArea', label: 'Khu vực đặt', type: 'text' }
+  ],
+  '15 Vật tư tiêu hao': [
+    { key: 'availableQuantity', label: 'Số lượng khả dụng', type: 'number' }
+  ],
+  '16 Merchandise': [
+    { key: 'availableQuantity', label: 'Số lượng khả dụng', type: 'number' }
+  ],
+  '99 Khác': []
+};
+
 const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {
     'Văn phòng C6': [
@@ -82,16 +170,31 @@ export const CreateTool: React.FC = () => {
   const [customProject, setCustomProject] = useState('');
   const [customLocation, setCustomLocation] = useState('');
 
+  // Industry specific attributes state
+  const [industryAttributes, setIndustryAttributes] = useState<Record<string, any>>({});
+  const [customSeason, setCustomSeason] = useState('');
+
   // Metadata loaders
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const categories = [
-    'Bàn ghế văn phòng',
-    'Thiết bị CNTT & Máy tính',
-    'Thiết bị ngoại vi & Máy in',
-    'Thiết bị gia dụng & Đồ điện',
-    'Vật tư / Dụng cụ hỗ trợ',
-    'Khác'
+    '01 Nội thất',
+    '02 Decor / Trang trí',
+    '03 Bất động sản - Tòa nhà',
+    '04 Marketing / POSM',
+    '05 Branding',
+    '06 Event Equipment',
+    '07 F&B / Tiệc',
+    '08 Dịch vụ vận hành',
+    '09 IT & Digital',
+    '10 Media Production',
+    '11 Kho vận',
+    '12 Costume / Đạo cụ',
+    '13 Công cụ kỹ thuật',
+    '14 Safety / PCCC',
+    '15 Vật tư tiêu hao',
+    '16 Merchandise',
+    '99 Khác'
   ];
 
   useEffect(() => {
@@ -134,10 +237,29 @@ export const CreateTool: React.FC = () => {
     setLoading(true);
     try {
       const fullLocation = `${cityVal}-${projectVal}-${locationVal}`;
+
+      // Clean up season attribute if 'Khác' is selected
+      const finalAttributes = { ...industryAttributes };
+      if (finalAttributes.season === 'Khác') {
+        finalAttributes.season = customSeason;
+      }
+
+      // Filter empty properties
+      const cleanedAttrs: Record<string, any> = {};
+      Object.keys(finalAttributes).forEach(k => {
+        if (finalAttributes[k] !== undefined && finalAttributes[k] !== '') {
+          cleanedAttrs[k] = finalAttributes[k];
+        }
+      });
+
       const payload = { 
         ...formData, 
-        locationName: fullLocation 
+        locationName: fullLocation,
+        industryAttributesJson: Object.keys(cleanedAttrs).length > 0 
+          ? JSON.stringify(cleanedAttrs) 
+          : null
       };
+
       if (autoCode) {
         delete (payload as any).toolCode; // Backend will generate the code
       }
@@ -264,6 +386,72 @@ export const CreateTool: React.FC = () => {
               </div>
             </div>
           </div>
+
+          {/* DYNAMIC INDUSTRY ATTRIBUTES SECTION */}
+          {formData.category && INDUSTRY_ATTRIBUTES_MAP[formData.category] && INDUSTRY_ATTRIBUTES_MAP[formData.category].length > 0 && (
+            <div className="lg:col-span-2 bg-white border border-slate-200 rounded-[2rem] p-8 shadow-sm space-y-6">
+              <h2 className="text-lg font-black text-slate-800 flex items-center gap-3 border-b border-slate-100 pb-3">
+                <ClipboardList className="h-5 w-5 text-primary-500" />
+                2. Thuộc tính đặc thù ngành
+              </h2>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {INDUSTRY_ATTRIBUTES_MAP[formData.category].map((attr) => {
+                  if (attr.type === 'select') {
+                    const currentVal = industryAttributes[attr.key] || '';
+                    return (
+                      <div key={attr.key} className="space-y-1.5 md:col-span-2 animate-in fade-in duration-200">
+                        <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">{attr.label}</label>
+                        <select
+                          className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4 bg-slate-50"
+                          value={currentVal}
+                          onChange={(e) => setIndustryAttributes({
+                            ...industryAttributes,
+                            [attr.key]: e.target.value
+                          })}
+                        >
+                          <option value="">-- Chọn {attr.label.toLowerCase()} --</option>
+                          {attr.options?.map((opt) => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+
+                        {currentVal === 'Khác' && (
+                          <div className="mt-3 space-y-1.5 animate-in fade-in duration-200">
+                            <label className="block text-slate-500 text-[10px] font-bold uppercase tracking-wider">Nhập {attr.label.toLowerCase()} khác *</label>
+                            <input
+                              type="text"
+                              required
+                              placeholder={`Nhập ${attr.label.toLowerCase()}...`}
+                              className="w-full rounded-xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3 px-4 bg-slate-50"
+                              value={customSeason}
+                              onChange={(e) => setCustomSeason(e.target.value)}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div key={attr.key} className="space-y-1.5 animate-in fade-in duration-200">
+                      <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">{attr.label}</label>
+                      <input
+                        type={attr.type}
+                        placeholder={`Nhập ${attr.label.toLowerCase()}...`}
+                        className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold py-3.5 px-4 bg-slate-50"
+                        value={industryAttributes[attr.key] || ''}
+                        onChange={(e) => setIndustryAttributes({
+                          ...industryAttributes,
+                          [attr.key]: attr.type === 'number' ? Number(e.target.value) : e.target.value
+                        })}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* RIGHT: SEQUENCE & FINANCE & ALLOCATION (1 col) */}
           <div className="space-y-6">

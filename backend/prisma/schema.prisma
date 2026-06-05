@@ -778,6 +778,7 @@ model ToolEquipment {
   note             String?
   attachments      String?                // JSON string or comma-separated file paths
   initialCondition String?
+  industryAttributesJson String?       // JSON string containing custom industry attributes
   isDeleted        Boolean                @default(false)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt

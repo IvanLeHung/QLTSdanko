@@ -199,7 +199,8 @@ export class ToolService {
           handoverDate: data.handoverDate ? new Date(data.handoverDate) : null,
           note: data.note,
           attachments: data.attachments,
-          initialCondition: data.initialCondition
+          initialCondition: data.initialCondition,
+          industryAttributesJson: data.industryAttributesJson
         }
       });
 
@@ -264,7 +265,7 @@ export class ToolService {
       const fieldsToTrack = [
         'status', 'currentUserName', 'departmentName', 'locationName',
         'cityName', 'projectName', 'toolName', 'purchasePrice', 'unit',
-        'purchaseDate', 'supplierName', 'toolCode', 'note'
+        'purchaseDate', 'supplierName', 'toolCode', 'note', 'industryAttributesJson'
       ];
 
       for (const field of fieldsToTrack) {
