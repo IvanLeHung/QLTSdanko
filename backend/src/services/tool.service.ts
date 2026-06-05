@@ -148,20 +148,43 @@ export class ToolService {
   static async getDashboardSummary() {
     const [
       totalTools,
-      using,
-      inStock,
-      damaged,
-      lost,
-      liquidated,
+      // Non-QUANTITY type counts (by status field)
+      nonQtyUsing,
+      nonQtyInStock,
+      nonQtyDamaged,
+      nonQtyLost,
+      nonQtyLiquidated,
+      // QUANTITY type counts (by stock data)
+      qtyUsing,
+      qtyInStock,
+      qtyDamaged,
+      qtyLost,
+      qtyLiquidated,
+      // Financial
       totalValue,
-      recentLogs
+      recentLogs,
+      // Physical quantity aggregates from ToolStock
+      stockAggregates,
+      totalQuantitySum
     ] = await Promise.all([
+      // Total all records
       prisma.toolEquipment.count({ where: { isDeleted: false } }),
-      prisma.toolEquipment.count({ where: { status: 'USING', isDeleted: false } }),
-      prisma.toolEquipment.count({ where: { status: 'IN_STOCK', isDeleted: false } }),
-      prisma.toolEquipment.count({ where: { status: 'DAMAGED', isDeleted: false } }),
-      prisma.toolEquipment.count({ where: { status: 'LOST', isDeleted: false } }),
-      prisma.toolEquipment.count({ where: { status: 'LIQUIDATED', isDeleted: false } }),
+
+      // Non-QUANTITY: use status field directly
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: { not: 'QUANTITY' }, status: 'USING' } }),
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: { not: 'QUANTITY' }, status: 'IN_STOCK' } }),
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: { not: 'QUANTITY' }, status: 'DAMAGED' } }),
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: { not: 'QUANTITY' }, status: 'LOST' } }),
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: { not: 'QUANTITY' }, status: 'LIQUIDATED' } }),
+
+      // QUANTITY type: use stock data (more accurate)
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: 'QUANTITY', stocks: { some: { quantityUsing: { gt: 0 } } } } }),
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: 'QUANTITY', stocks: { some: { quantityAvailable: { gt: 0 } } } } }),
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: 'QUANTITY', stocks: { some: { OR: [{ quantityBroken: { gt: 0 } }, { quantityRepairing: { gt: 0 } }] } } } }),
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: 'QUANTITY', stocks: { some: { quantityLost: { gt: 0 } } } } }),
+      prisma.toolEquipment.count({ where: { isDeleted: false, managementType: 'QUANTITY', status: 'LIQUIDATED' } }),
+
+      // Financial
       prisma.toolEquipment.aggregate({
         where: { isDeleted: false },
         _sum: { purchasePrice: true }
@@ -170,8 +193,41 @@ export class ToolService {
         where: { entityType: { in: ['TOOL', 'TOOL_EQUIPMENT'] } },
         take: 10,
         orderBy: { createdAt: 'desc' }
+      }),
+      // Physical quantity aggregates from ToolStock records
+      prisma.toolStock.aggregate({
+        _sum: {
+          quantityAvailable: true,
+          quantityUsing: true,
+          quantityBroken: true,
+          quantityRepairing: true,
+          quantityLost: true,
+          quantityDestroyed: true,
+          quantityTransit: true
+        }
+      }),
+      // Total physical quantity from ToolEquipment.quantity (QUANTITY type)
+      prisma.toolEquipment.aggregate({
+        where: { isDeleted: false, managementType: 'QUANTITY' },
+        _sum: { quantity: true }
       })
     ]);
+
+    const stockSums = stockAggregates._sum;
+    const totalAvailable = stockSums.quantityAvailable || 0;
+    const totalUsing = stockSums.quantityUsing || 0;
+    const totalBroken = (stockSums.quantityBroken || 0) + (stockSums.quantityRepairing || 0);
+    const totalLostQty = stockSums.quantityLost || 0;
+    const totalDestroyed = stockSums.quantityDestroyed || 0;
+    const totalTransit = stockSums.quantityTransit || 0;
+    const totalQuantity = totalQuantitySum._sum.quantity || 0;
+
+    // Combined counts (INDIVIDUAL + QUANTITY)
+    const using      = nonQtyUsing      + qtyUsing;
+    const inStock    = nonQtyInStock    + qtyInStock;
+    const damaged    = nonQtyDamaged    + qtyDamaged;
+    const lost       = nonQtyLost       + qtyLost;
+    const liquidated = nonQtyLiquidated + qtyLiquidated;
 
     return {
       totalTools,
@@ -181,9 +237,18 @@ export class ToolService {
       lost,
       liquidated,
       totalValue: totalValue._sum.purchasePrice || 0,
-      recentLogs
+      recentLogs,
+      // Stock quantity aggregates for QUANTITY-type CCDC
+      totalQuantity,
+      totalAvailable,
+      totalUsing,
+      totalBroken,
+      totalLostQty,
+      totalDestroyed,
+      totalTransit
     };
   }
+
 
   /**
    * Create new Tool
@@ -472,6 +537,7 @@ export class ToolService {
     locationName?: string;
     currentUserName?: string;
     search?: string;
+    managementType?: string;
     page?: number;
     limit?: number;
     sortBy?: string;
@@ -484,6 +550,7 @@ export class ToolService {
       locationName,
       currentUserName,
       search,
+      managementType,
       page = 1,
       limit = 50,
       sortBy = 'createdAt',
@@ -521,6 +588,7 @@ export class ToolService {
     if (departmentName && departmentName !== 'ALL') where.departmentName = departmentName;
     if (locationName && locationName !== 'ALL') where.locationName = { contains: locationName };
     if (currentUserName && currentUserName !== 'ALL') where.currentUserName = { contains: currentUserName };
+    if (managementType && managementType !== 'ALL') where.managementType = managementType;
 
     if (search) {
       where.OR = [

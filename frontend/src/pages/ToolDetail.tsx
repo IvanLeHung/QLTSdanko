@@ -802,42 +802,138 @@ export const ToolDetail: React.FC = () => {
             )}
 
             {/* TAB: STOCKS (QUANTITY ONLY) */}
-            {activeTab === 'stocks' && isQuantityMode && (
-              <div className="space-y-4">
-                <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5"><MapPin className="h-4 w-4" /> Bảng phân phối tồn kho chi tiết</h3>
-                <div className="overflow-x-auto border rounded-2xl bg-white">
-                  <table className="w-full text-left border-collapse text-xs">
-                    <thead className="bg-slate-50 border-b text-slate-400 font-bold uppercase tracking-wider">
-                      <tr>
-                        <th className="px-4 py-3">Địa điểm lưu trữ</th>
-                        <th className="px-4 py-3 text-center">Khả dụng</th>
-                        <th className="px-4 py-3 text-center">Đang dùng</th>
-                        <th className="px-4 py-3 text-center">Đang sửa</th>
-                        <th className="px-4 py-3 text-center">Mất</th>
-                        <th className="px-4 py-3 text-center">Đã hủy</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y text-slate-700">
-                      {tool.stocks?.map((s: any) => (
-                        <tr key={s.id} className="hover:bg-slate-50">
-                          <td className="px-4 py-3 font-semibold text-slate-800">{s.locationName}</td>
-                          <td className="px-4 py-3 text-center font-bold text-green-700">{s.quantityAvailable}</td>
-                          <td className="px-4 py-3 text-center font-bold text-blue-700">{s.quantityUsing}</td>
-                          <td className="px-4 py-3 text-center font-bold text-amber-700">{s.quantityBroken}</td>
-                          <td className="px-4 py-3 text-center font-bold text-red-700">{s.quantityLost}</td>
-                          <td className="px-4 py-3 text-center font-bold text-slate-500">{s.quantityDestroyed}</td>
-                        </tr>
-                      ))}
-                      {(!tool.stocks || tool.stocks.length === 0) && (
-                        <tr>
-                          <td colSpan={6} className="px-4 py-6 text-center text-slate-400 italic">Chưa phân phối tồn kho nào.</td>
-                        </tr>
-                      )}
-                    </tbody>
-                  </table>
+            {activeTab === 'stocks' && isQuantityMode && (() => {
+              // Pre-compute totals for the summary
+              const totals = (tool.stocks || []).reduce((acc: any, s: any) => {
+                acc.available  += s.quantityAvailable  || 0;
+                acc.using      += s.quantityUsing      || 0;
+                acc.broken     += (s.quantityBroken    || 0) + (s.quantityRepairing || 0);
+                acc.transit    += s.quantityTransit    || 0;
+                acc.lost       += s.quantityLost       || 0;
+                acc.destroyed  += s.quantityDestroyed  || 0;
+                acc.total      += (s.quantityAvailable || 0) + (s.quantityUsing || 0) + (s.quantityBroken || 0) + (s.quantityRepairing || 0) + (s.quantityTransit || 0) + (s.quantityLost || 0) + (s.quantityDestroyed || 0);
+                return acc;
+              }, { available: 0, using: 0, broken: 0, transit: 0, lost: 0, destroyed: 0, total: 0 });
+
+              return (
+                <div className="space-y-5">
+                  <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5"><MapPin className="h-4 w-4" /> Phân bổ tồn kho theo vị trí</h3>
+                  
+                  {/* Summary cards */}
+                  <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+                    <div className="bg-emerald-50 rounded-xl p-3 text-center border border-emerald-100">
+                      <div className="text-lg font-black text-emerald-700">{totals.available}</div>
+                      <div className="text-[10px] font-bold text-emerald-500 uppercase tracking-wide mt-0.5">🟢 Khả dụng</div>
+                    </div>
+                    <div className="bg-blue-50 rounded-xl p-3 text-center border border-blue-100">
+                      <div className="text-lg font-black text-blue-700">{totals.using}</div>
+                      <div className="text-[10px] font-bold text-blue-500 uppercase tracking-wide mt-0.5">🔵 Đang dùng</div>
+                    </div>
+                    <div className="bg-orange-50 rounded-xl p-3 text-center border border-orange-100">
+                      <div className="text-lg font-black text-orange-700">{totals.broken}</div>
+                      <div className="text-[10px] font-bold text-orange-500 uppercase tracking-wide mt-0.5">🟠 Hỏng/Sửa</div>
+                    </div>
+                    <div className="bg-purple-50 rounded-xl p-3 text-center border border-purple-100">
+                      <div className="text-lg font-black text-purple-700">{totals.transit}</div>
+                      <div className="text-[10px] font-bold text-purple-500 uppercase tracking-wide mt-0.5">🚚 Vận chuyển</div>
+                    </div>
+                    <div className="bg-red-50 rounded-xl p-3 text-center border border-red-100">
+                      <div className="text-lg font-black text-red-700">{totals.lost}</div>
+                      <div className="text-[10px] font-bold text-red-500 uppercase tracking-wide mt-0.5">🔴 Mất</div>
+                    </div>
+                    <div className="bg-slate-100 rounded-xl p-3 text-center border border-slate-200">
+                      <div className="text-lg font-black text-slate-600">{totals.destroyed}</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mt-0.5">⚫ Đã hủy</div>
+                    </div>
+                  </div>
+
+                  {/* Per-location table with progress bars */}
+                  <div className="space-y-3">
+                    {(!tool.stocks || tool.stocks.length === 0) && (
+                      <div className="text-center py-10 text-slate-400 italic text-sm border rounded-2xl bg-white">Chưa phân phối tồn kho nào.</div>
+                    )}
+                    {tool.stocks?.map((s: any) => {
+                      const rowTotal = (s.quantityAvailable || 0) + (s.quantityUsing || 0) + (s.quantityBroken || 0) + (s.quantityRepairing || 0) + (s.quantityTransit || 0) + (s.quantityLost || 0) + (s.quantityDestroyed || 0);
+                      const availPct = rowTotal > 0 ? ((s.quantityAvailable || 0) / rowTotal * 100) : 0;
+                      const usingPct = rowTotal > 0 ? ((s.quantityUsing || 0) / rowTotal * 100) : 0;
+                      const brokenPct = rowTotal > 0 ? (((s.quantityBroken || 0) + (s.quantityRepairing || 0)) / rowTotal * 100) : 0;
+                      const lostPct  = rowTotal > 0 ? ((s.quantityLost || 0) / rowTotal * 100) : 0;
+                      const locationParts = s.locationName?.split(' - ') || [];
+                      const shortLoc = locationParts[locationParts.length - 1] || s.locationName;
+                      const longLoc = s.locationName;
+                      return (
+                        <div key={s.id} className="bg-white border border-slate-200 rounded-2xl p-4 hover:border-slate-300 transition-colors">
+                          <div className="flex items-start justify-between gap-4 mb-3">
+                            <div>
+                              <div className="font-bold text-slate-800 text-sm">{shortLoc}</div>
+                              {locationParts.length > 1 && <div className="text-[10px] text-slate-400 mt-0.5">{longLoc}</div>}
+                            </div>
+                            <div className="text-xs font-black text-slate-500 shrink-0">Tổng: {rowTotal}</div>
+                          </div>
+                          {/* Progress bar */}
+                          <div className="h-2 rounded-full bg-slate-100 overflow-hidden flex mb-3">
+                            {availPct > 0  && <div className="h-full bg-emerald-400 transition-all" style={{ width: `${availPct}%` }} title={`Khả dụng: ${s.quantityAvailable}`} />}
+                            {usingPct > 0  && <div className="h-full bg-blue-400 transition-all"   style={{ width: `${usingPct}%` }}  title={`Đang dùng: ${s.quantityUsing}`} />}
+                            {brokenPct > 0 && <div className="h-full bg-orange-400 transition-all" style={{ width: `${brokenPct}%` }} title={`Hỏng/Sửa: ${(s.quantityBroken||0)+(s.quantityRepairing||0)}`} />}
+                            {lostPct > 0   && <div className="h-full bg-red-400 transition-all"    style={{ width: `${lostPct}%` }}   title={`Mất: ${s.quantityLost}`} />}
+                          </div>
+                          {/* Quantity breakdown badges */}
+                          <div className="flex flex-wrap gap-2">
+                            {(s.quantityAvailable || 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-emerald-50 text-emerald-700 text-[11px] font-bold">
+                                🟢 Khả dụng: <strong>{s.quantityAvailable}</strong>
+                              </span>
+                            )}
+                            {(s.quantityUsing || 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-50 text-blue-700 text-[11px] font-bold">
+                                🔵 Đang dùng: <strong>{s.quantityUsing}</strong>
+                              </span>
+                            )}
+                            {((s.quantityBroken || 0) + (s.quantityRepairing || 0)) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-orange-50 text-orange-700 text-[11px] font-bold">
+                                🟠 Hỏng/Đang sửa: <strong>{(s.quantityBroken || 0) + (s.quantityRepairing || 0)}</strong>
+                              </span>
+                            )}
+                            {(s.quantityTransit || 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-purple-50 text-purple-700 text-[11px] font-bold">
+                                🚚 Đang vận chuyển: <strong>{s.quantityTransit}</strong>
+                              </span>
+                            )}
+                            {(s.quantityLost || 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-red-50 text-red-700 text-[11px] font-bold">
+                                🔴 Mất: <strong>{s.quantityLost}</strong>
+                              </span>
+                            )}
+                            {(s.quantityDestroyed || 0) > 0 && (
+                              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-slate-600 text-[11px] font-bold">
+                                ⚫ Đã hủy: <strong>{s.quantityDestroyed}</strong>
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Totals footer */}
+                  {tool.stocks && tool.stocks.length > 1 && (
+                    <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+                      <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">Tổng cộng — {tool.stocks.length} vị trí</div>
+                      <div className="flex flex-wrap gap-2">
+                        <span className="px-3 py-1.5 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-black">🟢 {totals.available} khả dụng</span>
+                        <span className="px-3 py-1.5 rounded-xl bg-blue-100 text-blue-800 text-xs font-black">🔵 {totals.using} đang dùng</span>
+                        {totals.broken > 0 && <span className="px-3 py-1.5 rounded-xl bg-orange-100 text-orange-800 text-xs font-black">🟠 {totals.broken} hỏng/sửa</span>}
+                        {totals.transit > 0 && <span className="px-3 py-1.5 rounded-xl bg-purple-100 text-purple-800 text-xs font-black">🚚 {totals.transit} vận chuyển</span>}
+                        {totals.lost > 0 && <span className="px-3 py-1.5 rounded-xl bg-red-100 text-red-800 text-xs font-black">🔴 {totals.lost} mất</span>}
+                        {totals.destroyed > 0 && <span className="px-3 py-1.5 rounded-xl bg-slate-200 text-slate-700 text-xs font-black">⚫ {totals.destroyed} đã hủy</span>}
+                      </div>
+                    </div>
+                  )}
                 </div>
-              </div>
-            )}
+              );
+            })()}
+
+
 
             {/* TAB: BATCHES (QUANTITY ONLY) */}
             {activeTab === 'batches' && isQuantityMode && (

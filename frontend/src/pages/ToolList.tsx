@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import api from '../lib/api';
 import { 
   Search, 
@@ -20,7 +20,12 @@ import {
   ShieldAlert,
   Loader2,
   Filter,
-  FileCheck
+  FileCheck,
+  MoreVertical,
+  History,
+  RotateCcw,
+  ClipboardList,
+  Package
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -98,6 +103,12 @@ export const ToolList: React.FC = () => {
   const [departmentName, setDepartmentName] = useState('ALL');
   const [locationName, setLocationName] = useState('ALL');
   const [currentUserName, setCurrentUserName] = useState('ALL');
+  const [managementTypeFilter, setManagementTypeFilter] = useState('ALL');
+  const [stockAvailFilter, setStockAvailFilter] = useState('ALL');
+
+  // Per-row action menu
+  const [openActionMenuId, setOpenActionMenuId] = useState<number | null>(null);
+  const actionMenuRef = useRef<HTMLDivElement>(null);
   
   // Lists for dropdown filters
   const [categories, setCategories] = useState<string[]>([
@@ -296,6 +307,17 @@ export const ToolList: React.FC = () => {
     note: ''
   });
 
+  // Close action menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (actionMenuRef.current && !actionMenuRef.current.contains(e.target as Node)) {
+        setOpenActionMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
   // Load Registry and Stats
   const fetchTools = async () => {
     setLoading(true);
@@ -310,7 +332,8 @@ export const ToolList: React.FC = () => {
             category: category === 'ALL' ? undefined : category,
             departmentName: departmentName === 'ALL' ? undefined : departmentName,
             locationName: locationName === 'ALL' ? undefined : locationName,
-            currentUserName: currentUserName === 'ALL' ? undefined : currentUserName
+            currentUserName: currentUserName === 'ALL' ? undefined : currentUserName,
+            managementType: managementTypeFilter === 'ALL' ? undefined : managementTypeFilter
           }
         }),
         api.get('/tools/dashboard'),
@@ -336,7 +359,7 @@ export const ToolList: React.FC = () => {
 
   useEffect(() => {
     fetchTools();
-  }, [page, status, category, departmentName, locationName, currentUserName]);
+  }, [page, status, category, departmentName, locationName, currentUserName, managementTypeFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -555,33 +578,83 @@ export const ToolList: React.FC = () => {
     <div className="space-y-6 pb-20">
       {/* 1. STATS DASHBOARD CARD */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
-          <div className="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Tổng CCDC</span>
-            <span className="text-3xl font-black text-slate-900 mt-2">{stats.totalTools}</span>
+        <div className="space-y-3">
+          {/* Row 1: Record counts (INDIVIDUAL-style) */}
+          <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tổng loại CCDC</span>
+              <span className="text-2xl font-black text-slate-900">{stats.totalTools}</span>
+              <span className="text-[10px] text-slate-400">hồ sơ đã tạo</span>
+            </div>
+            <div className="bg-green-50 p-4 rounded-2xl border border-green-100 shadow-sm flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Đang sử dụng</span>
+              <span className="text-2xl font-black text-green-700">{stats.using}</span>
+              <span className="text-[10px] text-green-500">mã CCDC</span>
+            </div>
+            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Trong kho</span>
+              <span className="text-2xl font-black text-blue-700">{stats.inStock}</span>
+              <span className="text-[10px] text-blue-500">mã khả dụng</span>
+            </div>
+            <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 shadow-sm flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Báo hỏng</span>
+              <span className="text-2xl font-black text-amber-700">{stats.damaged}</span>
+              <span className="text-[10px] text-amber-500">mã cần xử lý</span>
+            </div>
+            <div className="bg-red-50 p-4 rounded-2xl border border-red-100 shadow-sm flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Mất / Thất thoát</span>
+              <span className="text-2xl font-black text-red-700">{stats.lost}</span>
+              <span className="text-[10px] text-red-500">mã báo mất</span>
+            </div>
+            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
+              <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Đã thanh lý</span>
+              <span className="text-2xl font-black text-slate-700">{stats.liquidated}</span>
+              <span className="text-[10px] text-slate-400">mã đã hủy</span>
+            </div>
           </div>
-          <div className="bg-green-50/50 p-5 rounded-2xl border border-green-100 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-green-600 uppercase tracking-widest">Đang sử dụng</span>
-            <span className="text-3xl font-black text-green-700 mt-2">{stats.using}</span>
-          </div>
-          <div className="bg-blue-50/50 p-5 rounded-2xl border border-blue-100 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-blue-600 uppercase tracking-widest">Trong kho</span>
-            <span className="text-3xl font-black text-blue-700 mt-2">{stats.inStock}</span>
-          </div>
-          <div className="bg-amber-50/50 p-5 rounded-2xl border border-amber-100 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-amber-600 uppercase tracking-widest">Báo hỏng</span>
-            <span className="text-3xl font-black text-amber-700 mt-2">{stats.damaged}</span>
-          </div>
-          <div className="bg-red-50/50 p-5 rounded-2xl border border-red-100 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-red-600 uppercase tracking-widest">Mất/Thất thoát</span>
-            <span className="text-3xl font-black text-red-700 mt-2">{stats.lost}</span>
-          </div>
-          <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 shadow-sm flex flex-col justify-between">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest">Đã thanh lý</span>
-            <span className="text-3xl font-black text-slate-700 mt-2">{stats.liquidated}</span>
-          </div>
+          {/* Row 2: Physical quantity breakdown (QUANTITY-type CCDC) */}
+          {(stats.totalQuantity > 0 || stats.totalAvailable > 0 || stats.totalUsing > 0) && (
+            <div className="grid grid-cols-2 md:grid-cols-7 gap-3">
+              <div className="bg-gradient-to-br from-violet-50 to-indigo-50 p-4 rounded-2xl border border-violet-100 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-violet-500 uppercase tracking-widest">📦 Tổng số lượng</span>
+                <span className="text-2xl font-black text-violet-900">{stats.totalQuantity?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-violet-400">cái/bộ CCDC SL</span>
+              </div>
+              <div className="bg-gradient-to-br from-emerald-50 to-green-50 p-4 rounded-2xl border border-emerald-100 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-emerald-600 uppercase tracking-widest">🟢 Khả dụng</span>
+                <span className="text-2xl font-black text-emerald-700">{stats.totalAvailable?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-emerald-500">cái trong kho</span>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-cyan-50 p-4 rounded-2xl border border-blue-100 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">🔵 Đang dùng</span>
+                <span className="text-2xl font-black text-blue-700">{stats.totalUsing?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-blue-500">cái đang sử dụng</span>
+              </div>
+              <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 rounded-2xl border border-orange-100 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">🟠 Hỏng/Sửa</span>
+                <span className="text-2xl font-black text-orange-700">{stats.totalBroken?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-orange-500">cái hỏng/đang sửa</span>
+              </div>
+              <div className="bg-gradient-to-br from-red-50 to-rose-50 p-4 rounded-2xl border border-red-100 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">🔴 Mất</span>
+                <span className="text-2xl font-black text-red-700">{stats.totalLostQty?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-red-500">cái ghi nhận mất</span>
+              </div>
+              <div className="bg-gradient-to-br from-slate-50 to-gray-50 p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">⚫ Đã hủy</span>
+                <span className="text-2xl font-black text-slate-700">{stats.totalDestroyed?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-slate-400">cái đã thanh lý</span>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-violet-50 p-4 rounded-2xl border border-purple-100 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">🚚 Đang vận chuyển</span>
+                <span className="text-2xl font-black text-purple-700">{stats.totalTransit?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-purple-500">cái đang luân chuyển</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
 
       {/* 2. REGISTRY HEADER ACTIONS */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
@@ -672,6 +745,15 @@ export const ToolList: React.FC = () => {
               onChange={e => setCurrentUserName(e.target.value || 'ALL')}
               className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold"
             />
+          </div>
+          <div className="space-y-1">
+            <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Loại quản lý</label>
+            <select className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold" value={managementTypeFilter} onChange={e => { setManagementTypeFilter(e.target.value); setPage(1); }}>
+              <option value="ALL">Tất cả loại QL</option>
+              <option value="INDIVIDUAL">Từng mã</option>
+              <option value="QUANTITY">Số lượng</option>
+              <option value="BUNDLE">Theo bộ</option>
+            </select>
           </div>
         </div>
       </div>
@@ -775,7 +857,11 @@ export const ToolList: React.FC = () => {
                   <th className="px-6 py-4">Tên CCDC</th>
                   <th className="px-6 py-4">Loại quản lý</th>
                   <th className="px-6 py-4">Nhóm CCDC</th>
-                  <th className="px-6 py-4 text-center">Số lượng</th>
+                  <th className="px-6 py-4 text-center">Tổng SL</th>
+                  <th className="px-6 py-4 text-center text-emerald-600">🟢 Khả dụng</th>
+                  <th className="px-6 py-4 text-center text-blue-600">🔵 Đang dùng</th>
+                  <th className="px-6 py-4 text-center text-orange-500">🟠 Hỏng</th>
+                  <th className="px-6 py-4 text-center text-red-500">🔴 Mất</th>
                   <th className="px-6 py-4">Người sử dụng</th>
                   <th className="px-6 py-4">Phòng ban</th>
                   <th className="px-6 py-4">Vị trí/Kho</th>
@@ -898,6 +984,43 @@ export const ToolList: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 border-b text-slate-500">{tool.category}</td>
                       <td className="px-6 py-4 border-b text-center font-bold text-slate-800">{tool.quantity} {tool.unit}</td>
+                      {/* Quantity breakdown columns for QUANTITY type */}
+                      {(() => {
+                        if (tool.managementType === 'QUANTITY' && tool.stocks && tool.stocks.length > 0) {
+                          let available = 0, using = 0, broken = 0, lost = 0;
+                          tool.stocks.forEach((s: any) => {
+                            available += s.quantityAvailable || 0;
+                            using += s.quantityUsing || 0;
+                            broken += (s.quantityBroken || 0) + (s.quantityRepairing || 0);
+                            lost += s.quantityLost || 0;
+                          });
+                          return (
+                            <>
+                              <td className="px-6 py-4 border-b text-center">
+                                <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-black text-sm">{available}</span>
+                              </td>
+                              <td className="px-6 py-4 border-b text-center">
+                                {using > 0 ? <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-black text-sm">{using}</span> : <span className="text-slate-300 text-xs">—</span>}
+                              </td>
+                              <td className="px-6 py-4 border-b text-center">
+                                {broken > 0 ? <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-black text-sm">{broken}</span> : <span className="text-slate-300 text-xs">—</span>}
+                              </td>
+                              <td className="px-6 py-4 border-b text-center">
+                                {lost > 0 ? <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-black text-sm">{lost}</span> : <span className="text-slate-300 text-xs">—</span>}
+                              </td>
+                            </>
+                          );
+                        } else {
+                          return (
+                            <>
+                              <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
+                              <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
+                              <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
+                              <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
+                            </>
+                          );
+                        }
+                      })()}
                       <td className="px-6 py-4 border-b text-slate-700 font-medium">{tool.currentUserName || '---'}</td>
                       <td className="px-6 py-4 border-b text-slate-500">{tool.departmentName || '---'}</td>
                       <td className="px-6 py-4 border-b text-slate-500 max-w-[250px] truncate" title={(() => {
@@ -976,14 +1099,114 @@ export const ToolList: React.FC = () => {
                           {statusText}
                         </span>
                       </td>
+                      {/* Per-row action dropdown menu */}
                       <td className="px-6 py-4 border-b text-right">
-                        <button 
-                          onClick={() => navigate(`/tools/${tool.id}`)}
-                          className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors inline-flex items-center gap-1 text-xs font-bold"
-                        >
-                          <Eye className="h-4 w-4" /> Xem hồ sơ
-                        </button>
+                        <div className="relative inline-block" ref={openActionMenuId === tool.id ? actionMenuRef : undefined}>
+                          <button
+                            onClick={() => setOpenActionMenuId(openActionMenuId === tool.id ? null : tool.id)}
+                            className="p-2 text-slate-400 hover:text-slate-800 hover:bg-slate-100 rounded-xl transition-colors"
+                            title="Tác vụ"
+                          >
+                            <MoreVertical className="h-4 w-4" />
+                          </button>
+                          {openActionMenuId === tool.id && (
+                            <div className="absolute right-0 top-full mt-1 w-52 bg-white border border-slate-200 rounded-2xl shadow-xl z-50 py-1 overflow-hidden">
+                              <button
+                                onClick={() => { setOpenActionMenuId(null); navigate(`/tools/${tool.id}`); }}
+                                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                              >
+                                <Eye className="h-3.5 w-3.5 text-slate-400" /> Xem hồ sơ
+                              </button>
+                              {tool.managementType === 'QUANTITY' && (
+                                <>
+                                  <div className="mx-3 my-1 border-t border-slate-100" />
+                                  <button
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setSelectedIds([tool.id]);
+                                      setHandoverForm({ ...handoverForm, type: 'TRANSFER' });
+                                      setActiveModal('HANDOVER');
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                                  >
+                                    <ArrowRightLeft className="h-3.5 w-3.5 text-blue-500" /> Luân chuyển
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setSelectedIds([tool.id]);
+                                      setHandoverForm({ ...handoverForm, type: 'RECALL' });
+                                      setActiveModal('HANDOVER');
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-green-50 hover:text-green-700 transition-colors"
+                                  >
+                                    <RotateCcw className="h-3.5 w-3.5 text-green-500" /> Thu hồi
+                                  </button>
+                                  <div className="mx-3 my-1 border-t border-slate-100" />
+                                  <button
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setSelectedIds([tool.id]);
+                                      setActiveModal('DAMAGE');
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                                  >
+                                    <Wrench className="h-3.5 w-3.5 text-amber-500" /> Báo hỏng / Ghi nhận
+                                  </button>
+                                </>
+                              )}
+                              {tool.managementType !== 'QUANTITY' && (
+                                <>
+                                  <div className="mx-3 my-1 border-t border-slate-100" />
+                                  <button
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setSelectedIds([tool.id]);
+                                      setHandoverForm({ ...handoverForm, type: 'ALLOCATE' });
+                                      setActiveModal('HANDOVER');
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-primary-50 hover:text-primary-700 transition-colors"
+                                  >
+                                    <UserPlus className="h-3.5 w-3.5 text-primary-500" /> Bàn giao
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setSelectedIds([tool.id]);
+                                      setActiveModal('DAMAGE');
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-amber-50 hover:text-amber-700 transition-colors"
+                                  >
+                                    <Wrench className="h-3.5 w-3.5 text-amber-500" /> Báo hỏng
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setSelectedIds([tool.id]);
+                                      setActiveModal('LOST');
+                                    }}
+                                    className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-red-50 hover:text-red-700 transition-colors"
+                                  >
+                                    <ShieldAlert className="h-3.5 w-3.5 text-red-500" /> Báo mất
+                                  </button>
+                                </>
+                              )}
+                              <div className="mx-3 my-1 border-t border-slate-100" />
+                              <button
+                                onClick={() => {
+                                  setOpenActionMenuId(null);
+                                  setSelectedIds([tool.id]);
+                                  setActiveModal('PRINT');
+                                }}
+                                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                              >
+                                <Printer className="h-3.5 w-3.5 text-slate-400" /> In tem QR
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </td>
+
                     </tr>
                   );
                 })}
@@ -1729,59 +1952,237 @@ export const ToolList: React.FC = () => {
       )}
 
       {/* E. IN TEM QR MODAL */}
-      {activeModal === 'PRINT' && (
-        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl w-full max-w-2xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
-            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
-              <h3 className="text-lg font-black text-slate-850 uppercase tracking-wider flex items-center gap-2">
-                <Printer className="h-5 w-5 text-indigo-500" />
-                Trung tâm in tem QR CCDC
-              </h3>
-              <button onClick={() => setActiveModal('NONE')} className="p-1 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <div className="p-6 space-y-6 max-h-[65vh] overflow-y-auto bg-slate-50">
-              <div className="grid grid-cols-2 gap-4">
-                {selectedToolsToPrint.map(tool => {
-                  const url = `${window.location.origin}/tools/${tool.id}`;
-                  return (
-                    <div key={tool.id} className="bg-white p-4 rounded-2xl border border-slate-200 flex gap-4 items-center shadow-inner select-all">
-                      <div className="p-1 border border-slate-200 rounded-xl bg-white shrink-0">
-                        <QRCode value={url} size={70} />
-                      </div>
-                      <div className="space-y-1 overflow-hidden">
-                        <p className="text-[10px] font-black text-indigo-600 tracking-wider">DANKO GROUP</p>
-                        <h4 className="text-sm font-bold text-slate-800 truncate leading-snug">{tool.toolName}</h4>
-                        <p className="font-mono text-[10px] font-black text-slate-500 mt-1">{tool.toolCode}</p>
-                        <p className="text-[9px] font-medium text-slate-400 mt-0.5 truncate">{tool.departmentName || '---'} | {tool.locationName || '---'}</p>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
+      {activeModal === 'PRINT' && (() => {
+        const labelSizes = [
+          { id: 'sm',  label: 'Nhỏ (40×25mm)',  qrSize: 60,  width: '151px', height: '94px',  fontSize: '7px', nameSize: '8px' },
+          { id: 'md',  label: 'Vừa (60×40mm)',  qrSize: 90,  width: '227px', height: '151px', fontSize: '9px', nameSize: '10px' },
+          { id: 'lg',  label: 'Lớn (90×60mm)',  qrSize: 130, width: '340px', height: '227px', fontSize: '11px', nameSize: '13px' }
+        ];
+        const [labelSize, setLabelSize_] = React.useState<'sm'|'md'|'lg'>('md');
+        const [copies, setCopies_] = React.useState(1);
+        const currentSize = labelSizes.find(s => s.id === labelSize)!;
 
-            <div className="p-6 border-t border-slate-100 flex justify-between items-center bg-white">
-              <span className="text-xs text-slate-500 font-bold">Số lượng nhãn in: {selectedToolsToPrint.length} nhãn</span>
-              <div className="flex gap-2">
-                <button onClick={() => setActiveModal('NONE')} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-xl text-sm font-bold">
-                  Đóng
+        const handlePrint = () => {
+          const printItems = selectedToolsToPrint.flatMap(tool => {
+            const url = `${window.location.origin}/tools/${tool.id}`;
+            return Array(copies).fill({ tool, url });
+          });
+
+          const printWindow = window.open('', '_blank', 'width=900,height=700');
+          if (!printWindow) { toast.error('Trình duyệt đã chặn cửa sổ in. Vui lòng cho phép pop-up.'); return; }
+
+          const qrSvgs = printItems.map(({ tool, url }) => {
+            const container = document.createElement('div');
+            container.innerHTML = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${currentSize.qrSize} ${currentSize.qrSize}" width="${currentSize.qrSize}" height="${currentSize.qrSize}" data-url="${url}" data-name="${tool.toolName}" data-code="${tool.toolCode}" data-dept="${tool.departmentName || ''}" data-loc="${tool.locationName || ''}"></svg>`;
+            return { tool, url };
+          });
+
+          printWindow.document.write(`<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8">
+  <title>In tem QR CCDC - Danko Group</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"><\/script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: 'Arial', sans-serif; background: #f1f5f9; padding: 20px; }
+    .controls { background: white; border-radius: 12px; padding: 16px 24px; margin-bottom: 20px; display: flex; align-items: center; gap: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    .controls h1 { font-size: 16px; font-weight: 900; color: #1e293b; flex: 1; }
+    .print-btn { background: #4f46e5; color: white; border: none; padding: 10px 24px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; }
+    .print-btn:hover { background: #4338ca; }
+    .close-btn { background: #f1f5f9; color: #64748b; border: 1px solid #e2e8f0; padding: 10px 20px; border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer; }
+    .grid { display: flex; flex-wrap: wrap; gap: 8px; padding: 8px; }
+    .label-card {
+      width: ${currentSize.width};
+      height: ${currentSize.height};
+      background: white;
+      border: 1.5px solid #cbd5e1;
+      border-radius: 8px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      page-break-inside: avoid;
+      break-inside: avoid;
+    }
+    .label-header { background: #1e293b; padding: 3px 6px; display: flex; align-items: center; gap: 4px; }
+    .label-header .logo-text { color: white; font-weight: 900; font-size: ${currentSize.fontSize}; letter-spacing: 1px; text-transform: uppercase; }
+    .label-header .logo-dot { width: 5px; height: 5px; background: #f59e0b; border-radius: 50%; flex-shrink: 0; }
+    .label-body { display: flex; flex: 1; padding: 4px; gap: 4px; align-items: center; overflow: hidden; }
+    .label-qr { flex-shrink: 0; }
+    .label-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; overflow: hidden; }
+    .label-name { font-weight: 800; font-size: ${currentSize.nameSize}; color: #0f172a; line-height: 1.2; word-break: break-word; }
+    .label-code { font-family: 'Courier New', monospace; font-size: ${currentSize.fontSize}; font-weight: 700; color: #4f46e5; letter-spacing: 0.5px; word-break: break-all; }
+    .label-meta { font-size: ${currentSize.fontSize}; color: #64748b; line-height: 1.2; word-break: break-word; }
+    .label-footer { border-top: 1px dashed #e2e8f0; padding: 2px 6px; display: flex; justify-content: space-between; align-items: center; }
+    .label-footer span { font-size: ${currentSize.fontSize}; color: #94a3b8; }
+    @media print {
+      body { background: white; padding: 0; }
+      .controls { display: none !important; }
+      .grid { gap: 4px; padding: 4px; }
+      .label-card { border: 1px solid #94a3b8; }
+    }
+  </style>
+</head>
+<body>
+  <div class="controls">
+    <h1>🖨️ Xem trước — ${printItems.length} tem QR CCDC | Danko Group</h1>
+    <button class="close-btn" onclick="window.close()">✕ Đóng</button>
+    <button class="print-btn" onclick="window.print()">🖨️ In ngay</button>
+  </div>
+  <div class="grid" id="grid"></div>
+  <script>
+    const items = ${JSON.stringify(printItems.map(({ tool, url }) => ({
+      url,
+      name: tool.toolName,
+      code: tool.toolCode,
+      dept: tool.departmentName || '',
+      loc: (() => { const parts = (tool.locationName || '').split(' - '); return parts[parts.length - 1] || tool.locationName || ''; })()
+    })))};
+    const grid = document.getElementById('grid');
+    items.forEach((item, idx) => {
+      const card = document.createElement('div');
+      card.className = 'label-card';
+      card.innerHTML = \`
+        <div class="label-header">
+          <div class="logo-dot"></div>
+          <span class="logo-text">Danko Group</span>
+        </div>
+        <div class="label-body">
+          <div class="label-qr" id="qr\${idx}"></div>
+          <div class="label-info">
+            <div class="label-name">\${item.name}</div>
+            <div class="label-code">\${item.code}</div>
+            \${item.dept ? \`<div class="label-meta">📍 \${item.loc || item.dept}</div>\` : ''}
+          </div>
+        </div>
+        <div class="label-footer">
+          <span>Scan to view details</span>
+          <span>${new Date().toLocaleDateString('vi-VN')}</span>
+        </div>
+      \`;
+      grid.appendChild(card);
+      try {
+        new QRCode(document.getElementById('qr' + idx), {
+          text: item.url,
+          width: ${currentSize.qrSize},
+          height: ${currentSize.qrSize},
+          correctLevel: QRCode.CorrectLevel.M
+        });
+      } catch(e) {}
+    });
+  <\/script>
+</body>
+</html>`);
+          printWindow.document.close();
+        };
+
+        return (
+          <div className="fixed inset-0 bg-slate-900/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+            <div className="bg-white rounded-3xl w-full max-w-3xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[90vh]">
+              {/* Header */}
+              <div className="p-6 border-b border-slate-100 flex justify-between items-center shrink-0">
+                <h3 className="text-lg font-black text-slate-850 uppercase tracking-wider flex items-center gap-2">
+                  <Printer className="h-5 w-5 text-indigo-500" /> Trung tâm in tem QR CCDC
+                </h3>
+                <button onClick={() => setActiveModal('NONE')} className="p-1 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700">
+                  <X className="h-5 w-5" />
                 </button>
-                <button 
-                  onClick={() => {
-                    window.print();
-                  }}
-                  className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 flex items-center gap-2"
-                >
-                  <Printer className="h-4 w-4" /> Bắt đầu in
-                </button>
+              </div>
+
+              {/* Settings bar */}
+              <div className="px-6 py-4 border-b border-slate-100 bg-slate-50 shrink-0">
+                <div className="flex flex-wrap items-center gap-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kích cỡ tem</label>
+                    <div className="flex gap-2">
+                      {labelSizes.map(s => (
+                        <button
+                          key={s.id}
+                          onClick={() => setLabelSize_(s.id as any)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${labelSize === s.id ? 'bg-indigo-600 text-white border-indigo-600 shadow-lg shadow-indigo-100' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+                        >
+                          {s.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Số bản sao / tem</label>
+                    <div className="flex items-center gap-2">
+                      <button onClick={() => setCopies_(Math.max(1, copies - 1))} className="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 font-bold text-slate-700">−</button>
+                      <span className="text-sm font-black text-slate-800 w-6 text-center">{copies}</span>
+                      <button onClick={() => setCopies_(Math.min(10, copies + 1))} className="w-7 h-7 rounded-lg border border-slate-200 bg-white hover:bg-slate-100 font-bold text-slate-700">+</button>
+                    </div>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <div className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tổng tem sẽ in</div>
+                    <div className="text-xl font-black text-indigo-600">{selectedToolsToPrint.length * copies}</div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Preview grid */}
+              <div className="p-6 overflow-y-auto flex-1 bg-slate-50">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-4">Xem trước ({selectedToolsToPrint.length} loại CCDC)</p>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                  {selectedToolsToPrint.map(tool => {
+                    const url = `${window.location.origin}/tools/${tool.id}`;
+                    const locParts = (tool.locationName || '').split(' - ');
+                    const shortLoc = locParts[locParts.length - 1] || tool.locationName || '';
+                    return (
+                      <div key={tool.id} className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden shadow-sm">
+                        {/* Tem header */}
+                        <div className="bg-slate-800 px-3 py-1.5 flex items-center gap-1.5">
+                          <div className="w-2 h-2 rounded-full bg-amber-400 shrink-0" />
+                          <span className="text-white text-[9px] font-black tracking-widest uppercase">Danko Group</span>
+                        </div>
+                        {/* Tem body */}
+                        <div className="p-3 flex gap-2.5 items-center">
+                          <div className="shrink-0 p-1 border border-slate-200 rounded-lg bg-white">
+                            <QRCode value={url} size={currentSize.qrSize * 0.85} />
+                          </div>
+                          <div className="min-w-0 flex flex-col gap-1">
+                            <p className="text-[9px] font-black text-slate-800 leading-snug line-clamp-3">{tool.toolName}</p>
+                            <p className="font-mono text-[9px] font-black text-indigo-600 break-all">{tool.toolCode}</p>
+                            {(shortLoc || tool.departmentName) && (
+                              <p className="text-[8px] text-slate-400 truncate">📍 {shortLoc || tool.departmentName}</p>
+                            )}
+                          </div>
+                        </div>
+                        {/* Tem footer */}
+                        <div className="border-t border-dashed border-slate-200 px-3 py-1 flex justify-between">
+                          <span className="text-[8px] text-slate-400">Scan to view</span>
+                          <span className="text-[8px] text-slate-400">{new Date().toLocaleDateString('vi-VN')}</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Footer actions */}
+              <div className="p-5 border-t border-slate-100 flex justify-between items-center bg-white shrink-0">
+                <div>
+                  <span className="text-xs text-slate-500 font-bold block">{selectedToolsToPrint.length} CCDC × {copies} bản = <strong className="text-indigo-600">{selectedToolsToPrint.length * copies} tem</strong></span>
+                  <span className="text-[10px] text-slate-400">Sẽ mở cửa sổ in mới với bố cục tem tối ưu</span>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setActiveModal('NONE')} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-xl text-sm font-bold">
+                    Đóng
+                  </button>
+                  <button
+                    onClick={handlePrint}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-sm font-black shadow-lg shadow-indigo-100 flex items-center gap-2 transition-colors"
+                  >
+                    <Printer className="h-4 w-4" /> Mở cửa sổ in
+                  </button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
       {hoveredImage && (
         <div 
           className="fixed z-50 bg-white border border-slate-200 p-2 rounded-2xl shadow-2xl w-64 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
