@@ -188,7 +188,13 @@ export const ToolList: React.FC = () => {
   const handleItemFieldChange = (toolId: number, field: string, value: any) => {
     setModalItems(prev => prev.map(item => {
       if (item.toolId !== toolId) return item;
-      let updated = { ...item, [field]: value };
+      
+      let parsedValue = value;
+      if (['quantityProcessed', 'qtyGood', 'qtyBroken', 'qtyLost'].includes(field)) {
+        parsedValue = Number(value) || 0;
+      }
+
+      let updated = { ...item, [field]: parsedValue };
 
       if (field === 'sourceLocation') {
         const isRecall = handoverForm.type === 'RECALL';
@@ -210,9 +216,9 @@ export const ToolList: React.FC = () => {
       }
 
       if (field === 'qtyGood' || field === 'qtyBroken' || field === 'qtyLost') {
-        const g = field === 'qtyGood' ? Number(value) || 0 : updated.qtyGood;
-        const b = field === 'qtyBroken' ? Number(value) || 0 : updated.qtyBroken;
-        const l = field === 'qtyLost' ? Number(value) || 0 : updated.qtyLost;
+        const g = field === 'qtyGood' ? parsedValue : updated.qtyGood;
+        const b = field === 'qtyBroken' ? parsedValue : updated.qtyBroken;
+        const l = field === 'qtyLost' ? parsedValue : updated.qtyLost;
         updated.qtyGood = g;
         updated.qtyBroken = b;
         updated.qtyLost = l;
