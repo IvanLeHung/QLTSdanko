@@ -15,7 +15,8 @@ import {
   ShieldCheck,
   FileText,
   Trash2,
-  FolderOpen
+  FolderOpen,
+  AlertCircle
 } from 'lucide-react';
 
 const CATEGORY_TREE: Record<string, string[]> = {
@@ -413,6 +414,16 @@ export const CreateTool: React.FC = () => {
                   ))}
                 </div>
               </div>
+
+              {formData.managementType === 'QUANTITY' && (
+                <div className="md:col-span-2 bg-primary-50/40 border border-primary-100 p-4 rounded-2xl text-xs font-semibold text-primary-800 animate-in fade-in duration-200">
+                  <p className="font-bold uppercase tracking-wider mb-1 flex items-center gap-1.5">
+                    <AlertCircle className="h-4 w-4 text-primary-600" />
+                    Quản lý số lượng & Biến động kho
+                  </p>
+                  <p>Hệ thống sẽ tự động khởi tạo lô nhập hàng đầu tiên <strong>(LOT001)</strong> với số lượng và đơn giá khai báo dưới đây, đồng thời tạo bảng cân đối tồn kho khả dụng tại địa điểm bàn giao.</p>
+                </div>
+              )}
 
               <div className="space-y-1.5">
                 <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Đơn vị tính</label>

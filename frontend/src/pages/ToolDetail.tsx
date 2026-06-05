@@ -19,7 +19,16 @@ import {
   Trash,
   FolderOpen,
   ShieldCheck,
-  ClipboardList
+  ClipboardList,
+  Plus,
+  ArrowRightLeft,
+  Box,
+  Trash2,
+  AlertCircle,
+  Warehouse,
+  Layers,
+  Settings,
+  X
 } from 'lucide-react';
 
 export const ToolDetail: React.FC = () => {
@@ -28,12 +37,30 @@ export const ToolDetail: React.FC = () => {
 
   const [tool, setTool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'history'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'history'>('info');
+  
+  // Stock Actions Modal State
+  const [activeStockModal, setActiveStockModal] = useState<'NONE' | 'TRANSFER' | 'ALLOCATE' | 'RECALL' | 'DAMAGE' | 'REPAIR_COMPLETE' | 'LOST' | 'BATCH' | 'ADJUST'>('NONE');
+
+  // Modal Forms State
+  const [transferForm, setTransferForm] = useState({ fromLocation: '', toLocation: '', quantity: 1, note: '' });
+  const [allocateForm, setAllocateForm] = useState({ fromLocation: '', toLocation: '', quantity: 1, note: '' });
+  const [recallForm, setRecallForm] = useState({ fromLocation: '', toLocation: '', quantity: 1, qtyGood: 1, qtyBroken: 0, qtyLost: 0, note: '' });
+  const [damageForm, setDamageForm] = useState({ locationName: '', quantity: 1, canRepair: true, note: '' });
+  const [repairCompleteForm, setRepairCompleteForm] = useState({ locationName: '', quantity: 1, actualCost: 0, note: '' });
+  const [lostForm, setLostForm] = useState({ locationName: '', quantity: 1, responsibleUser: '', compensationValue: 0, documentNo: '', note: '' });
+  const [batchForm, setBatchForm] = useState({ quantity: 1, purchasePrice: 0, purchaseDate: new Date().toISOString().split('T')[0], supplierName: '', locationName: '', note: '' });
+  const [adjustForm, setAdjustForm] = useState({ locationName: '', actualQuantity: 0, action: 'ADJUST_STOCK' as 'ADJUST_STOCK' | 'RECORD_LOST', note: '' });
 
   const fetchToolDetail = async () => {
     try {
       const res = await api.get(`/tools/${id}`);
       setTool(res.data);
+      
+      // Auto adjust default active tab based on management type
+      if (res.data.managementType === 'QUANTITY') {
+        setActiveTab('info');
+      }
     } catch (err) {
       toast.error("Không thể tải thông tin chi tiết CCDC.");
       navigate('/tools');
@@ -46,6 +73,38 @@ export const ToolDetail: React.FC = () => {
     fetchToolDetail();
   }, [id]);
 
+  // Sync default select option values when modals open
+  useEffect(() => {
+    if (tool && tool.stocks && tool.stocks.length > 0) {
+      const firstWithStock = tool.stocks.find((s: any) => s.quantityAvailable > 0)?.locationName || tool.stocks[0].locationName;
+      const firstWithUsing = tool.stocks.find((s: any) => s.quantityUsing > 0)?.locationName || tool.stocks[0].locationName;
+      const firstWithBroken = tool.stocks.find((s: any) => s.quantityBroken > 0)?.locationName || tool.stocks[0].locationName;
+      
+      setTransferForm(prev => ({ ...prev, fromLocation: firstWithStock }));
+      setAllocateForm(prev => ({ ...prev, fromLocation: firstWithStock }));
+      setRecallForm(prev => ({ ...prev, fromLocation: firstWithUsing, toLocation: firstWithStock }));
+      setDamageForm(prev => ({ ...prev, locationName: firstWithStock }));
+      setRepairCompleteForm(prev => ({ ...prev, locationName: firstWithBroken }));
+      setLostForm(prev => ({ ...prev, locationName: firstWithStock }));
+      setBatchForm(prev => ({ ...prev, locationName: firstWithStock }));
+      setAdjustForm(prev => ({ ...prev, locationName: firstWithStock, actualQuantity: tool.stocks[0].quantityAvailable }));
+    }
+  }, [activeStockModal, tool]);
+
+  const handleStockSubmit = async (e: React.FormEvent, endpoint: string, payload: any) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      await api.post(`/tools/stock/${endpoint}`, { ...payload, toolId: tool.id });
+      toast.success("Ghi nhận biến động kho thành công!");
+      setActiveStockModal('NONE');
+      fetchToolDetail();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi giao dịch kho.");
+      setLoading(false);
+    }
+  };
+
   const handleDeleteTool = async () => {
     if (!window.confirm("Bạn có chắc chắn muốn xóa Công cụ dụng cụ này? Dữ liệu lịch sử vẫn sẽ được bảo lưu.")) return;
     try {
@@ -57,7 +116,7 @@ export const ToolDetail: React.FC = () => {
     }
   };
 
-  if (loading) {
+  if (loading && !tool) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
         <Loader2 className="h-10 w-10 text-primary-600 animate-spin" />
@@ -68,12 +127,13 @@ export const ToolDetail: React.FC = () => {
 
   if (!tool) return null;
 
+  // Parsed industry and metadata attributes
   let industryAttributes: Record<string, any> = {};
   if (tool.industryAttributesJson) {
     try {
       industryAttributes = JSON.parse(tool.industryAttributesJson);
     } catch (e) {
-      console.error("Lỗi parse industryAttributesJson:", e);
+      console.error(e);
     }
   }
 
@@ -82,7 +142,7 @@ export const ToolDetail: React.FC = () => {
     try {
       operationalSpecs = JSON.parse(tool.operationalSpecsJson);
     } catch (e) {
-      console.error("Lỗi parse operationalSpecsJson:", e);
+      console.error(e);
     }
   }
 
@@ -91,7 +151,7 @@ export const ToolDetail: React.FC = () => {
     try {
       filesInfo = JSON.parse(tool.filesJson);
     } catch (e) {
-      console.error("Lỗi parse filesJson:", e);
+      console.error(e);
     }
   }
 
@@ -100,7 +160,7 @@ export const ToolDetail: React.FC = () => {
     try {
       warrantyInfo = JSON.parse(tool.warrantyInfoJson);
     } catch (e) {
-      console.error("Lỗi parse warrantyInfoJson:", e);
+      console.error(e);
     }
   }
 
@@ -109,8 +169,33 @@ export const ToolDetail: React.FC = () => {
     try {
       customFields = JSON.parse(tool.customFieldsJson);
     } catch (e) {
-      console.error("Lỗi parse customFieldsJson:", e);
+      console.error(e);
     }
+  }
+
+  // Stock quantities breakdown calculation for QUANTITY mode
+  let totalStock = 0;
+  let totalAvailable = 0;
+  let totalUsing = 0;
+  let totalBroken = 0;
+  let totalLost = 0;
+  let totalDestroyed = 0;
+
+  if (tool.stocks && tool.stocks.length > 0) {
+    tool.stocks.forEach((s: any) => {
+      totalAvailable += s.quantityAvailable || 0;
+      totalUsing += s.quantityUsing || 0;
+      totalBroken += s.quantityBroken || 0;
+      totalLost += s.quantityLost || 0;
+      totalDestroyed += s.quantityDestroyed || 0;
+    });
+    totalStock = totalAvailable + totalUsing + totalBroken + totalLost + totalDestroyed;
+  } else {
+    totalStock = tool.quantity || 0;
+    if (tool.status === 'IN_STOCK') totalAvailable = tool.quantity;
+    else if (tool.status === 'USING') totalUsing = tool.quantity;
+    else if (tool.status === 'DAMAGED') totalBroken = tool.quantity;
+    else if (tool.status === 'LOST') totalLost = tool.quantity;
   }
 
   const attributeLabels: Record<string, string> = {
@@ -145,10 +230,13 @@ export const ToolDetail: React.FC = () => {
     statusText = 'Đã thanh lý';
   }
 
+  const isQuantityMode = tool.managementType === 'QUANTITY';
+
   return (
-    <div className="space-y-6 pb-20 px-4 max-w-6xl mx-auto">
+    <div className="space-y-6 pb-20 px-4 max-w-7xl mx-auto">
+      
       {/* 1. HEADER PROFILE */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm animate-in fade-in duration-200">
         <div className="space-y-1">
           <button 
             onClick={() => navigate('/tools')} 
@@ -161,6 +249,9 @@ export const ToolDetail: React.FC = () => {
             <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${statusBadge}`}>
               {statusText}
             </span>
+            <span className="px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider bg-primary-50 text-primary-700 border border-primary-100">
+              {tool.managementType === 'QUANTITY' ? 'Quản lý số lượng' : tool.managementType === 'BUNDLE' ? 'Theo bộ' : 'Từng mã'}
+            </span>
           </div>
           <p className="font-mono text-xs font-bold text-slate-400 mt-1 uppercase tracking-tight">Mã CCDC: {tool.toolCode}</p>
         </div>
@@ -168,7 +259,7 @@ export const ToolDetail: React.FC = () => {
         <div className="flex gap-2 shrink-0">
           <button 
             onClick={handleDeleteTool}
-            className="flex items-center gap-2 px-4 py-2 border.5 border-red-200 text-red-650 hover:bg-red-50 rounded-xl text-xs font-bold transition-all bg-white"
+            className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-650 hover:bg-red-50 rounded-xl text-xs font-bold transition-all bg-white"
           >
             <Trash className="h-4 w-4" /> Xóa CCDC
           </button>
@@ -190,14 +281,8 @@ export const ToolDetail: React.FC = () => {
               <span className="text-slate-800 font-bold">{tool.category}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-slate-400 font-bold uppercase tracking-wider">Loại quản lý</span>
-              <span className="text-slate-800 font-bold bg-slate-50 px-2 py-0.5 rounded border border-slate-100">
-                {tool.managementType === 'INDIVIDUAL' ? 'Từng mã' : tool.managementType === 'QUANTITY' ? 'Số lượng' : 'Theo bộ'}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-slate-400 font-bold uppercase tracking-wider">Số lượng</span>
-              <span className="text-slate-800 font-bold">{tool.quantity} {tool.unit}</span>
+              <span className="text-slate-400 font-bold uppercase tracking-wider">Số lượng tồn</span>
+              <span className="text-slate-800 font-bold">{totalStock} {tool.unit}</span>
             </div>
             
             <hr className="border-slate-100" />
@@ -313,8 +398,10 @@ export const ToolDetail: React.FC = () => {
           </div>
         </div>
 
-        {/* 3. RIGHT PANEL: LIFECYCLE HISTORY TABS */}
+        {/* 3. RIGHT PANEL: LIFECYCLE HISTORY & STOCK OPERATIONS */}
         <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200 shadow-sm flex flex-col overflow-hidden h-full">
+          
+          {/* TABS HEADER */}
           <div className="flex border-b border-slate-200 overflow-x-auto bg-slate-50 text-slate-500 font-bold text-xs uppercase tracking-wider">
             <button 
               onClick={() => setActiveTab('info')}
@@ -322,55 +409,178 @@ export const ToolDetail: React.FC = () => {
             >
               Tổng quan
             </button>
-            <button 
-              onClick={() => setActiveTab('assignments')}
-              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'assignments' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
-            >
-              Cấp phát ({tool.assignments?.length || 0})
-            </button>
-            <button 
-              onClick={() => setActiveTab('repairs')}
-              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'repairs' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
-            >
-              Sửa chữa ({tool.repairTickets?.length || 0})
-            </button>
-            <button 
-              onClick={() => setActiveTab('lost')}
-              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'lost' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
-            >
-              Báo mất/Hỏng ({tool.lostReports?.length || 0})
-            </button>
-            <button 
-              onClick={() => setActiveTab('inventory')}
-              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'inventory' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
-            >
-              Kiểm kê ({tool.inventoryItems?.length || 0})
-            </button>
+
+            {isQuantityMode ? (
+              <>
+                <button 
+                  onClick={() => setActiveTab('stocks')}
+                  className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'stocks' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+                >
+                  Phân bổ tồn kho ({tool.stocks?.length || 0})
+                </button>
+                <button 
+                  onClick={() => setActiveTab('batches')}
+                  className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'batches' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+                >
+                  Lô nhập hàng ({tool.batches?.length || 0})
+                </button>
+                <button 
+                  onClick={() => setActiveTab('transactions')}
+                  className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'transactions' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+                >
+                  Biến động số lượng ({tool.stockTransactions?.length || 0})
+                </button>
+              </>
+            ) : (
+              <>
+                <button 
+                  onClick={() => setActiveTab('assignments')}
+                  className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'assignments' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+                >
+                  Cấp phát ({tool.assignments?.length || 0})
+                </button>
+                <button 
+                  onClick={() => setActiveTab('repairs')}
+                  className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'repairs' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+                >
+                  Sửa chữa ({tool.repairTickets?.length || 0})
+                </button>
+                <button 
+                  onClick={() => setActiveTab('lost')}
+                  className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'lost' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+                >
+                  Báo mất/Hỏng ({tool.lostReports?.length || 0})
+                </button>
+                <button 
+                  onClick={() => setActiveTab('inventory')}
+                  className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'inventory' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+                >
+                  Kiểm kê ({tool.inventoryItems?.length || 0})
+                </button>
+              </>
+            )}
+
             <button 
               onClick={() => setActiveTab('history')}
               className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'history' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
             >
-              Nhật ký ({tool.histories?.length || 0})
+              Nhật ký hệ thống ({tool.histories?.length || 0})
             </button>
           </div>
 
+          {/* TAB CONTENT */}
           <div className="p-6 flex-1 overflow-y-auto min-h-[400px]">
             
             {/* TAB: GENERAL OVERVIEW */}
             {activeTab === 'info' && (
               <div className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Người dùng hiện tại</p>
-                    <p className="text-[16px] font-black text-slate-800 mt-1">{tool.currentUserName || 'KHO CCDC'}</p>
+                
+                {/* 1. QUANTITY STOCK PROFILE (If quantity mode) */}
+                {isQuantityMode && (
+                  <div className="bg-slate-50 border border-slate-200 rounded-[2rem] p-6 shadow-sm space-y-4">
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                      <Warehouse className="h-4 w-4 text-primary-600" />
+                      Trạng thái cân đối tồn kho hiện tại
+                    </h3>
+                    <div className="grid grid-cols-2 sm:grid-cols-6 gap-3 text-center">
+                      <div className="bg-white p-3 rounded-2xl border">
+                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tổng nhập</p>
+                        <p className="text-xl font-black text-slate-800 mt-1">{totalStock}</p>
+                      </div>
+                      <div className="bg-green-50/50 p-3 rounded-2xl border border-green-100">
+                        <p className="text-[10px] font-bold text-green-600 uppercase tracking-wider">Khả dụng</p>
+                        <p className="text-xl font-black text-green-700 mt-1">{totalAvailable}</p>
+                      </div>
+                      <div className="bg-blue-50/50 p-3 rounded-2xl border border-blue-100">
+                        <p className="text-[10px] font-bold text-blue-600 uppercase tracking-wider">Đang dùng</p>
+                        <p className="text-xl font-black text-blue-700 mt-1">{totalUsing}</p>
+                      </div>
+                      <div className="bg-amber-50/50 p-3 rounded-2xl border border-amber-100">
+                        <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider">Đang sửa</p>
+                        <p className="text-xl font-black text-amber-700 mt-1">{totalBroken}</p>
+                      </div>
+                      <div className="bg-red-50/50 p-3 rounded-2xl border border-red-100">
+                        <p className="text-[10px] font-bold text-red-600 uppercase tracking-wider">Thất thoát/Mất</p>
+                        <p className="text-xl font-black text-red-700 mt-1">{totalLost}</p>
+                      </div>
+                      <div className="bg-slate-100 p-3 rounded-2xl border border-slate-200">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Đã hủy</p>
+                        <p className="text-xl font-black text-slate-600 mt-1">{totalDestroyed}</p>
+                      </div>
+                    </div>
+
+                    {/* Stock Operations Panel */}
+                    <div className="border-t border-slate-200 pt-4 space-y-2">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Settings className="h-3 w-3" /> Tác vụ nghiệp vụ kho</p>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                        <button 
+                          onClick={() => setActiveStockModal('TRANSFER')} 
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
+                        >
+                          <ArrowRightLeft className="h-3.5 w-3.5 text-blue-500" /> Điều chuyển
+                        </button>
+                        <button 
+                          onClick={() => setActiveStockModal('ALLOCATE')} 
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
+                        >
+                          <User className="h-3.5 w-3.5 text-green-500" /> Cấp phát sử dụng
+                        </button>
+                        <button 
+                          onClick={() => setActiveStockModal('RECALL')} 
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
+                        >
+                          <Box className="h-3.5 w-3.5 text-amber-500" /> Thu hồi sau dùng
+                        </button>
+                        <button 
+                          onClick={() => setActiveStockModal('DAMAGE')} 
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
+                        >
+                          <Wrench className="h-3.5 w-3.5 text-red-500" /> Báo hỏng
+                        </button>
+                        <button 
+                          onClick={() => setActiveStockModal('REPAIR_COMPLETE')} 
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
+                        >
+                          <CheckCircle2 className="h-3.5 w-3.5 text-teal-500" /> Xác nhận sửa xong
+                        </button>
+                        <button 
+                          onClick={() => setActiveStockModal('LOST')} 
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
+                        >
+                          <ShieldAlert className="h-3.5 w-3.5 text-orange-500" /> Báo mất/Thất thoát
+                        </button>
+                        <button 
+                          onClick={() => setActiveStockModal('BATCH')} 
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
+                        >
+                          <Plus className="h-3.5 w-3.5 text-indigo-500" /> Nhập thêm lô mới
+                        </button>
+                        <button 
+                          onClick={() => setActiveStockModal('ADJUST')} 
+                          className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
+                        >
+                          <ClipboardCheck className="h-3.5 w-3.5 text-slate-500" /> Kiểm kê kho
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                  <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
-                    <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thời gian bàn giao</p>
-                    <p className="text-[16px] font-black text-slate-800 mt-1">
-                      {tool.handoverDate ? new Date(tool.handoverDate).toLocaleDateString('vi-VN') : '---'}
-                    </p>
+                )}
+
+                {/* 2. GENERAL INFO FIELDS */}
+                {!isQuantityMode && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Người dùng hiện tại</p>
+                      <p className="text-[16px] font-black text-slate-800 mt-1">{tool.currentUserName || 'KHO CCDC'}</p>
+                    </div>
+                    <div className="p-5 bg-slate-50 rounded-2xl border border-slate-100">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thời gian bàn giao</p>
+                      <p className="text-[16px] font-black text-slate-800 mt-1">
+                        {tool.handoverDate ? new Date(tool.handoverDate).toLocaleDateString('vi-VN') : '---'}
+                      </p>
+                    </div>
                   </div>
-                </div>
+                )}
 
                 {/* DYNAMIC SPECS SECTION */}
                 {Object.keys(operationalSpecs).length > 0 && (
@@ -477,7 +687,7 @@ export const ToolDetail: React.FC = () => {
                 {/* ATTACHED FILES SECTION */}
                 {Object.keys(filesInfo).length > 0 && Object.values(filesInfo).some(Boolean) && (
                   <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                    <h4 className="text-xs font-black text-emerald-850 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
+                    <h4 className="text-xs font-black text-emerald-855 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
                       <FileText className="h-4 w-4 text-emerald-500" />
                       Hồ sơ tài liệu đính kèm
                     </h4>
@@ -558,29 +768,153 @@ export const ToolDetail: React.FC = () => {
                   </div>
                 )}
 
-                <div className="space-y-3">
-                  <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Biến động trạng thái gần nhất</h4>
+                {/* Standard history recap */}
+                {!isQuantityMode && (
                   <div className="space-y-3">
-                    {tool.histories?.slice(0, 3).map((h: any) => (
-                      <div key={h.id} className="flex gap-4 items-start bg-slate-50 p-4 rounded-xl border border-slate-200/50">
-                        <Activity className="h-4 w-4 text-primary-600 shrink-0 mt-0.5" />
-                        <div>
-                          <p className="text-xs font-bold text-slate-800">{h.oldStatus} &rarr; {h.newStatus}</p>
-                          <p className="text-[11px] text-slate-500 mt-0.5">{h.oldNote}</p>
-                          <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-tight">{new Date(h.eventTime).toLocaleString('vi-VN')}</p>
+                    <h4 className="text-xs font-bold text-slate-400 uppercase tracking-widest">Biến động trạng thái gần nhất</h4>
+                    <div className="space-y-3">
+                      {tool.histories?.slice(0, 3).map((h: any) => (
+                        <div key={h.id} className="flex gap-4 items-start bg-slate-50 p-4 rounded-xl border border-slate-200/50">
+                          <Activity className="h-4 w-4 text-primary-600 shrink-0 mt-0.5" />
+                          <div>
+                            <p className="text-xs font-bold text-slate-800">{h.oldStatus} &rarr; {h.newStatus}</p>
+                            <p className="text-[11px] text-slate-500 mt-0.5">{h.oldNote}</p>
+                            <p className="text-[9px] text-slate-400 font-bold mt-1 uppercase tracking-tight">{new Date(h.eventTime).toLocaleString('vi-VN')}</p>
+                          </div>
                         </div>
-                      </div>
-                    ))}
-                    {(!tool.histories || tool.histories.length === 0) && (
-                      <p className="text-xs font-semibold text-slate-400">Chưa ghi nhận biến động nào.</p>
-                    )}
+                      ))}
+                    </div>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* TAB: STOCKS (QUANTITY ONLY) */}
+            {activeTab === 'stocks' && isQuantityMode && (
+              <div className="space-y-4">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5"><MapPin className="h-4 w-4" /> Bảng phân phối tồn kho chi tiết</h3>
+                <div className="overflow-x-auto border rounded-2xl bg-white">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="bg-slate-50 border-b text-slate-400 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3">Địa điểm lưu trữ</th>
+                        <th className="px-4 py-3 text-center">Khả dụng</th>
+                        <th className="px-4 py-3 text-center">Đang dùng</th>
+                        <th className="px-4 py-3 text-center">Đang sửa</th>
+                        <th className="px-4 py-3 text-center">Mất</th>
+                        <th className="px-4 py-3 text-center">Đã hủy</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-slate-700">
+                      {tool.stocks?.map((s: any) => (
+                        <tr key={s.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-semibold text-slate-800">{s.locationName}</td>
+                          <td className="px-4 py-3 text-center font-bold text-green-700">{s.quantityAvailable}</td>
+                          <td className="px-4 py-3 text-center font-bold text-blue-700">{s.quantityUsing}</td>
+                          <td className="px-4 py-3 text-center font-bold text-amber-700">{s.quantityBroken}</td>
+                          <td className="px-4 py-3 text-center font-bold text-red-700">{s.quantityLost}</td>
+                          <td className="px-4 py-3 text-center font-bold text-slate-500">{s.quantityDestroyed}</td>
+                        </tr>
+                      ))}
+                      {(!tool.stocks || tool.stocks.length === 0) && (
+                        <tr>
+                          <td colSpan={6} className="px-4 py-6 text-center text-slate-400 italic">Chưa phân phối tồn kho nào.</td>
+                        </tr>
+                      )}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             )}
 
-            {/* TAB: ASSIGNMENTS */}
-            {activeTab === 'assignments' && (
+            {/* TAB: BATCHES (QUANTITY ONLY) */}
+            {activeTab === 'batches' && isQuantityMode && (
+              <div className="space-y-4">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5"><Layers className="h-4 w-4" /> Danh sách các lô nhập hàng (Batches)</h3>
+                <div className="overflow-x-auto border rounded-2xl bg-white">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="bg-slate-50 border-b text-slate-400 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3">Mã lô</th>
+                        <th className="px-4 py-3 text-center">Số lượng nhập</th>
+                        <th className="px-4 py-3 text-right">Đơn giá mua</th>
+                        <th className="px-4 py-3 text-right">Tổng giá trị</th>
+                        <th className="px-4 py-3">Nhà cung cấp</th>
+                        <th className="px-4 py-3">Ngày nhập</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-slate-700">
+                      {tool.batches?.map((b: any) => (
+                        <tr key={b.id} className="hover:bg-slate-50">
+                          <td className="px-4 py-3 font-mono font-bold text-slate-800">{b.batchNumber}</td>
+                          <td className="px-4 py-3 text-center font-bold">{b.quantity}</td>
+                          <td className="px-4 py-3 text-right font-semibold">{(b.purchasePrice || 0).toLocaleString()} VNĐ</td>
+                          <td className="px-4 py-3 text-right font-black text-slate-850">{((b.quantity || 0) * (b.purchasePrice || 0)).toLocaleString()} VNĐ</td>
+                          <td className="px-4 py-3">{b.supplierName || '---'}</td>
+                          <td className="px-4 py-3">{b.purchaseDate ? new Date(b.purchaseDate).toLocaleDateString('vi-VN') : '---'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: STOCK TRANSACTIONS (QUANTITY ONLY) */}
+            {activeTab === 'transactions' && isQuantityMode && (
+              <div className="space-y-4">
+                <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5"><Activity className="h-4 w-4" /> Sổ biến động kho số lượng</h3>
+                <div className="overflow-x-auto border rounded-2xl bg-white">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="bg-slate-50 border-b text-slate-400 font-bold uppercase tracking-wider">
+                      <tr>
+                        <th className="px-4 py-3">Thời gian</th>
+                        <th className="px-4 py-3">Loại GD</th>
+                        <th className="px-4 py-3 text-center">Số lượng</th>
+                        <th className="px-4 py-3">Từ vị trí</th>
+                        <th className="px-4 py-3">Đến vị trí</th>
+                        <th className="px-4 py-3">Người thực hiện</th>
+                        <th className="px-4 py-3">Ghi chú</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y text-slate-700">
+                      {tool.stockTransactions?.map((t: any) => {
+                        let typeText = t.type;
+                        let typeColor = 'text-slate-700 bg-slate-100';
+                        if (t.type === 'IMPORT') { typeText = 'Nhập mới'; typeColor = 'text-green-700 bg-green-50 border border-green-200'; }
+                        else if (t.type === 'TRANSFER') { typeText = 'Điều chuyển'; typeColor = 'text-blue-700 bg-blue-50 border border-blue-200'; }
+                        else if (t.type === 'USE') { typeText = 'Cấp phát'; typeColor = 'text-indigo-700 bg-indigo-50 border border-indigo-200'; }
+                        else if (t.type === 'RECALL') { typeText = 'Thu hồi'; typeColor = 'text-purple-700 bg-purple-50 border border-purple-200'; }
+                        else if (t.type === 'DAMAGE') { typeText = 'Báo hỏng'; typeColor = 'text-amber-700 bg-amber-50 border border-amber-200'; }
+                        else if (t.type === 'REPAIR_COMPLETE') { typeText = 'Sửa xong'; typeColor = 'text-teal-700 bg-teal-50 border border-teal-200'; }
+                        else if (t.type === 'LOST') { typeText = 'Báo mất'; typeColor = 'text-red-700 bg-red-50 border border-red-200'; }
+                        else if (t.type === 'DESTROY') { typeText = 'Hủy bỏ'; typeColor = 'text-red-900 bg-red-100 border border-red-300'; }
+                        else if (t.type === 'ADJUST') { typeText = 'Kiểm kê'; typeColor = 'text-slate-700 bg-slate-100 border border-slate-300'; }
+
+                        return (
+                          <tr key={t.id} className="hover:bg-slate-50">
+                            <td className="px-4 py-3 font-semibold text-slate-500">{new Date(t.createdAt).toLocaleString('vi-VN')}</td>
+                            <td className="px-4 py-3">
+                              <span className={`px-2 py-0.5 rounded font-bold text-[10px] uppercase tracking-wider ${typeColor}`}>{typeText}</span>
+                            </td>
+                            <td className="px-4 py-3 text-center font-black text-slate-800">
+                              {t.type === 'IMPORT' || t.type === 'REPAIR_COMPLETE' || (t.type === 'ADJUST' && t.quantity > 0) ? `+${t.quantity}` : `${t.quantity}`}
+                            </td>
+                            <td className="px-4 py-3 text-slate-500 max-w-[150px] truncate">{t.fromLocation || '---'}</td>
+                            <td className="px-4 py-3 text-slate-500 max-w-[150px] truncate">{t.toLocation || '---'}</td>
+                            <td className="px-4 py-3 font-semibold">{t.performedBy}</td>
+                            <td className="px-4 py-3 text-slate-500 max-w-[200px] truncate" title={t.note}>{t.note || '---'}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            {/* TAB: ASSIGNMENTS (INDIVIDUAL ONLY) */}
+            {activeTab === 'assignments' && !isQuantityMode && (
               <div className="space-y-4">
                 {tool.assignments?.map((a: any) => (
                   <div key={a.id} className="flex gap-4 items-start bg-slate-50 p-4 rounded-2xl border border-slate-200/50">
@@ -606,8 +940,8 @@ export const ToolDetail: React.FC = () => {
               </div>
             )}
 
-            {/* TAB: REPAIR TICKETS */}
-            {activeTab === 'repairs' && (
+            {/* TAB: REPAIRS (INDIVIDUAL ONLY) */}
+            {activeTab === 'repairs' && !isQuantityMode && (
               <div className="space-y-4">
                 {tool.repairTickets?.map((r: any) => (
                   <div key={r.id} className="flex gap-4 items-start bg-slate-50 p-4 rounded-2xl border border-slate-200/50">
@@ -640,8 +974,8 @@ export const ToolDetail: React.FC = () => {
               </div>
             )}
 
-            {/* TAB: LOST / DAMAGE REPORTS */}
-            {activeTab === 'lost' && (
+            {/* TAB: LOST / DAMAGE REPORTS (INDIVIDUAL ONLY) */}
+            {activeTab === 'lost' && !isQuantityMode && (
               <div className="space-y-4">
                 {tool.lostReports?.map((l: any) => (
                   <div key={l.id} className="flex gap-4 items-start bg-slate-50 p-4 rounded-2xl border border-slate-200/50">
@@ -672,8 +1006,8 @@ export const ToolDetail: React.FC = () => {
               </div>
             )}
 
-            {/* TAB: INVENTORY ITEMS */}
-            {activeTab === 'inventory' && (
+            {/* TAB: INVENTORY ITEMS (INDIVIDUAL ONLY) */}
+            {activeTab === 'inventory' && !isQuantityMode && (
               <div className="space-y-4">
                 {tool.inventoryItems?.map((item: any) => (
                   <div key={item.id} className="flex gap-4 items-start bg-slate-50 p-4 rounded-2xl border border-slate-200/50">
@@ -704,7 +1038,7 @@ export const ToolDetail: React.FC = () => {
               </div>
             )}
 
-            {/* TAB: LOGS / HISTORIES */}
+            {/* TAB: SYSTEM HISTORIES LOG */}
             {activeTab === 'history' && (
               <div className="space-y-4">
                 {tool.histories?.map((h: any) => (
@@ -713,11 +1047,11 @@ export const ToolDetail: React.FC = () => {
                     <div>
                       <h4 className="text-sm font-bold text-slate-800">Hành động: {h.actionType}</h4>
                       <p className="text-xs text-slate-500 mt-1 font-semibold">
-                        Thay đổi trạng thái: [ {h.oldStatus || 'NONE'} ] &rarr; [ {h.newStatus || 'NONE'} ]
+                        Trạng thái: [ {h.oldStatus || 'NONE'} ] &rarr; [ {h.newStatus || 'NONE'} ]
                       </p>
                       {h.oldNote && <p className="text-[11px] text-slate-600 mt-2 leading-relaxed bg-white p-2 rounded-lg border border-slate-200">{h.oldNote}</p>}
                       <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-tight">
-                        Ghi nhận lúc: {new Date(h.eventTime).toLocaleString('vi-VN')}
+                        Lúc: {new Date(h.eventTime).toLocaleString('vi-VN')}
                       </p>
                     </div>
                   </div>
@@ -727,6 +1061,620 @@ export const ToolDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* --- QUANTITY DYNAMIC TRANSACTION MODALS --- */}
+
+      {/* A. TRANSFER MODAL */}
+      {activeStockModal === 'TRANSFER' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <ArrowRightLeft className="h-4 w-4 text-blue-500" /> Điều chuyển số lượng
+              </h3>
+              <button onClick={() => setActiveStockModal('NONE')} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={(e) => handleStockSubmit(e, 'transfer', transferForm)}>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Từ vị trí nguồn *</label>
+                  <select 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={transferForm.fromLocation}
+                    onChange={e => setTransferForm({ ...transferForm, fromLocation: e.target.value })}
+                  >
+                    {tool.stocks?.filter((s: any) => s.quantityAvailable > 0).map((s: any) => (
+                      <option key={s.id} value={s.locationName}>{s.locationName} (Có sẵn: {s.quantityAvailable})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Số lượng cần chuyển *</label>
+                  <input 
+                    type="number" 
+                    min={1} 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                    value={transferForm.quantity}
+                    onChange={e => setTransferForm({ ...transferForm, quantity: Number(e.target.value) || 1 })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đến vị trí đích *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Tên kho / Vị trí đích..."
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={transferForm.toLocation}
+                    onChange={e => setTransferForm({ ...transferForm, toLocation: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú điều chuyển</label>
+                  <textarea 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold h-16"
+                    value={transferForm.note}
+                    onChange={e => setTransferForm({ ...transferForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold transition-colors">Điều chuyển</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* B. ALLOCATE (USE) MODAL */}
+      {activeStockModal === 'ALLOCATE' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <User className="h-4 w-4 text-green-500" /> Cấp phát / Bàn giao sử dụng
+              </h3>
+              <button onClick={() => setActiveStockModal('NONE')} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={(e) => handleStockSubmit(e, 'use', allocateForm)}>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Từ vị trí nguồn *</label>
+                  <select 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={allocateForm.fromLocation}
+                    onChange={e => setAllocateForm({ ...allocateForm, fromLocation: e.target.value })}
+                  >
+                    {tool.stocks?.filter((s: any) => s.quantityAvailable > 0).map((s: any) => (
+                      <option key={s.id} value={s.locationName}>{s.locationName} (Có sẵn: {s.quantityAvailable})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Số lượng cấp phát *</label>
+                  <input 
+                    type="number" 
+                    min={1} 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                    value={allocateForm.quantity}
+                    onChange={e => setAllocateForm({ ...allocateForm, quantity: Number(e.target.value) || 1 })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đến địa điểm sử dụng (Sự kiện / Dự án / Phòng ban) *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Ví dụ: Event A, Phòng Marketing..."
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={allocateForm.toLocation}
+                    onChange={e => setAllocateForm({ ...allocateForm, toLocation: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú cấp phát</label>
+                  <textarea 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold h-16"
+                    value={allocateForm.note}
+                    onChange={e => setAllocateForm({ ...allocateForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition-colors">Cấp phát sử dụng</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* C. RECALL MODAL */}
+      {activeStockModal === 'RECALL' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <Box className="h-4 w-4 text-amber-500" /> Thu hồi sau sử dụng
+              </h3>
+              <button onClick={() => setActiveStockModal('NONE')} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={(e) => handleStockSubmit(e, 'recall', recallForm)}>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thu hồi từ địa điểm sử dụng *</label>
+                  <select 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={recallForm.fromLocation}
+                    onChange={e => setRecallForm({ ...recallForm, fromLocation: e.target.value })}
+                  >
+                    {tool.stocks?.filter((s: any) => s.quantityUsing > 0).map((s: any) => (
+                      <option key={s.id} value={s.locationName}>{s.locationName} (Đang dùng: {s.quantityUsing})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tổng số lượng thu hồi *</label>
+                  <input 
+                    type="number" 
+                    min={1} 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                    value={recallForm.quantity}
+                    onChange={e => setRecallForm({ ...recallForm, quantity: Number(e.target.value) || 1, qtyGood: Number(e.target.value) || 1, qtyBroken: 0, qtyLost: 0 })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Thu hồi về vị trí / Kho *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Vị trí kho lưu trữ..."
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={recallForm.toLocation}
+                    onChange={e => setRecallForm({ ...recallForm, toLocation: e.target.value })}
+                  />
+                </div>
+
+                <div className="border border-slate-200 rounded-2xl p-4 bg-slate-50 space-y-3">
+                  <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chi tiết phân loại sức khỏe thu hồi</p>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-green-600 uppercase">Tốt (Có sẵn)</label>
+                      <input 
+                        type="number" 
+                        min={0}
+                        className="w-full bg-white border rounded-lg px-2 py-1 text-xs text-center font-bold text-green-700"
+                        value={recallForm.qtyGood}
+                        onChange={e => setRecallForm({ ...recallForm, qtyGood: Number(e.target.value) || 0 })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-amber-600 uppercase">Hỏng (Sửa)</label>
+                      <input 
+                        type="number" 
+                        min={0}
+                        className="w-full bg-white border rounded-lg px-2 py-1 text-xs text-center font-bold text-amber-700"
+                        value={recallForm.qtyBroken}
+                        onChange={e => setRecallForm({ ...recallForm, qtyBroken: Number(e.target.value) || 0 })}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[9px] font-bold text-red-600 uppercase">Bị mất</label>
+                      <input 
+                        type="number" 
+                        min={0}
+                        className="w-full bg-white border rounded-lg px-2 py-1 text-xs text-center font-bold text-red-700"
+                        value={recallForm.qtyLost}
+                        onChange={e => setRecallForm({ ...recallForm, qtyLost: Number(e.target.value) || 0 })}
+                      />
+                    </div>
+                  </div>
+                  {recallForm.qtyGood + recallForm.qtyBroken + recallForm.qtyLost !== recallForm.quantity && (
+                    <p className="text-[10px] text-red-500 font-bold">Lưu ý: Tổng chi tiết ({recallForm.qtyGood + recallForm.qtyBroken + recallForm.qtyLost}) khác tổng số lượng yêu cầu ({recallForm.quantity}).</p>
+                  )}
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú thu hồi</label>
+                  <textarea 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold h-16"
+                    value={recallForm.note}
+                    onChange={e => setRecallForm({ ...recallForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" disabled={recallForm.qtyGood + recallForm.qtyBroken + recallForm.qtyLost !== recallForm.quantity} className="px-5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-colors disabled:opacity-50">Xác nhận thu hồi</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* D. DAMAGE MODAL */}
+      {activeStockModal === 'DAMAGE' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <Wrench className="h-4 w-4 text-red-500" /> Báo hỏng số lượng CCDC
+              </h3>
+              <button onClick={() => setActiveStockModal('NONE')} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={(e) => handleStockSubmit(e, 'damage', damageForm)}>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vị trí xảy ra hỏng hóc *</label>
+                  <select 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={damageForm.locationName}
+                    onChange={e => setDamageForm({ ...damageForm, locationName: e.target.value })}
+                  >
+                    {tool.stocks?.filter((s: any) => s.quantityAvailable > 0).map((s: any) => (
+                      <option key={s.id} value={s.locationName}>{s.locationName} (Có sẵn: {s.quantityAvailable})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Số lượng báo hỏng *</label>
+                  <input 
+                    type="number" 
+                    min={1} 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                    value={damageForm.quantity}
+                    onChange={e => setDamageForm({ ...damageForm, quantity: Number(e.target.value) || 1 })}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Mức độ hư hại</label>
+                  <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+                    <button
+                      type="button"
+                      onClick={() => setDamageForm({ ...damageForm, canRepair: true })}
+                      className={`py-2 px-3 rounded-lg text-xs font-bold transition-all ${damageForm.canRepair ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      Có thể sửa chữa
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDamageForm({ ...damageForm, canRepair: false })}
+                      className={`py-2 px-3 rounded-lg text-xs font-bold transition-all ${!damageForm.canRepair ? 'bg-white text-red-700 shadow-sm' : 'text-slate-500'}`}
+                    >
+                      Không sửa được (Hủy)
+                    </button>
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lý do hư hỏng / Ghi chú</label>
+                  <textarea 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold h-16"
+                    value={damageForm.note}
+                    onChange={e => setDamageForm({ ...damageForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-red-650 hover:bg-red-750 text-white rounded-xl text-xs font-bold transition-colors">Báo hỏng</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* E. REPAIR COMPLETE MODAL */}
+      {activeStockModal === 'REPAIR_COMPLETE' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <CheckCircle2 className="h-4 w-4 text-teal-500" /> Xác nhận CCDC sửa chữa hoàn thành
+              </h3>
+              <button onClick={() => setActiveStockModal('NONE')} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={(e) => handleStockSubmit(e, 'repair-complete', repairCompleteForm)}>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chọn địa điểm sửa xong *</label>
+                  <select 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={repairCompleteForm.locationName}
+                    onChange={e => setRepairCompleteForm({ ...repairCompleteForm, locationName: e.target.value })}
+                  >
+                    {tool.stocks?.filter((s: any) => s.quantityBroken > 0).map((s: any) => (
+                      <option key={s.id} value={s.locationName}>{s.locationName} (Đang sửa: {s.quantityBroken})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Số lượng đã sửa xong *</label>
+                  <input 
+                    type="number" 
+                    min={1} 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                    value={repairCompleteForm.quantity}
+                    onChange={e => setRepairCompleteForm({ ...repairCompleteForm, quantity: Number(e.target.value) || 1 })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chi phí sửa thực tế (VNĐ)</label>
+                  <input 
+                    type="number" 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                    value={repairCompleteForm.actualCost}
+                    onChange={e => setRepairCompleteForm({ ...repairCompleteForm, actualCost: Number(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú sửa chữa</label>
+                  <textarea 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold h-16"
+                    value={repairCompleteForm.note}
+                    onChange={e => setRepairCompleteForm({ ...repairCompleteForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-teal-600 hover:bg-teal-700 text-white rounded-xl text-xs font-bold transition-colors">Hoàn tất sửa</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* F. LOST MODAL */}
+      {activeStockModal === 'LOST' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <ShieldAlert className="h-4 w-4 text-orange-500" /> Báo mất / Thất thoát CCDC
+              </h3>
+              <button onClick={() => setActiveStockModal('NONE')} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={(e) => handleStockSubmit(e, 'lost', lostForm)}>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chọn địa điểm xảy ra mất *</label>
+                  <select 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={lostForm.locationName}
+                    onChange={e => setLostForm({ ...lostForm, locationName: e.target.value })}
+                  >
+                    {tool.stocks?.filter((s: any) => s.quantityAvailable > 0).map((s: any) => (
+                      <option key={s.id} value={s.locationName}>{s.locationName} (Có sẵn: {s.quantityAvailable})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Số lượng báo mất *</label>
+                  <input 
+                    type="number" 
+                    min={1} 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                    value={lostForm.quantity}
+                    onChange={e => setLostForm({ ...lostForm, quantity: Number(e.target.value) || 1 })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhân sự chịu trách nhiệm bồi thường</label>
+                  <input 
+                    type="text" 
+                    placeholder="Họ tên nhân viên chịu trách nhiệm..."
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={lostForm.responsibleUser}
+                    onChange={e => setLostForm({ ...lostForm, responsibleUser: e.target.value })}
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Giá trị khấu hao (VNĐ)</label>
+                    <input 
+                      type="number" 
+                      className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                      value={lostForm.compensationValue}
+                      onChange={e => setLostForm({ ...lostForm, compensationValue: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Số biên bản bồi hoàn</label>
+                    <input 
+                      type="text" 
+                      placeholder="BB-00001..."
+                      className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                      value={lostForm.documentNo}
+                      onChange={e => setLostForm({ ...lostForm, documentNo: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú sự việc</label>
+                  <textarea 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold h-16"
+                    value={lostForm.note}
+                    onChange={e => setLostForm({ ...lostForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-xl text-xs font-bold transition-colors">Xác nhận báo mất</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* G. BATCH (IMPORT NEW BATCH) MODAL */}
+      {activeStockModal === 'BATCH' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <Plus className="h-4 w-4 text-indigo-500" /> Nhập thêm lô hàng mới (Tách lô)
+              </h3>
+              <button onClick={() => setActiveStockModal('NONE')} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={(e) => handleStockSubmit(e, 'batch', batchForm)}>
+              <div className="p-6 space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Số lượng nhập lô *</label>
+                    <input 
+                      type="number" 
+                      min={1} 
+                      required 
+                      className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                      value={batchForm.quantity}
+                      onChange={e => setBatchForm({ ...batchForm, quantity: Number(e.target.value) || 1 })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đơn giá lô này (VNĐ) *</label>
+                    <input 
+                      type="number" 
+                      required 
+                      className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                      value={batchForm.purchasePrice}
+                      onChange={e => setBatchForm({ ...batchForm, purchasePrice: Number(e.target.value) || 0 })}
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ngày nhập lô *</label>
+                    <input 
+                      type="date" 
+                      required 
+                      className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                      value={batchForm.purchaseDate}
+                      onChange={e => setBatchForm({ ...batchForm, purchaseDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhà cung cấp lô này</label>
+                    <input 
+                      type="text" 
+                      placeholder="NCC mới..."
+                      className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                      value={batchForm.supplierName}
+                      onChange={e => setBatchForm({ ...batchForm, supplierName: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Kho / Vị trí nhận lô hàng này *</label>
+                  <input 
+                    type="text" 
+                    required 
+                    placeholder="Tên kho lưu trữ..."
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={batchForm.locationName}
+                    onChange={e => setBatchForm({ ...batchForm, locationName: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú lô hàng</label>
+                  <textarea 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold h-16"
+                    value={batchForm.note}
+                    onChange={e => setBatchForm({ ...batchForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-indigo-650 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold transition-colors">Nhập lô hàng</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* H. ADJUST STOCK MODAL */}
+      {activeStockModal === 'ADJUST' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-md border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                <ClipboardCheck className="h-4 w-4 text-slate-650" /> Kiểm kê tồn kho số lượng
+              </h3>
+              <button onClick={() => setActiveStockModal('NONE')} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={(e) => handleStockSubmit(e, 'adjust', adjustForm)}>
+              <div className="p-6 space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chọn địa điểm kiểm kê *</label>
+                  <select 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={adjustForm.locationName}
+                    onChange={e => {
+                      const selLoc = e.target.value;
+                      const selQty = tool.stocks?.find((s: any) => s.locationName === selLoc)?.quantityAvailable || 0;
+                      setAdjustForm({ ...adjustForm, locationName: selLoc, actualQuantity: selQty });
+                    }}
+                  >
+                    {tool.stocks?.map((s: any) => (
+                      <option key={s.id} value={s.locationName}>{s.locationName} (Sổ sách: {s.quantityAvailable})</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Số lượng kiểm thực tế *</label>
+                  <input 
+                    type="number" 
+                    min={0} 
+                    required 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold"
+                    value={adjustForm.actualQuantity}
+                    onChange={e => setAdjustForm({ ...adjustForm, actualQuantity: Number(e.target.value) || 0 })}
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Phương án xử lý nếu chênh lệch thiếu</label>
+                  <select 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-semibold"
+                    value={adjustForm.action}
+                    onChange={e => setAdjustForm({ ...adjustForm, action: e.target.value as any })}
+                  >
+                    <option value="ADJUST_STOCK">Tự động điều chỉnh tồn khả dụng khớp thực tế</option>
+                    <option value="RECORD_LOST">Ghi nhận số lượng chênh lệch vào Thất thoát/Mất</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú kiểm kê / Lý do chênh lệch</label>
+                  <textarea 
+                    className="w-full bg-slate-50 border rounded-xl px-3 py-2 text-xs font-semibold h-16"
+                    value={adjustForm.note}
+                    onChange={e => setAdjustForm({ ...adjustForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-colors">Xác nhận điều chỉnh</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

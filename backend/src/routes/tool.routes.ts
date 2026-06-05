@@ -571,4 +571,86 @@ async function parseCcdcExcel(buffer: any) {
   return rows;
 }
 
+// --- QUANTITY STOCK MANAGEMENT ROUTING ---
+
+router.post('/stock/transfer', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.transferStock(req.body, performedBy);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/stock/use', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.allocateStock(req.body, performedBy);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/stock/recall', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.recallStock(req.body, performedBy);
+    res.json(result);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/stock/damage', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.reportDamageStock(req.body, performedBy);
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/stock/repair-complete', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.completeRepairStock(req.body, performedBy);
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/stock/lost', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.reportLostStock(req.body, performedBy);
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/stock/batch', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.importNewBatch(req.body, performedBy);
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/stock/adjust', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.adjustStock(req.body, performedBy);
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 export default router;

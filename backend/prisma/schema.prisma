@@ -812,6 +812,9 @@ model ToolEquipment {
   histories        ToolHistory[]
   handoverItems    ToolHandoverItem[]
   repairLogs       ToolRepairLog[]
+  stocks           ToolStock[]
+  batches          ToolBatch[]
+  stockTransactions ToolStockTransaction[]
 }
 
 model ToolAssignment {
@@ -1059,6 +1062,45 @@ model ToolHistory {
   importedById        Int?
   importedAt          DateTime?     @default(now())
   tool                ToolEquipment @relation(fields: [toolId], references: [id])
+}
+
+model ToolStock {
+  id                Int           @id @default(autoincrement())
+  toolId            Int
+  locationName      String        // e.g. "Danko Group - Hà Nội - Văn phòng C6 - Tầng 1 - Kho"
+  quantityAvailable Int           @default(0) // Khả dụng
+  quantityUsing     Int           @default(0) // Đang sử dụng
+  quantityBroken    Int           @default(0) // Đang sửa
+  quantityLost      Int           @default(0) // Mất
+  quantityDestroyed Int           @default(0) // Đã hủy
+  tool              ToolEquipment @relation(fields: [toolId], references: [id], onDelete: Cascade)
+
+  @@unique([toolId, locationName])
+}
+
+model ToolBatch {
+  id            Int           @id @default(autoincrement())
+  toolId        Int
+  batchNumber   String        // e.g. "LOT001"
+  quantity      Int           @default(0)
+  purchasePrice Float         @default(0)
+  purchaseDate  DateTime?
+  supplierName  String?
+  createdAt     DateTime      @default(now())
+  tool          ToolEquipment @relation(fields: [toolId], references: [id], onDelete: Cascade)
+}
+
+model ToolStockTransaction {
+  id            Int           @id @default(autoincrement())
+  toolId        Int
+  type          String        // IMPORT, TRANSFER, RECALL, DAMAGE, REPAIR_COMPLETE, DESTROY, LOST, ADJUST
+  quantity      Int
+  fromLocation  String?
+  toLocation    String?
+  performedBy   String
+  note          String?
+  createdAt     DateTime      @default(now())
+  tool          ToolEquipment @relation(fields: [toolId], references: [id], onDelete: Cascade)
 }
 
 

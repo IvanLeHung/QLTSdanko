@@ -251,6 +251,44 @@ export class ToolService {
         }
       });
 
+      // QUANTITY type stock initialization
+      if (tool.managementType === 'QUANTITY') {
+        const loc = tool.locationName || 'KHO CCDC';
+        await tx.toolStock.create({
+          data: {
+            toolId: tool.id,
+            locationName: loc,
+            quantityAvailable: tool.quantity,
+            quantityUsing: 0,
+            quantityBroken: 0,
+            quantityLost: 0,
+            quantityDestroyed: 0
+          }
+        });
+
+        await tx.toolBatch.create({
+          data: {
+            toolId: tool.id,
+            batchNumber: 'LOT001',
+            quantity: tool.quantity,
+            purchasePrice: tool.purchasePrice || 0,
+            purchaseDate: tool.purchaseDate,
+            supplierName: tool.supplierName
+          }
+        });
+
+        await tx.toolStockTransaction.create({
+          data: {
+            toolId: tool.id,
+            type: 'IMPORT',
+            quantity: tool.quantity,
+            toLocation: loc,
+            performedBy,
+            note: 'Nhập mới CCDC'
+          }
+        });
+      }
+
       // Write initial history
       await tx.toolHistory.create({
         data: {
@@ -478,7 +516,10 @@ export class ToolService {
         lostReports: { orderBy: { createdAt: 'desc' } },
         liquidations: { include: { liquidationRecord: true } },
         inventoryItems: { include: { inventoryCheck: true }, orderBy: { checkedAt: 'desc' } },
-        histories: { orderBy: { eventTime: 'desc' } }
+        histories: { orderBy: { eventTime: 'desc' } },
+        stocks: true,
+        batches: { orderBy: { createdAt: 'asc' } },
+        stockTransactions: { orderBy: { createdAt: 'desc' } }
       }
     });
   }
@@ -1207,6 +1248,485 @@ export class ToolService {
       });
 
       return updatedCheck;
+    });
+  }
+
+  // --- QUANTITY STOCK MANAGEMENT TRANSACTION SERVICES ---
+
+  static async transferStock(data: {
+    toolId: number;
+    quantity: number;
+    fromLocation: string;
+    toLocation: string;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const tool = await tx.toolEquipment.findUnique({ where: { id: data.toolId } });
+      if (!tool) throw new Error('Không tìm thấy CCDC.');
+
+      const sourceStock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.fromLocation } }
+      });
+      if (!sourceStock || sourceStock.quantityAvailable < data.quantity) {
+        throw new Error(`Số lượng khả dụng tại nguồn không đủ (Hiện có: ${sourceStock?.quantityAvailable || 0}).`);
+      }
+
+      await tx.toolStock.update({
+        where: { id: sourceStock.id },
+        data: { quantityAvailable: { decrement: data.quantity } }
+      });
+
+      await tx.toolStock.upsert({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.toLocation } },
+        create: {
+          toolId: data.toolId,
+          locationName: data.toLocation,
+          quantityAvailable: data.quantity
+        },
+        update: {
+          quantityAvailable: { increment: data.quantity }
+        }
+      });
+
+      const stockTx = await tx.toolStockTransaction.create({
+        data: {
+          toolId: data.toolId,
+          type: 'TRANSFER',
+          quantity: data.quantity,
+          fromLocation: data.fromLocation,
+          toLocation: data.toLocation,
+          performedBy,
+          note: data.note || 'Điều chuyển CCDC'
+        }
+      });
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: data.toolId,
+        action: 'TRANSFER_STOCK' as any,
+        details: { quantity: data.quantity, from: data.fromLocation, to: data.toLocation, note: data.note },
+        performedBy,
+        tx
+      });
+
+      return stockTx;
+    });
+  }
+
+  static async allocateStock(data: {
+    toolId: number;
+    quantity: number;
+    fromLocation: string;
+    toLocation: string;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const sourceStock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.fromLocation } }
+      });
+      if (!sourceStock || sourceStock.quantityAvailable < data.quantity) {
+        throw new Error('Số lượng khả dụng không đủ.');
+      }
+      await tx.toolStock.update({
+        where: { id: sourceStock.id },
+        data: { quantityAvailable: { decrement: data.quantity } }
+      });
+      await tx.toolStock.upsert({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.toLocation } },
+        create: {
+          toolId: data.toolId,
+          locationName: data.toLocation,
+          quantityUsing: data.quantity
+        },
+        update: {
+          quantityUsing: { increment: data.quantity }
+        }
+      });
+      return await tx.toolStockTransaction.create({
+        data: {
+          toolId: data.toolId,
+          type: 'USE',
+          quantity: data.quantity,
+          fromLocation: data.fromLocation,
+          toLocation: data.toLocation,
+          performedBy,
+          note: data.note || 'Cấp phát sử dụng'
+        }
+      });
+    });
+  }
+
+  static async recallStock(data: {
+    toolId: number;
+    quantity: number;
+    fromLocation: string;
+    toLocation: string;
+    qtyGood: number;
+    qtyBroken: number;
+    qtyLost: number;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const tool = await tx.toolEquipment.findUnique({ where: { id: data.toolId } });
+      if (!tool) throw new Error('Không tìm thấy CCDC.');
+
+      if (data.qtyGood + data.qtyBroken + data.qtyLost !== data.quantity) {
+        throw new Error('Tổng số lượng thu hồi chi tiết không khớp tổng số lượng yêu cầu.');
+      }
+
+      const sourceStock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.fromLocation } }
+      });
+      if (!sourceStock) {
+        throw new Error(`Không tìm thấy thông tin tồn kho tại vị trí ${data.fromLocation}.`);
+      }
+      const sourceUsing = sourceStock.quantityUsing;
+      if (sourceUsing < data.quantity) {
+        throw new Error(`Số lượng đang sử dụng tại nguồn không đủ (Hiện có: ${sourceUsing}).`);
+      }
+
+      await tx.toolStock.update({
+        where: { id: sourceStock.id },
+        data: { quantityUsing: { decrement: data.quantity } }
+      });
+
+      await tx.toolStock.upsert({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.toLocation } },
+        create: {
+          toolId: data.toolId,
+          locationName: data.toLocation,
+          quantityAvailable: data.qtyGood,
+          quantityBroken: data.qtyBroken,
+          quantityLost: data.qtyLost
+        },
+        update: {
+          quantityAvailable: { increment: data.qtyGood },
+          quantityBroken: { increment: data.qtyBroken },
+          quantityLost: { increment: data.qtyLost }
+        }
+      });
+
+      const stockTx = await tx.toolStockTransaction.create({
+        data: {
+          toolId: data.toolId,
+          type: 'RECALL',
+          quantity: data.quantity,
+          fromLocation: data.fromLocation,
+          toLocation: data.toLocation,
+          performedBy,
+          note: data.note || `Thu hồi (Tốt: ${data.qtyGood}, Hỏng: ${data.qtyBroken}, Mất: ${data.qtyLost})`
+        }
+      });
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: data.toolId,
+        action: 'RECALL_STOCK' as any,
+        details: { quantity: data.quantity, good: data.qtyGood, broken: data.qtyBroken, lost: data.qtyLost, from: data.fromLocation, to: data.toLocation },
+        performedBy,
+        tx
+      });
+
+      return stockTx;
+    });
+  }
+
+  static async reportDamageStock(data: {
+    toolId: number;
+    quantity: number;
+    locationName: string;
+    canRepair: boolean;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const stock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.locationName } }
+      });
+      if (!stock || stock.quantityAvailable < data.quantity) {
+        throw new Error('Số lượng khả dụng không đủ để báo hỏng.');
+      }
+
+      if (data.canRepair) {
+        await tx.toolStock.update({
+          where: { id: stock.id },
+          data: {
+            quantityAvailable: { decrement: data.quantity },
+            quantityBroken: { increment: data.quantity }
+          }
+        });
+        await tx.toolStockTransaction.create({
+          data: {
+            toolId: data.toolId,
+            type: 'DAMAGE',
+            quantity: data.quantity,
+            fromLocation: data.locationName,
+            performedBy,
+            note: data.note || 'Báo hỏng (Có thể sửa)'
+          }
+        });
+      } else {
+        await tx.toolStock.update({
+          where: { id: stock.id },
+          data: {
+            quantityAvailable: { decrement: data.quantity },
+            quantityDestroyed: { increment: data.quantity }
+          }
+        });
+        await tx.toolEquipment.update({
+          where: { id: data.toolId },
+          data: {
+            quantity: { decrement: data.quantity }
+          }
+        });
+        await tx.toolStockTransaction.create({
+          data: {
+            toolId: data.toolId,
+            type: 'DESTROY',
+            quantity: data.quantity,
+            fromLocation: data.locationName,
+            performedBy,
+            note: data.note || 'Hủy bỏ (Không thể sửa)'
+          }
+        });
+      }
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: data.toolId,
+        action: 'DAMAGE_STOCK' as any,
+        details: { quantity: data.quantity, canRepair: data.canRepair, location: data.locationName },
+        performedBy,
+        tx
+      });
+    });
+  }
+
+  static async completeRepairStock(data: {
+    toolId: number;
+    quantity: number;
+    locationName: string;
+    actualCost: number;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const stock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.locationName } }
+      });
+      if (!stock || stock.quantityBroken < data.quantity) {
+        throw new Error('Số lượng đang báo hỏng tại vị trí không đủ.');
+      }
+
+      await tx.toolStock.update({
+        where: { id: stock.id },
+        data: {
+          quantityBroken: { decrement: data.quantity },
+          quantityAvailable: { increment: data.quantity }
+        }
+      });
+
+      await tx.toolStockTransaction.create({
+        data: {
+          toolId: data.toolId,
+          type: 'REPAIR_COMPLETE',
+          quantity: data.quantity,
+          toLocation: data.locationName,
+          performedBy,
+          note: data.note || `Hoàn tất sửa chữa. Chi phí: ${data.actualCost.toLocaleString()} VNĐ`
+        }
+      });
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: data.toolId,
+        action: 'REPAIR_COMPLETE_STOCK' as any,
+        details: { quantity: data.quantity, cost: data.actualCost, location: data.locationName },
+        performedBy,
+        tx
+      });
+    });
+  }
+
+  static async reportLostStock(data: {
+    toolId: number;
+    quantity: number;
+    locationName: string;
+    responsibleUser?: string;
+    compensationValue?: number;
+    documentNo?: string;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const stock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.locationName } }
+      });
+      if (!stock || stock.quantityAvailable < data.quantity) {
+        throw new Error('Số lượng khả dụng không đủ để báo mất.');
+      }
+
+      await tx.toolStock.update({
+        where: { id: stock.id },
+        data: {
+          quantityAvailable: { decrement: data.quantity },
+          quantityLost: { increment: data.quantity }
+        }
+      });
+
+      await tx.toolStockTransaction.create({
+        data: {
+          toolId: data.toolId,
+          type: 'LOST',
+          quantity: data.quantity,
+          fromLocation: data.locationName,
+          performedBy,
+          note: data.note || `Báo mất (Trách nhiệm: ${data.responsibleUser || '---'}, Bồi hoàn: ${data.compensationValue?.toLocaleString()} VNĐ, Biên bản: ${data.documentNo || '---'})`
+        }
+      });
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: data.toolId,
+        action: 'LOST_STOCK' as any,
+        details: { quantity: data.quantity, user: data.responsibleUser, comp: data.compensationValue, doc: data.documentNo, location: data.locationName },
+        performedBy,
+        tx
+      });
+    });
+  }
+
+  static async importNewBatch(data: {
+    toolId: number;
+    quantity: number;
+    purchasePrice: number;
+    purchaseDate?: string;
+    supplierName?: string;
+    locationName: string;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const tool = await tx.toolEquipment.findUnique({
+        where: { id: data.toolId },
+        include: { batches: true }
+      });
+      if (!tool) throw new Error('Không tìm thấy CCDC.');
+
+      const lotIndex = tool.batches.length + 1;
+      const lotNumber = `LOT${lotIndex.toString().padStart(3, '0')}`;
+
+      await tx.toolBatch.create({
+        data: {
+          toolId: data.toolId,
+          batchNumber: lotNumber,
+          quantity: data.quantity,
+          purchasePrice: data.purchasePrice,
+          purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
+          supplierName: data.supplierName
+        }
+      });
+
+      await tx.toolStock.upsert({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.locationName } },
+        create: {
+          toolId: data.toolId,
+          locationName: data.locationName,
+          quantityAvailable: data.quantity
+        },
+        update: {
+          quantityAvailable: { increment: data.quantity }
+        }
+      });
+
+      await tx.toolEquipment.update({
+        where: { id: data.toolId },
+        data: {
+          quantity: { increment: data.quantity }
+        }
+      });
+
+      await tx.toolStockTransaction.create({
+        data: {
+          toolId: data.toolId,
+          type: 'IMPORT',
+          quantity: data.quantity,
+          toLocation: data.locationName,
+          performedBy,
+          note: data.note || `Nhập thêm lô hàng ${lotNumber}`
+        }
+      });
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: data.toolId,
+        action: 'IMPORT_BATCH_STOCK' as any,
+        details: { lotNumber, quantity: data.quantity, price: data.purchasePrice, location: data.locationName },
+        performedBy,
+        tx
+      });
+    });
+  }
+
+  static async adjustStock(data: {
+    toolId: number;
+    locationName: string;
+    actualQuantity: number;
+    action: 'ADJUST_STOCK' | 'RECORD_LOST' | 'WAIT_VERIFY';
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const stock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: data.toolId, locationName: data.locationName } }
+      });
+      if (!stock) throw new Error('Không tìm thấy dữ liệu tồn kho tại vị trí này.');
+
+      const diff = data.actualQuantity - stock.quantityAvailable;
+
+      if (data.action === 'ADJUST_STOCK') {
+        await tx.toolStock.update({
+          where: { id: stock.id },
+          data: { quantityAvailable: data.actualQuantity }
+        });
+        await tx.toolEquipment.update({
+          where: { id: data.toolId },
+          data: { quantity: { increment: diff } }
+        });
+        await tx.toolStockTransaction.create({
+          data: {
+            toolId: data.toolId,
+            type: 'ADJUST',
+            quantity: diff,
+            toLocation: data.locationName,
+            performedBy,
+            note: data.note || `Kiểm kê điều chỉnh tồn kho (Chênh lệch: ${diff > 0 ? '+' : ''}${diff})`
+          }
+        });
+      } else if (data.action === 'RECORD_LOST' && diff < 0) {
+        const lostQty = Math.abs(diff);
+        await tx.toolStock.update({
+          where: { id: stock.id },
+          data: {
+            quantityAvailable: data.actualQuantity,
+            quantityLost: { increment: lostQty }
+          }
+        });
+        await tx.toolStockTransaction.create({
+          data: {
+            toolId: data.toolId,
+            type: 'LOST',
+            quantity: lostQty,
+            fromLocation: data.locationName,
+            performedBy,
+            note: data.note || `Ghi nhận mất qua kiểm kê (Chênh lệch: -${lostQty})`
+          }
+        });
+      }
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: data.toolId,
+        action: 'ADJUST_STOCK' as any,
+        details: { action: data.action, actual: data.actualQuantity, diff, location: data.locationName },
+        performedBy,
+        tx
+      });
     });
   }
 }
