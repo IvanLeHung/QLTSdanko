@@ -79,6 +79,7 @@ export const ToolList: React.FC = () => {
     unit?: string;
     category?: string;
     stock?: string;
+    hasRealImage?: boolean;
     x: number; 
     y: number; 
   } | null>(null);
@@ -971,9 +972,10 @@ export const ToolList: React.FC = () => {
                               imageUrl = files.avatarUrl || files.photoUrl || '';
                             } catch (e) {}
                           }
-                          return imageUrl ? (
+                          const hasRealImage = !!imageUrl;
+                          return (
                             <span 
-                              className="hover:text-primary-600 transition-colors cursor-pointer border-b border-dashed border-slate-350 pb-0.5 inline-flex items-center gap-1"
+                              className="hover:text-indigo-600 transition-colors cursor-pointer border-b border-dashed border-slate-300 pb-0.5 inline-flex items-center gap-1"
                               onMouseEnter={(e) => {
                                 setHoveredImage({
                                   url: imageUrl,
@@ -982,6 +984,7 @@ export const ToolList: React.FC = () => {
                                   unit: tool.unit || 'Cái',
                                   category: tool.category,
                                   stock: `${tool.quantity} ${tool.unit || 'Cái'}`,
+                                  hasRealImage,
                                   x: e.clientX,
                                   y: e.clientY
                                 });
@@ -991,10 +994,13 @@ export const ToolList: React.FC = () => {
                               }}
                               onMouseLeave={() => setHoveredImage(null)}
                             >
-                              <span className="text-[12px] opacity-75">🖼️</span> {tool.toolName}
+                              {hasRealImage ? (
+                                <span className="text-[12px] opacity-90 animate-pulse">🖼️</span>
+                              ) : (
+                                <span className="text-[10px] opacity-50">📷</span>
+                              )}
+                              {tool.toolName}
                             </span>
-                          ) : (
-                            tool.toolName
                           );
                         })()}
                       </td>
@@ -2210,21 +2216,29 @@ export const ToolList: React.FC = () => {
             top: `${hoveredImage.y - 310 < 10 ? hoveredImage.y + 20 : hoveredImage.y - 310}px`,
           }}
         >
-          <div className="w-full h-44 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center">
-            <img src={hoveredImage.url} alt={hoveredImage.name} className="w-full h-full object-cover" />
+          <div className="w-full h-44 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center relative">
+            {hoveredImage.hasRealImage ? (
+              <img src={hoveredImage.url} alt={hoveredImage.name} className="w-full h-full object-cover animate-in fade-in duration-300" />
+            ) : (
+              <div className="flex flex-col items-center justify-center p-4 text-center">
+                <span className="text-3xl mb-1 text-slate-350">📷</span>
+                <span className="text-[11px] font-black text-slate-400">Chưa tải ảnh lên Cloudinary</span>
+                <span className="text-[9px] text-slate-350 mt-1">Click vào tên CCDC để vào trang tải ảnh</span>
+              </div>
+            )}
           </div>
           <div className="space-y-2 text-left">
             <p className="text-sm font-black text-slate-800 leading-tight uppercase">
               {hoveredImage.name}
             </p>
             <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
-              <span>MÃ: <span className="text-slate-650 font-mono font-bold">{hoveredImage.code || '---'}</span></span>
-              <span>ĐVT: <span className="text-slate-655 font-bold">{hoveredImage.unit || '---'}</span></span>
+              <span>MÃ: <span className="text-slate-600 font-mono font-bold">{hoveredImage.code || '---'}</span></span>
+              <span>ĐVT: <span className="text-slate-600 font-bold">{hoveredImage.unit || '---'}</span></span>
             </div>
             <div className="text-[10px] text-slate-400 font-bold">
-              PHÂN LOẠI: <span className="text-slate-655 font-bold">{hoveredImage.category || '---'}</span>
+              PHÂN LOẠI: <span className="text-slate-600 font-bold">{hoveredImage.category || '---'}</span>
             </div>
-            <div className="inline-flex px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-[9px] font-black uppercase tracking-wider border border-blue-100 w-max">
+            <div className="inline-flex px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-lg text-[9px] font-black uppercase tracking-wider border border-indigo-100 w-max">
               TỒN KHO: {hoveredImage.stock || '---'}
             </div>
           </div>
