@@ -126,44 +126,53 @@ export const ToolDetail: React.FC = () => {
     }
   }, []);
 
-  const handleUploadFile = (fileType: string) => {
+  const handleUploadFile = async (fileType: string) => {
     if (!(window as any).cloudinary) {
       toast.error('Trình tải tệp Cloudinary chưa sẵn sàng. Vui lòng tải lại trang hoặc đợi trong giây lát!');
       return;
     }
     
-    const widget = (window as any).cloudinary.createUploadWidget(
-      {
-        cloudName: 'dhr0lgl8q',
-        uploadPreset: 'ml_default',
-        multiple: false,
-        resourceType: fileType === 'avatarUrl' || fileType === 'photoUrl' ? 'image' : 'auto'
-      },
-      async (error: any, result: any) => {
-        if (!error && result && result.event === "success") {
-          const secureUrl = result.info.secure_url;
-          toast.info('Tải tệp lên Cloudinary thành công! Đang lưu thông tin...');
-          
-          try {
-            const currentFiles = tool.filesJson ? JSON.parse(tool.filesJson) : {};
-            currentFiles[fileType] = secureUrl;
+    try {
+      const configRes = await api.get('/settings/cloudinary');
+      const { cloudName, apiKey, uploadPreset } = configRes.data;
+      
+      const widget = (window as any).cloudinary.createUploadWidget(
+        {
+          cloudName: cloudName || 'dhr0lgl8q',
+          apiKey: apiKey || undefined,
+          uploadPreset: uploadPreset || 'ml_default',
+          multiple: false,
+          resourceType: fileType === 'avatarUrl' || fileType === 'photoUrl' ? 'image' : 'auto'
+        },
+        async (error: any, result: any) => {
+          if (!error && result && result.event === "success") {
+            const secureUrl = result.info.secure_url;
+            toast.info('Tải tệp lên Cloudinary thành công! Đang lưu thông tin...');
             
-            const payload = {
-              ...tool,
-              filesJson: JSON.stringify(currentFiles)
-            };
-            
-            await api.put(`/tools/${tool.id}`, payload);
-            toast.success('Đã cập nhật tệp đính kèm thành công!');
-            fetchToolDetail();
-          } catch (err: any) {
-            console.error(err);
-            toast.error(err.response?.data?.message || 'Có lỗi xảy ra khi cập nhật.');
+            try {
+              const currentFiles = tool.filesJson ? JSON.parse(tool.filesJson) : {};
+              currentFiles[fileType] = secureUrl;
+              
+              const payload = {
+                ...tool,
+                filesJson: JSON.stringify(currentFiles)
+              };
+              
+              await api.put(`/tools/${tool.id}`, payload);
+              toast.success('Đã cập nhật tệp đính kèm thành công!');
+              fetchToolDetail();
+            } catch (err: any) {
+              console.error(err);
+              toast.error(err.response?.data?.message || 'Có lỗi xảy ra khi cập nhật.');
+            }
           }
         }
-      }
-    );
-    widget.open();
+      );
+      widget.open();
+    } catch (err) {
+      console.error(err);
+      toast.error('Không thể lấy cấu hình Cloudinary từ hệ thống.');
+    }
   };
 
   const handleDeleteFile = async (fileType: string) => {

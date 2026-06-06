@@ -8,6 +8,15 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const router = Router();
 
+// --- CLOUDINARY CONFIG API ---
+router.get('/cloudinary', authenticateToken, (req, res) => {
+  res.json({
+    cloudName: process.env.CLOUDINARY_CLOUD_NAME || "dhr0lgl8q",
+    apiKey: process.env.CLOUDINARY_API_KEY || "",
+    uploadPreset: process.env.CLOUDINARY_UPLOAD_PRESET || "ml_default"
+  });
+});
+
 // --- COMPANY MANAGEMENT ---
 router.get('/companies/stats', authenticateToken, async (req, res) => {
   try {
