@@ -4,6 +4,10 @@ import { authenticateToken } from '../middleware/auth.middleware';
 import multer from 'multer';
 import ExcelJS from 'exceljs';
 import { ToolService } from '../services/tool.service';
+import { ToolInvoiceParserService } from '../services/tool-invoice-parser.service';
+import { ToolInvoicePostService } from '../services/tool-invoice-post.service';
+import * as path from 'path';
+import * as fs from 'fs';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -667,6 +671,106 @@ router.post('/stock/split', authenticateToken, async (req: any, res) => {
     res.json({ success: true, result });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
+  }
+});
+
+// --- INVOICE IMPORT ENDPOINTS ---
+router.post('/import-invoice/parse', authenticateToken, upload.single('file'), async (req: any, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'Vui lòng chọn tệp tin để tải lên.' });
+    }
+
+    const filename = req.file.originalname.toLowerCase();
+    
+    // Save file locally to uploads/ccdc-invoices
+    const uploadsDir = path.join(process.cwd(), 'uploads', 'ccdc-invoices');
+    if (!fs.existsSync(uploadsDir)) {
+      fs.mkdirSync(uploadsDir, { recursive: true });
+    }
+    const ext = path.extname(req.file.originalname) || (filename.endsWith('.xml') ? '.xml' : filename.endsWith('.pdf') ? '.pdf' : '.xlsx');
+    const randomSuffix = Math.random().toString(36).substring(2, 8);
+    const savedFilename = `invoice-${Date.now()}-${randomSuffix}${ext}`;
+    const filePath = path.join(uploadsDir, savedFilename);
+    fs.writeFileSync(filePath, req.file.buffer);
+    const fileUrl = `/uploads/ccdc-invoices/${savedFilename}`;
+
+    let result: any;
+    if (filename.endsWith('.xml')) {
+      const xmlContent = req.file.buffer.toString('utf-8');
+      result = await ToolInvoiceParserService.parseXml(xmlContent);
+    } else if (filename.endsWith('.xlsx') || filename.endsWith('.xls') || filename.endsWith('.csv')) {
+      result = await ToolInvoiceParserService.parseExcel(req.file.buffer);
+    } else if (filename.endsWith('.pdf') || filename.endsWith('.png') || filename.endsWith('.jpg') || filename.endsWith('.jpeg')) {
+      // PDF or Image text fallback
+      result = {
+        invoice: { invoiceNo: '', invoiceDate: '', supplierName: '', supplierTaxCode: '', totalAmount: 0 },
+        lines: [],
+        warnings: ['Không thể bóc tách đầy đủ dữ liệu từ PDF/Ảnh. Vui lòng nhập thủ công hoặc dùng file Excel/XML.']
+      };
+    } else {
+      return res.status(400).json({ message: 'Định dạng tệp không được hỗ trợ. Chỉ hỗ trợ XML, Excel, PDF và ảnh.' });
+    }
+
+    if (result && result.invoice) {
+      result.invoice.fileUrl = fileUrl;
+    }
+
+    return res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/import-invoice/post', authenticateToken, async (req: any, res) => {
+  const performedBy = req.user?.fullName || req.user?.username || 'system';
+  try {
+    const result = await ToolInvoicePostService.postInvoice(req.body, performedBy);
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.get('/invoices/list', authenticateToken, async (req: any, res) => {
+  try {
+    const { search = '' } = req.query;
+    const where: any = {};
+    if (search) {
+      where.OR = [
+        { invoiceNo: { contains: String(search), mode: 'insensitive' } },
+        { supplierName: { contains: String(search), mode: 'insensitive' } }
+      ];
+    }
+    const invoices = await prisma.toolInvoiceBatch.findMany({
+      where,
+      orderBy: { invoiceDate: 'desc' },
+      take: 50
+    });
+    res.json(invoices);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/invoices/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const invoice = await prisma.toolInvoiceBatch.findUnique({
+      where: { id },
+      include: {
+        tools: {
+          where: { isDeleted: false },
+          orderBy: { toolCode: 'asc' }
+        }
+      }
+    });
+    if (!invoice) {
+      return res.status(404).json({ message: 'Hóa đơn không tồn tại.' });
+    }
+    res.json(invoice);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 });
 

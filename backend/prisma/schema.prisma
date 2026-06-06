@@ -799,6 +799,12 @@ model ToolEquipment {
   warrantyInfoJson     String?                // Warranty details JSON
   customFieldsJson     String?                // Custom attributes JSON
   
+  invoiceBatchId          Int?
+  invoiceLineId           Int?
+  originalInvoiceItemName String?
+  invoiceBatch            ToolInvoiceBatch?  @relation(fields: [invoiceBatchId], references: [id])
+  invoiceLine             ToolInvoiceLine?   @relation(fields: [invoiceLineId], references: [id])
+  
   isDeleted        Boolean                @default(false)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
@@ -1103,6 +1109,49 @@ model ToolStockTransaction {
   note          String?
   createdAt     DateTime      @default(now())
   tool          ToolEquipment @relation(fields: [toolId], references: [id], onDelete: Cascade)
+}
+
+model ToolInvoiceBatch {
+  id              Int                @id @default(autoincrement())
+  invoiceNo       String
+  invoiceDate     DateTime
+  supplierId      Int?
+  supplierName    String
+  supplierTaxCode String?
+  companyId       Int
+  warehouseId     Int?
+  totalAmount     Float?
+  fileUrl         String?
+  status          String             @default("DRAFT") // DRAFT | VALIDATED | POSTED | CANCELLED
+  totalLines      Int                @default(0)
+  totalAssets     Int                @default(0)
+  totalValue      Float              @default(0)
+  createdById     Int?
+  createdAt       DateTime           @default(now())
+  updatedAt       DateTime           @updatedAt
+  postedAt        DateTime?
+  lines           ToolInvoiceLine[]
+  tools           ToolEquipment[]
+}
+
+model ToolInvoiceLine {
+  id                 Int               @id @default(autoincrement())
+  batchId            Int
+  lineNo             Int
+  invoiceItemName    String
+  toolName           String
+  category           String            // Nhóm CCDC
+  quantity           Int
+  unitPrice          Float
+  amount             Float
+  supplierName       String?
+  note               String?
+  validationStatus   String            @default("VALID") // VALID | WARNING | ERROR
+  warningsJson       String?           // Array of warning/error messages
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+  batch              ToolInvoiceBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  tools              ToolEquipment[]
 }
 
 

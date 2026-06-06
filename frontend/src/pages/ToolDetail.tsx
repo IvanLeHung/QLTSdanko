@@ -324,6 +324,42 @@ export const ToolDetail: React.FC = () => {
                 {tool.purchaseDate ? new Date(tool.purchaseDate).toLocaleDateString('vi-VN') : '---'}
               </span>
             </div>
+            {tool.invoiceBatch && (
+              <>
+                <hr className="border-slate-100" />
+                <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hồ sơ mua hàng</h4>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-bold uppercase tracking-wider">Nguồn nhập</span>
+                  <span className="text-primary-750 font-bold">PN-CCDC-{tool.invoiceBatch.id.toString().padStart(6, '0')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-bold uppercase tracking-wider">Hóa đơn</span>
+                  <span className="text-slate-800 font-bold">{tool.invoiceBatch.invoiceNo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-bold uppercase tracking-wider">Nhà cung cấp</span>
+                  <span className="text-slate-800">{tool.invoiceBatch.supplierName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-400 font-bold uppercase tracking-wider">Ngày hóa đơn</span>
+                  <span className="text-slate-800 font-bold">
+                    {new Date(tool.invoiceBatch.invoiceDate).toLocaleDateString('vi-VN')}
+                  </span>
+                </div>
+                {tool.invoiceLine && (
+                  <>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold uppercase tracking-wider">Số lượng ban đầu</span>
+                      <span className="text-slate-800 font-bold">{tool.invoiceLine.quantity} {tool.unit || 'Chiếc'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-400 font-bold uppercase tracking-wider">Đơn giá</span>
+                      <span className="text-slate-800">{(tool.invoiceLine.unitPrice || 0).toLocaleString()} VNĐ</span>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
             <div className="flex justify-between">
               <span className="text-slate-400 font-bold uppercase tracking-wider">Hạn dùng dự kiến</span>
               <span className="text-slate-800">{tool.expectedUsefulLife ? `${tool.expectedUsefulLife} tháng` : '---'}</span>

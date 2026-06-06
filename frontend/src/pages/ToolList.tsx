@@ -72,7 +72,16 @@ export const ToolList: React.FC = () => {
 
   // State Variables
   const [tools, setTools] = useState<any[]>([]);
-  const [hoveredImage, setHoveredImage] = useState<{ url: string; name: string; x: number; y: number } | null>(null);
+  const [hoveredImage, setHoveredImage] = useState<{ 
+    url: string; 
+    name: string; 
+    code?: string;
+    unit?: string;
+    category?: string;
+    stock?: string;
+    x: number; 
+    y: number; 
+  } | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [total, setTotal] = useState(0);
@@ -666,19 +675,25 @@ export const ToolList: React.FC = () => {
         <div className="flex flex-wrap gap-2">
           <button 
             onClick={() => navigate('/tools/new')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-colors shadow-lg shadow-primary-100"
+            className="flex items-center gap-2 px-4 py-2.5 bg-primary-600 text-white rounded-xl text-sm font-bold hover:bg-primary-700 transition-colors shadow-lg shadow-primary-100 border-0 cursor-pointer"
           >
             <Plus className="h-4 w-4" /> Thêm CCDC
           </button>
           <button 
-            onClick={() => navigate('/tools/import')}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
+            onClick={() => navigate('/tools/import-invoice')}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
           >
-            <FileUp className="h-4 w-4 text-emerald-500" /> Nhập Excel
+            <Plus className="h-4 w-4 text-primary-600" /> Nhập chứng từ
+          </button>
+          <button 
+            onClick={() => navigate('/tools/import')}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+          >
+            <FileUp className="h-4 w-4 text-emerald-500" /> Import Excel
           </button>
           <button 
             onClick={handleExportCsv}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
           >
             <Download className="h-4 w-4 text-primary-500" /> Xuất Excel
           </button>
@@ -958,11 +973,15 @@ export const ToolList: React.FC = () => {
                           }
                           return imageUrl ? (
                             <span 
-                              className="hover:text-primary-600 transition-colors cursor-pointer border-b border-dashed border-slate-300 pb-0.5"
+                              className="hover:text-primary-600 transition-colors cursor-pointer border-b border-dashed border-slate-350 pb-0.5 inline-flex items-center gap-1"
                               onMouseEnter={(e) => {
                                 setHoveredImage({
                                   url: imageUrl,
                                   name: tool.toolName,
+                                  code: tool.toolCode,
+                                  unit: tool.unit || 'Cái',
+                                  category: tool.category,
+                                  stock: `${tool.quantity} ${tool.unit || 'Cái'}`,
                                   x: e.clientX,
                                   y: e.clientY
                                 });
@@ -972,7 +991,7 @@ export const ToolList: React.FC = () => {
                               }}
                               onMouseLeave={() => setHoveredImage(null)}
                             >
-                              {tool.toolName}
+                              <span className="text-[12px] opacity-75">🖼️</span> {tool.toolName}
                             </span>
                           ) : (
                             tool.toolName
@@ -2185,17 +2204,29 @@ export const ToolList: React.FC = () => {
 
       {hoveredImage && (
         <div 
-          className="fixed z-50 bg-white border border-slate-200 p-2 rounded-2xl shadow-2xl w-64 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
+          className="fixed z-50 bg-white p-4 rounded-3xl shadow-2xl border border-slate-200 w-72 flex flex-col gap-3 pointer-events-none animate-in fade-in zoom-in-95 duration-150"
           style={{
-            left: `${Math.min(hoveredImage.x + 15, window.innerWidth - 280)}px`,
-            top: `${hoveredImage.y - 210 < 10 ? hoveredImage.y + 20 : hoveredImage.y - 210}px`,
+            left: `${Math.min(hoveredImage.x + 15, window.innerWidth - 300)}px`,
+            top: `${hoveredImage.y - 310 < 10 ? hoveredImage.y + 20 : hoveredImage.y - 310}px`,
           }}
         >
-          <div className="relative w-full h-40 bg-slate-50 rounded-xl overflow-hidden">
+          <div className="w-full h-44 rounded-2xl overflow-hidden bg-slate-50 border border-slate-100 flex items-center justify-center">
             <img src={hoveredImage.url} alt={hoveredImage.name} className="w-full h-full object-cover" />
           </div>
-          <div className="text-[10px] text-slate-500 font-bold mt-2 text-center truncate px-1">
-            {hoveredImage.name}
+          <div className="space-y-2 text-left">
+            <p className="text-sm font-black text-slate-800 leading-tight uppercase">
+              {hoveredImage.name}
+            </p>
+            <div className="flex justify-between items-center text-[10px] text-slate-400 font-bold">
+              <span>MÃ: <span className="text-slate-650 font-mono font-bold">{hoveredImage.code || '---'}</span></span>
+              <span>ĐVT: <span className="text-slate-655 font-bold">{hoveredImage.unit || '---'}</span></span>
+            </div>
+            <div className="text-[10px] text-slate-400 font-bold">
+              PHÂN LOẠI: <span className="text-slate-655 font-bold">{hoveredImage.category || '---'}</span>
+            </div>
+            <div className="inline-flex px-2.5 py-1 bg-blue-50 text-blue-700 rounded-lg text-[9px] font-black uppercase tracking-wider border border-blue-100 w-max">
+              TỒN KHO: {hoveredImage.stock || '---'}
+            </div>
           </div>
         </div>
       )}

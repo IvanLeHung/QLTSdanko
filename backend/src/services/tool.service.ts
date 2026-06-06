@@ -636,7 +636,9 @@ export class ToolService {
         histories: { orderBy: { eventTime: 'desc' } },
         stocks: true,
         batches: { orderBy: { createdAt: 'asc' } },
-        stockTransactions: { orderBy: { createdAt: 'desc' } }
+        stockTransactions: { orderBy: { createdAt: 'desc' } },
+        invoiceBatch: true,
+        invoiceLine: true
       }
     });
   }
