@@ -44,6 +44,8 @@ export const ToolDetail: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'inventoryPhotos' | 'history' | 'documents' | 'analytics'>('info');
   const [transactionMenuOpen, setTransactionMenuOpen] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState<any>({});
   
   // Stock Actions Modal State
   const [activeStockModal, setActiveStockModal] = useState<'NONE' | 'TRANSFER' | 'ALLOCATE' | 'RECALL' | 'DAMAGE' | 'REPAIR_COMPLETE' | 'LOST' | 'BATCH' | 'ADJUST'>('NONE');
@@ -119,6 +121,47 @@ export const ToolDetail: React.FC = () => {
       navigate('/tools');
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi xóa CCDC.");
+    }
+  };
+
+  const openEditModal = () => {
+    setEditForm({
+      toolName: tool.toolName || '',
+      category: tool.category || '',
+      quantity: tool.quantity || 1,
+      unit: tool.unit || 'Cái',
+      purchasePrice: tool.purchasePrice || 0,
+      vat: tool.vat || 0,
+      shippingInstallCost: tool.shippingInstallCost || 0,
+      totalAmount: tool.totalAmount || 0,
+      supplierName: tool.supplierName || '',
+      purchaseDate: tool.purchaseDate ? new Date(tool.purchaseDate).toISOString().split('T')[0] : '',
+      currentUserName: tool.currentUserName || '',
+      departmentName: tool.departmentName || '',
+      companyName: tool.companyName || '',
+      branchName: tool.branchName || '',
+      buildingName: tool.buildingName || '',
+      floorName: tool.floorName || '',
+      areaName: tool.areaName || '',
+      specificLocation: tool.specificLocation || '',
+      initialCondition: tool.initialCondition || 'Mới 100%',
+      note: tool.note || '',
+      reason: 'Cập nhật thông tin CCDC từ màn hình chi tiết'
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      setLoading(true);
+      await api.put(`/tools/${tool.id}`, editForm);
+      toast.success('Đã cập nhật thông tin CCDC và lưu log thay đổi.');
+      setShowEditModal(false);
+      fetchToolDetail();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi khi cập nhật thông tin CCDC.');
+      setLoading(false);
     }
   };
 
@@ -359,6 +402,12 @@ export const ToolDetail: React.FC = () => {
         </div>
 
         <div className="flex gap-2 shrink-0">
+          <button 
+            onClick={openEditModal}
+            className="flex items-center gap-2 px-4 py-2 border border-primary-200 text-primary-700 hover:bg-primary-50 rounded-xl text-xs font-bold transition-all bg-white"
+          >
+            <Settings className="h-4 w-4" /> Chỉnh sửa thông tin
+          </button>
           <button 
             onClick={handleDeleteTool}
             className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-650 hover:bg-red-50 rounded-xl text-xs font-bold transition-all bg-white"
@@ -1636,6 +1685,112 @@ export const ToolDetail: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showEditModal && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-5xl border shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b flex justify-between items-center bg-slate-50">
+              <div>
+                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                  <Settings className="h-4 w-4 text-primary-600" /> Chỉnh sửa thông tin CCDC
+                </h3>
+                <p className="text-xs text-slate-500 font-bold mt-1">Mọi thay đổi sẽ được ghi vào lịch sử hồ sơ.</p>
+              </div>
+              <button onClick={() => setShowEditModal(false)} className="p-1 text-slate-400 hover:text-slate-700 bg-transparent border-0 cursor-pointer"><X className="h-5 w-5" /></button>
+            </div>
+            <form onSubmit={handleEditSubmit}>
+              <div className="p-6 max-h-[70vh] overflow-y-auto space-y-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tên CCDC</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.toolName || ''} onChange={e => setEditForm({ ...editForm, toolName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhóm CCDC</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.category || ''} onChange={e => setEditForm({ ...editForm, category: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đơn vị tính</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.unit || ''} onChange={e => setEditForm({ ...editForm, unit: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đơn giá</label>
+                    <input type="number" className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.purchasePrice || 0} onChange={e => setEditForm({ ...editForm, purchasePrice: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">VAT (%)</label>
+                    <input type="number" className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.vat || 0} onChange={e => setEditForm({ ...editForm, vat: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chi phí vận chuyển</label>
+                    <input type="number" className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.shippingInstallCost || 0} onChange={e => setEditForm({ ...editForm, shippingInstallCost: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tổng giá trị</label>
+                    <input type="number" className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.totalAmount || 0} onChange={e => setEditForm({ ...editForm, totalAmount: Number(e.target.value) || 0 })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ngày mua</label>
+                    <input type="date" className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.purchaseDate || ''} onChange={e => setEditForm({ ...editForm, purchaseDate: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhà cung cấp</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.supplierName || ''} onChange={e => setEditForm({ ...editForm, supplierName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Người sử dụng</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.currentUserName || ''} onChange={e => setEditForm({ ...editForm, currentUserName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Bộ phận sử dụng</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.departmentName || ''} onChange={e => setEditForm({ ...editForm, departmentName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Công ty</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.companyName || ''} onChange={e => setEditForm({ ...editForm, companyName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Chi nhánh</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.branchName || ''} onChange={e => setEditForm({ ...editForm, branchName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tòa nhà / Dự án</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.buildingName || ''} onChange={e => setEditForm({ ...editForm, buildingName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tầng / Vị trí</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.floorName || ''} onChange={e => setEditForm({ ...editForm, floorName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Khu vực / Phòng</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.areaName || ''} onChange={e => setEditForm({ ...editForm, areaName: e.target.value })} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Vị trí chi tiết</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.specificLocation || ''} onChange={e => setEditForm({ ...editForm, specificLocation: e.target.value })} />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tình trạng ban đầu</label>
+                    <textarea className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold min-h-[76px]" value={editForm.initialCondition || ''} onChange={e => setEditForm({ ...editForm, initialCondition: e.target.value })} />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú</label>
+                    <textarea className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold min-h-[90px]" value={editForm.note || ''} onChange={e => setEditForm({ ...editForm, note: e.target.value })} />
+                  </div>
+                  <div className="space-y-1 md:col-span-2">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lý do cập nhật / log</label>
+                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.reason || ''} onChange={e => setEditForm({ ...editForm, reason: e.target.value })} />
+                  </div>
+                </div>
+              </div>
+              <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
+                <button type="button" onClick={() => setShowEditModal(false)} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
+                <button type="submit" className="px-5 py-2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-bold transition-colors">Lưu thay đổi</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* --- QUANTITY DYNAMIC TRANSACTION MODALS --- */}
 
