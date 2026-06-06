@@ -116,6 +116,76 @@ export const ToolDetail: React.FC = () => {
     }
   };
 
+  useEffect(() => {
+    if (!document.getElementById('cloudinary-widget-script')) {
+      const script = document.createElement('script');
+      script.id = 'cloudinary-widget-script';
+      script.src = 'https://upload-widget.cloudinary.com/global/all.js';
+      script.async = true;
+      document.body.appendChild(script);
+    }
+  }, []);
+
+  const handleUploadFile = (fileType: string) => {
+    if (!(window as any).cloudinary) {
+      toast.error('Trình tải tệp Cloudinary chưa sẵn sàng. Vui lòng tải lại trang hoặc đợi trong giây lát!');
+      return;
+    }
+    
+    const widget = (window as any).cloudinary.createUploadWidget(
+      {
+        cloudName: 'dhr0lgl8q',
+        uploadPreset: 'ml_default',
+        multiple: false,
+        resourceType: fileType === 'avatarUrl' || fileType === 'photoUrl' ? 'image' : 'auto'
+      },
+      async (error: any, result: any) => {
+        if (!error && result && result.event === "success") {
+          const secureUrl = result.info.secure_url;
+          toast.info('Tải tệp lên Cloudinary thành công! Đang lưu thông tin...');
+          
+          try {
+            const currentFiles = tool.filesJson ? JSON.parse(tool.filesJson) : {};
+            currentFiles[fileType] = secureUrl;
+            
+            const payload = {
+              ...tool,
+              filesJson: JSON.stringify(currentFiles)
+            };
+            
+            await api.put(`/tools/${tool.id}`, payload);
+            toast.success('Đã cập nhật tệp đính kèm thành công!');
+            fetchToolDetail();
+          } catch (err: any) {
+            console.error(err);
+            toast.error(err.response?.data?.message || 'Có lỗi xảy ra khi cập nhật.');
+          }
+        }
+      }
+    );
+    widget.open();
+  };
+
+  const handleDeleteFile = async (fileType: string) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa tệp đính kèm này?")) return;
+    try {
+      const currentFiles = tool.filesJson ? JSON.parse(tool.filesJson) : {};
+      currentFiles[fileType] = '';
+      
+      const payload = {
+        ...tool,
+        filesJson: JSON.stringify(currentFiles)
+      };
+      
+      await api.put(`/tools/${tool.id}`, payload);
+      toast.success('Đã xóa tệp đính kèm!');
+      fetchToolDetail();
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.response?.data?.message || 'Có lỗi xảy ra khi cập nhật.');
+    }
+  };
+
   if (loading && !tool) {
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] space-y-3">
@@ -733,70 +803,157 @@ export const ToolDetail: React.FC = () => {
                 )}
 
                 {/* ATTACHED FILES SECTION */}
-                {Object.keys(filesInfo).length > 0 && Object.values(filesInfo).some(Boolean) && (
-                  <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">
-                    <h4 className="text-xs font-black text-emerald-855 uppercase tracking-wider border-b border-slate-200 pb-2 flex items-center gap-2">
-                      <FileText className="h-4 w-4 text-emerald-500" />
-                      Hồ sơ tài liệu đính kèm
-                    </h4>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
-                      {filesInfo.avatarUrl && (
-                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-3">
-                          <img src={filesInfo.avatarUrl} alt="Avatar CCDC" className="w-12 h-12 object-cover rounded-lg border" />
-                          <div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ảnh đại diện CCDC</p>
-                            <a href={filesInfo.avatarUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600 hover:underline">Xem trực tiếp</a>
-                          </div>
+                <div className="space-y-4 bg-slate-50 p-6 rounded-[2rem] border border-slate-200 shadow-sm">
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest border-b border-slate-200 pb-3 flex items-center gap-2">
+                    <FileText className="h-4 w-4 text-emerald-500" />
+                    Hồ sơ tài liệu & Hình ảnh đính kèm
+                  </h4>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-1">
+                    {/* 1. Avatar */}
+                    <div className="border border-slate-200 rounded-2xl p-4 bg-white flex items-center justify-between gap-3 shadow-sm hover:border-primary-300 transition-colors">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-12 h-12 bg-slate-50 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center shrink-0">
+                          {filesInfo.avatarUrl ? (
+                            <img src={filesInfo.avatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-xl">📷</span>
+                          )}
                         </div>
-                      )}
-                      {filesInfo.photoUrl && (
-                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-3">
-                          <img src={filesInfo.photoUrl} alt="Ảnh thực tế" className="w-12 h-12 object-cover rounded-lg border" />
-                          <div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ảnh thực tế sản phẩm</p>
-                            <a href={filesInfo.photoUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600 hover:underline">Xem trực tiếp</a>
-                          </div>
+                        <div className="overflow-hidden">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ảnh đại diện CCDC</p>
+                          {filesInfo.avatarUrl ? (
+                            <a href={filesInfo.avatarUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600 hover:underline block truncate max-w-[120px]">Xem trực tiếp</a>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic font-semibold">Chưa có ảnh</span>
+                          )}
                         </div>
-                      )}
-                      {filesInfo.invoiceUrl && (
-                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-2 text-xs font-semibold">
-                          <FileText className="w-6 h-6 text-slate-450" />
-                          <div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hóa đơn mua hàng / VAT</p>
-                            <a href={filesInfo.invoiceUrl} target="_blank" rel="noreferrer" className="font-bold text-primary-600 hover:underline">Tải xuống / Xem file</a>
-                          </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button 
+                          onClick={() => handleUploadFile('avatarUrl')}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-primary-50 hover:text-primary-700 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                        >
+                          Tải lên
+                        </button>
+                        {filesInfo.avatarUrl && (
+                          <button 
+                            onClick={() => handleDeleteFile('avatarUrl')}
+                            className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-750 rounded-lg transition-colors"
+                            title="Xóa tệp"
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 2. Photo */}
+                    <div className="border border-slate-200 rounded-2xl p-4 bg-white flex items-center justify-between gap-3 shadow-sm hover:border-primary-300 transition-colors">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-12 h-12 bg-slate-50 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center shrink-0">
+                          {filesInfo.photoUrl ? (
+                            <img src={filesInfo.photoUrl} alt="Photo" className="w-full h-full object-cover" />
+                          ) : (
+                            <span className="text-xl">🖼️</span>
+                          )}
                         </div>
-                      )}
-                      {filesInfo.warrantyCardUrl && (
-                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-2 text-xs font-semibold">
-                          <FileText className="w-6 h-6 text-slate-450" />
-                          <div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Thẻ bảo hành đính kèm</p>
-                            <a href={filesInfo.warrantyCardUrl} target="_blank" rel="noreferrer" className="font-bold text-primary-600 hover:underline">Tải xuống / Xem file</a>
-                          </div>
+                        <div className="overflow-hidden">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Ảnh thực tế sản phẩm</p>
+                          {filesInfo.photoUrl ? (
+                            <a href={filesInfo.photoUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600 hover:underline block truncate max-w-[120px]">Xem trực tiếp</a>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic font-semibold">Chưa có ảnh</span>
+                          )}
                         </div>
-                      )}
-                      {filesInfo.manualUrl && (
-                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-2 text-xs font-semibold">
-                          <FileText className="w-6 h-6 text-slate-450" />
-                          <div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hướng dẫn sử dụng (HDSD)</p>
-                            <a href={filesInfo.manualUrl} target="_blank" rel="noreferrer" className="font-bold text-primary-600 hover:underline">Tải xuống / Xem file</a>
-                          </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button 
+                          onClick={() => handleUploadFile('photoUrl')}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-primary-50 hover:text-primary-700 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                        >
+                          Tải lên
+                        </button>
+                        {filesInfo.photoUrl && (
+                          <button 
+                            onClick={() => handleDeleteFile('photoUrl')}
+                            className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-755 rounded-lg transition-colors"
+                            title="Xóa tệp"
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 3. Invoice */}
+                    <div className="border border-slate-200 rounded-2xl p-4 bg-white flex items-center justify-between gap-3 shadow-sm hover:border-primary-300 transition-colors">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-12 h-12 bg-slate-50 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center shrink-0 text-slate-450">
+                          <FileText className="w-6 h-6" />
                         </div>
-                      )}
-                      {filesInfo.documentUrl && (
-                        <div className="border border-slate-200 rounded-xl p-3 bg-white flex items-center gap-2 text-xs font-semibold">
-                          <FileText className="w-6 h-6 text-slate-450" />
-                          <div>
-                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Tài liệu đính kèm khác</p>
-                            <a href={filesInfo.documentUrl} target="_blank" rel="noreferrer" className="font-bold text-primary-600 hover:underline">Tải xuống / Xem file</a>
-                          </div>
+                        <div className="overflow-hidden">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Hóa đơn mua hàng / VAT</p>
+                          {filesInfo.invoiceUrl ? (
+                            <a href={filesInfo.invoiceUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600 hover:underline block truncate max-w-[120px]">Xem/Tải xuống</a>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic font-semibold">Chưa có file</span>
+                          )}
                         </div>
-                      )}
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button 
+                          onClick={() => handleUploadFile('invoiceUrl')}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-primary-50 hover:text-primary-700 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                        >
+                          Tải lên
+                        </button>
+                        {filesInfo.invoiceUrl && (
+                          <button 
+                            onClick={() => handleDeleteFile('invoiceUrl')}
+                            className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-760 rounded-lg transition-colors"
+                            title="Xóa tệp"
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* 4. Warranty Card */}
+                    <div className="border border-slate-200 rounded-2xl p-4 bg-white flex items-center justify-between gap-3 shadow-sm hover:border-primary-300 transition-colors">
+                      <div className="flex items-center gap-3 overflow-hidden">
+                        <div className="w-12 h-12 bg-slate-50 rounded-xl overflow-hidden border border-slate-200 flex items-center justify-center shrink-0 text-slate-450">
+                          <FileText className="w-6 h-6" />
+                        </div>
+                        <div className="overflow-hidden">
+                          <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Thẻ bảo hành đính kèm</p>
+                          {filesInfo.warrantyCardUrl ? (
+                            <a href={filesInfo.warrantyCardUrl} target="_blank" rel="noreferrer" className="text-xs font-bold text-primary-600 hover:underline block truncate max-w-[120px]">Xem/Tải xuống</a>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic font-semibold">Chưa có file</span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button 
+                          onClick={() => handleUploadFile('warrantyCardUrl')}
+                          className="px-3 py-1.5 bg-slate-100 hover:bg-primary-50 hover:text-primary-700 text-slate-700 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all"
+                        >
+                          Tải lên
+                        </button>
+                        {filesInfo.warrantyCardUrl && (
+                          <button 
+                            onClick={() => handleDeleteFile('warrantyCardUrl')}
+                            className="p-1.5 hover:bg-red-50 text-red-500 hover:text-red-765 rounded-lg transition-colors"
+                            title="Xóa tệp"
+                          >
+                            <Trash className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* CUSTOM FIELDS SECTION */}
                 {Object.keys(customFields).length > 0 && (

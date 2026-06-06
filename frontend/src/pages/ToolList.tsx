@@ -976,6 +976,7 @@ export const ToolList: React.FC = () => {
                           return (
                             <span 
                               className="hover:text-indigo-600 transition-colors cursor-pointer border-b border-dashed border-slate-300 pb-0.5 inline-flex items-center gap-1"
+                              onClick={() => navigate(`/tools/${tool.id}`)}
                               onMouseEnter={(e) => {
                                 setHoveredImage({
                                   url: imageUrl,
