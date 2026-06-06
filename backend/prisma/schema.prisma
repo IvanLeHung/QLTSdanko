@@ -1142,6 +1142,17 @@ model ToolInvoiceBatch {
   totalAmount     Float?
   fileUrl         String?
   status          String             @default("DRAFT") // DRAFT | VALIDATED | POSTED | CANCELLED
+  invoiceLegalStatus String           @default("SUPPLIER_DRAFT") // SUPPLIER_DRAFT | WAITING_PAYMENT | WAITING_SIGNED_INVOICE | SIGNED_VALID | CANCELLED_REPLACED
+  expectedSignedDate DateTime?
+  followUpOwner      String?
+  reminderAfter3Days Boolean          @default(false)
+  reminderBeforeDueDate Boolean       @default(false)
+  signedFileUrl      String?
+  officialInvoiceNo  String?
+  officialInvoiceSymbol String?
+  officialInvoiceDate DateTime?
+  lookupCode         String?
+  signedVerificationStatus String?
   totalLines      Int                @default(0)
   totalAssets     Int                @default(0)
   totalValue      Float              @default(0)
@@ -1161,7 +1172,10 @@ model ToolInvoiceLine {
   toolName           String
   category           String            // Nhóm CCDC
   quantity           Int
+  unit               String?
   unitPrice          Float
+  vatRate            Float?
+  vatAmount          Float?
   amount             Float
   supplierName       String?
   note               String?

@@ -14,13 +14,20 @@ export interface PostToolInvoicePayload {
     totalAmount?: number;
     fileUrl?: string;
     note?: string;
+    invoiceLegalStatus?: 'SUPPLIER_DRAFT' | 'WAITING_PAYMENT' | 'WAITING_SIGNED_INVOICE' | 'SIGNED_VALID' | 'CANCELLED_REPLACED';
+    expectedSignedDate?: string;
+    followUpOwner?: string;
+    reminderAfter3Days?: boolean;
+    reminderBeforeDueDate?: boolean;
   };
   lines: Array<{
     invoiceItemName: string;
     toolName: string;
     category: string;
     quantity: number;
+    unit?: string;
     unitPrice: number;
+    vatRate?: number;
     managementType: 'INDIVIDUAL' | 'QUANTITY';
     note?: string;
   }>;
@@ -40,6 +47,8 @@ export class ToolInvoicePostService {
     const companyId = parseInt(String(invoice.companyId));
     const company = await prisma.company.findUnique({ where: { id: companyId } });
     if (!company) throw new Error('Công ty nhận hóa đơn không tồn tại.');
+
+    const invoiceLegalStatus = invoice.invoiceLegalStatus || 'SIGNED_VALID';
 
     // 2. Check duplicate invoice (supplierName + invoiceNo + companyId)
     const existingInvoice = await prisma.toolInvoiceBatch.findFirst({
@@ -76,11 +85,16 @@ export class ToolInvoicePostService {
           warehouseId: invoice.warehouseId ? parseInt(String(invoice.warehouseId)) : null,
           totalAmount: invoice.totalAmount ? parseFloat(String(invoice.totalAmount)) : null,
           fileUrl: invoice.fileUrl || null,
-          status: 'POSTED',
+          status: invoiceLegalStatus === 'SIGNED_VALID' ? 'POSTED' : 'DRAFT',
+          invoiceLegalStatus,
+          expectedSignedDate: invoice.expectedSignedDate ? new Date(invoice.expectedSignedDate) : null,
+          followUpOwner: invoice.followUpOwner || null,
+          reminderAfter3Days: Boolean(invoice.reminderAfter3Days),
+          reminderBeforeDueDate: Boolean(invoice.reminderBeforeDueDate),
           totalLines: lines.length,
           totalAssets: lines.reduce((sum, l) => sum + l.quantity, 0),
           totalValue: lines.reduce((sum, l) => sum + (l.quantity * l.unitPrice), 0),
-          postedAt: new Date()
+          postedAt: invoiceLegalStatus === 'SIGNED_VALID' ? new Date() : null
         }
       });
 
@@ -97,7 +111,10 @@ export class ToolInvoicePostService {
             toolName: line.toolName,
             category: line.category,
             quantity: line.quantity,
+            unit: line.unit || 'Chiếc',
             unitPrice: line.unitPrice,
+            vatRate: line.vatRate ?? null,
+            vatAmount: line.vatRate ? line.quantity * line.unitPrice * (line.vatRate / 100) : null,
             amount: line.quantity * line.unitPrice,
             supplierName: invoice.supplierName,
             note: line.note || null,
@@ -130,7 +147,7 @@ export class ToolInvoicePostService {
             toolName: line.toolName,
             category: line.category,
             quantity: line.quantity,
-            unit: 'Chiếc',
+            unit: line.unit || 'Chiếc',
             purchasePrice: line.unitPrice,
             purchaseDate: new Date(invoice.invoiceDate),
             supplierName: invoice.supplierName,
@@ -157,7 +174,7 @@ export class ToolInvoicePostService {
               toolName: line.toolName,
               category: line.category,
               quantity: 1,
-              unit: 'Chiếc',
+              unit: line.unit || 'Chiếc',
               purchasePrice: line.unitPrice,
               purchaseDate: new Date(invoice.invoiceDate),
               supplierName: invoice.supplierName,
