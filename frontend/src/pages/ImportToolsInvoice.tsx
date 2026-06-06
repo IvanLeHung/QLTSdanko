@@ -378,18 +378,18 @@ export const ImportToolsInvoice: React.FC = () => {
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse min-w-[1280px]">
+          <table className="w-full text-left text-xs border-collapse min-w-[1480px]">
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[10px]">
                 <th className="px-4 py-3 border-b w-[34%]">Tên hàng hóa từ hóa đơn</th>
                 <th className="px-4 py-3 border-b w-[20%]">Tên chuẩn CCDC</th>
                 <th className="px-4 py-3 border-b w-[16%]">Nhóm</th>
-                <th className="px-3 py-3 border-b w-20">SL</th>
-                <th className="px-3 py-3 border-b w-24">ĐVT</th>
-                <th className="px-3 py-3 border-b w-32">Đơn giá</th>
-                <th className="px-3 py-3 border-b w-20">VAT</th>
-                <th className="px-3 py-3 border-b w-36">Thành tiền</th>
-                <th className="px-3 py-3 border-b w-36">QL</th>
+                <th className="px-3 py-3 border-b w-32">SL</th>
+                <th className="px-3 py-3 border-b w-28">ĐVT</th>
+                <th className="px-3 py-3 border-b w-44">Đơn giá</th>
+                <th className="px-3 py-3 border-b w-28">VAT</th>
+                <th className="px-3 py-3 border-b w-44">Thành tiền</th>
+                <th className="px-3 py-3 border-b w-44">QL</th>
                 <th className="px-3 py-3 border-b w-24"></th>
               </tr>
             </thead>
@@ -422,16 +422,16 @@ export const ImportToolsInvoice: React.FC = () => {
                           </select>
                         </td>
                         <td className="px-3 py-3">
-                          <input type="number" value={line.quantity} onChange={e => handleLineChange(line.id, 'quantity', parseInt(e.target.value, 10) || 0)} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold text-center" />
+                          <input type="number" value={line.quantity} onChange={e => handleLineChange(line.id, 'quantity', parseInt(e.target.value, 10) || 0)} className="w-full min-w-[96px] bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-semibold text-center" />
                         </td>
                         <td className="px-3 py-3">
-                          <input type="text" value={line.unit} onChange={e => handleLineChange(line.id, 'unit', e.target.value)} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold" />
+                          <input type="text" value={line.unit} onChange={e => handleLineChange(line.id, 'unit', e.target.value)} className="w-full min-w-[80px] bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-semibold" />
                         </td>
                         <td className="px-3 py-3">
-                          <input type="number" value={line.unitPrice} onChange={e => handleLineChange(line.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold" />
+                          <input type="number" value={line.unitPrice} onChange={e => handleLineChange(line.id, 'unitPrice', parseFloat(e.target.value) || 0)} className="w-full min-w-[136px] bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-semibold" />
                         </td>
                         <td className="px-3 py-3">
-                          <input type="number" value={line.vatRate} onChange={e => handleLineChange(line.id, 'vatRate', parseFloat(e.target.value) || 0)} className="w-full bg-slate-50 border border-slate-200 rounded-lg p-2 text-xs font-semibold text-center" />
+                          <input type="number" value={line.vatRate} onChange={e => handleLineChange(line.id, 'vatRate', parseFloat(e.target.value) || 0)} className="w-full min-w-[84px] bg-slate-50 border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-semibold text-center" />
                         </td>
                         <td className="px-3 py-3">
                           <span className="block text-sm font-black text-slate-800 pt-2">{amount.toLocaleString('vi-VN')} đ</span>
