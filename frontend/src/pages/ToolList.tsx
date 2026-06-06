@@ -351,7 +351,23 @@ export const ToolList: React.FC = () => {
         api.get('/settings/locations')
       ]);
 
-      setTools(toolsRes.data.items);
+      setTools(toolsRes.data.items.map((tool: any) => {
+        if (tool.managementType === 'QUANTITY') return tool;
+
+        const itemQty = tool.quantity || 1;
+        return {
+          ...tool,
+          __showLedgerCounts: true,
+          stocks: [{
+            quantityAvailable: tool.status === 'IN_STOCK' ? itemQty : 0,
+            quantityUsing: tool.status === 'USING' ? itemQty : 0,
+            quantityRepairing: 0,
+            quantityBroken: tool.status === 'DAMAGED' || tool.status === 'WAITING_LIQUIDATION' ? itemQty : 0,
+            quantityDestroyed: tool.status === 'LIQUIDATED' ? itemQty : 0,
+            quantityLost: tool.status === 'LOST' ? itemQty : 0
+          }]
+        };
+      }));
       setTotal(toolsRes.data.total);
       setStats(statsRes.data);
       setDepartments(deptRes.data);
@@ -1065,7 +1081,7 @@ export const ToolList: React.FC = () => {
                       <td className="px-6 py-4 border-b text-center font-bold text-slate-800">{tool.quantity} {tool.unit}</td>
                       {/* Quantity breakdown columns for QUANTITY type - 6 ledger columns */}
                       {(() => {
-                        if (tool.managementType === 'QUANTITY' && tool.stocks && tool.stocks.length > 0) {
+                        if ((tool.managementType === 'QUANTITY' || tool.__showLedgerCounts) && tool.stocks && tool.stocks.length > 0) {
                           let available = 0, using = 0, repairing = 0, broken = 0, destroyed = 0, lost = 0;
                           tool.stocks.forEach((s: any) => {
                             available += s.quantityAvailable || 0;
