@@ -33,6 +33,11 @@ import { CreateTool } from './pages/CreateTool';
 import { ToolDetail } from './pages/ToolDetail';
 import { ImportTools } from './pages/ImportTools';
 import { ImportToolsInvoice } from './pages/ImportToolsInvoice';
+import { ToolInventoryList } from './pages/ToolInventoryList';
+import { ToolInventoryDetail } from './pages/ToolInventoryDetail';
+import { ToolApprovals } from './pages/ToolApprovals';
+import { ToolInvoiceDetail } from './pages/ToolInvoiceDetail';
+import { ToolHandoverDetail } from './pages/ToolHandoverDetail';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -70,6 +75,11 @@ function App() {
           <Route path="/tools/:id" element={<PrivateRoute><ToolDetail /></PrivateRoute>} />
           <Route path="/tools/import" element={<PrivateRoute><ImportTools /></PrivateRoute>} />
           <Route path="/tools/import-invoice" element={<PrivateRoute><ImportToolsInvoice /></PrivateRoute>} />
+          <Route path="/tools/inventory" element={<PrivateRoute><ToolInventoryList /></PrivateRoute>} />
+          <Route path="/tools/inventory/:id" element={<PrivateRoute><ToolInventoryDetail /></PrivateRoute>} />
+          <Route path="/tools/approvals" element={<PrivateRoute><ToolApprovals /></PrivateRoute>} />
+          <Route path="/tools/invoices/:id" element={<PrivateRoute><ToolInvoiceDetail /></PrivateRoute>} />
+          <Route path="/tools/handover/:id" element={<PrivateRoute><ToolHandoverDetail /></PrivateRoute>} />
           
           <Route path="/settings/classification" element={<PrivateRoute><ClassificationSettings /></PrivateRoute>} />
           <Route path="/settings/companies" element={<PrivateRoute><CompanySettings /></PrivateRoute>} />

@@ -218,21 +218,6 @@ router.post('/import/commit', authenticateToken, upload.single('file'), async (r
   }
 });
 
-// --- GET BY ID ---
-router.get('/:id', authenticateToken, async (req, res) => {
-  try {
-    const id = parseInt(req.params.id as string, 10);
-    if (isNaN(id)) return res.status(400).json({ message: 'ID không hợp lệ.' });
-
-    const tool = await ToolService.getToolDetail(id);
-    if (!tool) return res.status(404).json({ message: 'Không tìm thấy CCDC.' });
-
-    res.json(tool);
-  } catch (err: any) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
 // --- CREATE TOOL ---
 router.post('/', authenticateToken, async (req: any, res) => {
   try {
@@ -244,6 +229,34 @@ router.post('/', authenticateToken, async (req: any, res) => {
       const tool = await ToolService.createTool(req.body, performedBy);
       res.status(201).json(tool);
     }
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// --- UPDATE TOOL ---
+router.put('/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ message: 'ID không hợp lệ.' });
+
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const updated = await ToolService.updateTool(id, req.body, performedBy, req.body.reason);
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+// --- DELETE TOOL ---
+router.delete('/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ message: 'ID không hợp lệ.' });
+
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    await ToolService.deleteTool(id, performedBy);
+    res.json({ success: true, message: 'Đã xóa CCDC thành công.' });
   } catch (err: any) {
     res.status(500).json({ message: err.message });
   }
@@ -313,6 +326,30 @@ router.get('/handover/:id', authenticateToken, async (req, res) => {
     res.status(500).json({ message: err.message });
   }
 });
+
+// --- UPDATE HANDOVER DOCUMENT (signatures, status) ---
+router.put('/handover/:id', authenticateToken, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ message: 'ID không hợp lệ.' });
+
+    const { senderSignature, recipientSignature, status } = req.body;
+    const updateData: any = {};
+    if (senderSignature !== undefined) updateData.senderSignature = senderSignature;
+    if (recipientSignature !== undefined) updateData.recipientSignature = recipientSignature;
+    if (status !== undefined) updateData.status = status;
+
+    const updated = await prisma.toolHandoverDocument.update({
+      where: { id },
+      data: updateData,
+      include: { items: true }
+    });
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 
 router.post('/handover/:id/complete', authenticateToken, async (req: any, res) => {
   try {
@@ -674,6 +711,48 @@ router.post('/stock/split', authenticateToken, async (req: any, res) => {
   }
 });
 
+// --- ADMIN APPROVALS ROUTING ---
+
+router.get('/approvals/list', authenticateToken, async (req, res) => {
+  try {
+    const pendingDestroys = await prisma.toolDamageReport.findMany({
+      where: { solutionType: 'DESTROY_PROPOSAL', approvalStatus: 'PENDING' },
+      include: { items: { include: { tool: true } } }
+    });
+
+    const pendingLosts = await prisma.toolLostReport.findMany({
+      where: { approvalStatus: 'PENDING' },
+      include: { tool: true }
+    });
+
+    res.json({ pendingDestroys, pendingLosts });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/approvals/destroy/:id/approve', authenticateToken, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    await ToolService.approveDestroyProposal(id, performedBy);
+    res.json({ success: true, message: 'Đã phê duyệt hủy CCDC thành công.' });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/approvals/lost/:id/approve', authenticateToken, async (req: any, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    await ToolService.approveLostReport(id, req.body, performedBy);
+    res.json({ success: true, message: 'Đã phê duyệt báo cáo mất thành công.' });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // --- INVOICE IMPORT ENDPOINTS ---
 router.post('/import-invoice/parse', authenticateToken, upload.single('file'), async (req: any, res) => {
   try {
@@ -771,6 +850,21 @@ router.get('/invoices/:id', authenticateToken, async (req: any, res) => {
     res.json(invoice);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+// --- GET BY ID (placed last so specific routes above take priority) ---
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    if (isNaN(id)) return res.status(400).json({ message: 'ID không hợp lệ.' });
+
+    const tool = await ToolService.getToolDetail(id);
+    if (!tool) return res.status(404).json({ message: 'Không tìm thấy CCDC.' });
+
+    res.json(tool);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
   }
 });
 

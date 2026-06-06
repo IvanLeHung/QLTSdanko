@@ -28,7 +28,8 @@ import {
   Warehouse,
   Layers,
   Settings,
-  X
+  X,
+  Image as ImageIcon
 } from 'lucide-react';
 
 export const ToolDetail: React.FC = () => {
@@ -37,7 +38,7 @@ export const ToolDetail: React.FC = () => {
 
   const [tool, setTool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'history'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'inventoryPhotos' | 'history'>('info');
   
   // Stock Actions Modal State
   const [activeStockModal, setActiveStockModal] = useState<'NONE' | 'TRANSFER' | 'ALLOCATE' | 'RECALL' | 'DAMAGE' | 'REPAIR_COMPLETE' | 'LOST' | 'BATCH' | 'ADJUST'>('NONE');
@@ -435,6 +436,13 @@ export const ToolDetail: React.FC = () => {
                     </div>
                   </>
                 )}
+                <button
+                  onClick={() => navigate(`/tools/invoices/${tool.invoiceBatch.id}`)}
+                  className="w-full mt-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary-50 hover:bg-primary-100 border border-primary-200 rounded-xl text-xs font-bold text-primary-700 transition-all"
+                >
+                  <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg>
+                  Xem các món cùng hóa đơn này
+                </button>
               </>
             )}
             <div className="flex justify-between">
@@ -568,15 +576,21 @@ export const ToolDetail: React.FC = () => {
                 >
                   Báo mất/Hỏng ({tool.lostReports?.length || 0})
                 </button>
-                <button 
-                  onClick={() => setActiveTab('inventory')}
-                  className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'inventory' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
-                >
-                  Kiểm kê ({tool.inventoryItems?.length || 0})
-                </button>
               </>
             )}
 
+            <button 
+              onClick={() => setActiveTab('inventory')}
+              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'inventory' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+            >
+              Lịch sử kiểm kê ({tool.inventoryItems?.length || 0})
+            </button>
+            <button 
+              onClick={() => setActiveTab('inventoryPhotos')}
+              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'inventoryPhotos' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+            >
+              Ảnh kiểm kê ({tool.inventoryItems?.reduce((acc: number, item: any) => acc + (item.photos?.length || 0), 0) || 0})
+            </button>
             <button 
               onClick={() => setActiveTab('history')}
               className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'history' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
@@ -1313,36 +1327,121 @@ export const ToolDetail: React.FC = () => {
                 )}
               </div>
             )}
-
-            {/* TAB: INVENTORY ITEMS (INDIVIDUAL ONLY) */}
-            {activeTab === 'inventory' && !isQuantityMode && (
+            {activeTab === 'inventory' && (
               <div className="space-y-4">
-                {tool.inventoryItems?.map((item: any) => (
-                  <div key={item.id} className="flex gap-4 items-start bg-slate-50 p-4 rounded-2xl border border-slate-200/50">
-                    <ClipboardCheck className="h-5 w-5 text-indigo-500 shrink-0 mt-0.5" />
-                    <div className="flex-1">
-                      <div className="flex justify-between">
-                        <h4 className="text-sm font-bold text-slate-800">
-                          Phiếu kiểm kê: {item.inventoryCheck?.inventoryName || 'Định kỳ'}
-                        </h4>
-                        <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase ${
-                          item.result === 'MATCHED' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'
-                        }`}>{item.result === 'MATCHED' ? 'Khớp' : 'Sai lệch'}</span>
+                {tool.inventoryItems?.map((item: any) => {
+                  const isQty = tool.managementType === 'QUANTITY';
+                  return (
+                    <div key={item.id} className="flex gap-4 items-start bg-slate-50 p-5 rounded-2xl border border-slate-200/50 shadow-sm">
+                      <ClipboardCheck className="h-6 w-6 text-orange-600 shrink-0 mt-0.5" />
+                      <div className="flex-1">
+                        <div className="flex justify-between items-start">
+                          <div>
+                            <h4 className="text-sm font-[850] text-slate-800">
+                              Đợt kiểm kê: {item.inventoryCheck?.inventoryName || 'Định kỳ'}
+                            </h4>
+                            <p className="text-[10px] font-mono text-slate-400 mt-0.5">Mã đợt: {item.inventoryCheck?.inventoryCode}</p>
+                          </div>
+                          <span className={`px-2.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider ${
+                            item.result === 'MATCHED' ? 'bg-emerald-55 text-emerald-650' : 'bg-rose-55 text-rose-650'
+                          }`}>{item.result === 'MATCHED' ? 'Khớp' : 'Sai lệch'}</span>
+                        </div>
+
+                        {isQty ? (
+                          <div className="grid grid-cols-5 gap-2 bg-white p-3 rounded-xl border border-slate-200/60 mt-3 text-center">
+                            <div>
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Sổ sách</p>
+                              <p className="text-xs font-black text-slate-700 mt-0.5">{item.expectedQuantity}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wider">Tốt</p>
+                              <p className="text-xs font-black text-emerald-700 mt-0.5">{item.actualGoodQty}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-bold text-amber-600 uppercase tracking-wider">Sửa</p>
+                              <p className="text-xs font-black text-amber-700 mt-0.5">{item.actualRepairQty}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-bold text-rose-600 uppercase tracking-wider">Hủy</p>
+                              <p className="text-xs font-black text-rose-700 mt-0.5">{item.actualBrokenQty}</p>
+                            </div>
+                            <div>
+                              <p className="text-[9px] font-bold text-slate-550 uppercase tracking-wider">Mất</p>
+                              <p className="text-xs font-black text-slate-700 mt-0.5">{item.actualLostQty}</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="mt-2 text-xs">
+                            <span className="text-slate-500 font-semibold">Tình trạng ghi nhận: </span>
+                            <span className="font-bold text-slate-800">{item.checkCondition === 'FOUND' ? 'Tìm thấy / Tốt' : item.checkCondition === 'DAMAGED' ? 'Hỏng hóc' : item.checkCondition === 'MISSING' ? 'Báo mất' : item.checkCondition || 'Khớp'}</span>
+                          </div>
+                        )}
+
+                        {item.note && (
+                          <p className="text-xs text-slate-650 mt-2 italic bg-white p-2.5 rounded-lg border border-slate-100">
+                            &ldquo;{item.note}&rdquo;
+                          </p>
+                        )}
+
+                        {item.photos && item.photos.length > 0 && (
+                          <div className="flex gap-2 mt-3">
+                            {item.photos.map((p: string, idx: number) => (
+                              <a key={idx} href={p} target="_blank" rel="noreferrer">
+                                <img src={p} alt="CCDC Evidence" className="w-12 h-12 rounded-lg object-cover border border-slate-200 hover:scale-105 transition-all shadow-sm" />
+                              </a>
+                            ))}
+                          </div>
+                        )}
+
+                        <p className="text-[9px] text-slate-400 font-bold mt-3 uppercase tracking-wider">
+                          Đã kiểm vào lúc {item.checkedAt ? new Date(item.checkedAt).toLocaleString('vi-VN') : '---'} bởi {item.checkedBy || '---'}
+                        </p>
                       </div>
-                      <p className="text-xs text-slate-600 mt-1 font-semibold">Tình trạng thực tế kiểm: {item.actualStatus || '---'}</p>
-                      <p className="text-[11px] text-slate-500">Mô tả kiểm kê: {item.note || 'Không có ghi chú'}</p>
-                      <p className="text-[9px] text-slate-400 font-bold mt-2 uppercase tracking-tight">
-                        Kiểm ngày: {item.checkedAt ? new Date(item.checkedAt).toLocaleDateString('vi-VN') : '---'} bởi {item.checkedBy || '---'}
-                      </p>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
                 {(!tool.inventoryItems || tool.inventoryItems.length === 0) && (
                   <div className="text-center py-12 text-slate-400 space-y-1">
-                    <ClipboardCheck className="h-8 w-8 mx-auto text-slate-300" />
+                    <ClipboardCheck className="h-8 w-8 mx-auto text-slate-350" />
                     <p className="text-xs font-bold">CCDC chưa từng được đưa vào đợt kiểm kê nào.</p>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* TAB: INVENTORY PHOTOS */}
+            {activeTab === 'inventoryPhotos' && (
+              <div className="space-y-4">
+                {(() => {
+                  const allPhotos = tool.inventoryItems?.reduce((acc: string[], item: any) => {
+                    if (item.photos && Array.isArray(item.photos)) {
+                      return [...acc, ...item.photos];
+                    }
+                    return acc;
+                  }, []) || [];
+
+                  if (allPhotos.length === 0) {
+                    return (
+                      <div className="text-center py-12 text-slate-400 space-y-1">
+                        <ImageIcon className="h-8 w-8 mx-auto text-slate-350" />
+                        <p className="text-xs font-bold">Chưa có ảnh bằng chứng kiểm kê nào được lưu.</p>
+                      </div>
+                    );
+                  }
+
+                  return (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      {allPhotos.map((photo: string, index: number) => (
+                        <a key={index} href={photo} target="_blank" rel="noreferrer" className="group block relative aspect-square rounded-2xl overflow-hidden border border-slate-200/60 shadow-sm bg-slate-50">
+                          <img src={photo} alt={`Evidence ${index}`} className="w-full h-full object-cover group-hover:scale-110 transition-all duration-300" />
+                          <div className="absolute inset-0 bg-slate-900/40 opacity-0 group-hover:opacity-100 transition-all flex items-center justify-center">
+                            <span className="text-white text-xs font-bold border border-white px-3 py-1.5 rounded-xl uppercase tracking-wider bg-black/20">Xem ảnh lớn</span>
+                          </div>
+                        </a>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
             )}
 
@@ -1644,23 +1743,40 @@ export const ToolDetail: React.FC = () => {
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Mức độ hư hại</label>
-                  <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+                  <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider">Phương án xử lý</label>
+                  <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setDamageForm({ ...damageForm, canRepair: true })}
-                      className={`py-2 px-3 rounded-lg text-xs font-bold transition-all ${damageForm.canRepair ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-500'}`}
+                      className={`flex flex-col items-center py-3 px-2 rounded-xl border-2 text-xs font-bold transition-all ${
+                        damageForm.canRepair
+                          ? 'bg-teal-50 border-teal-400 text-teal-700 shadow-sm'
+                          : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
+                      }`}
                     >
-                      Có thể sửa chữa
+                      <span className="text-lg mb-1">🔧</span>
+                      <span>Sửa chữa</span>
+                      <span className="text-[9px] font-normal mt-0.5 opacity-70">Chuyển sang "Đang sửa"</span>
                     </button>
                     <button
                       type="button"
                       onClick={() => setDamageForm({ ...damageForm, canRepair: false })}
-                      className={`py-2 px-3 rounded-lg text-xs font-bold transition-all ${!damageForm.canRepair ? 'bg-white text-red-700 shadow-sm' : 'text-slate-500'}`}
+                      className={`flex flex-col items-center py-3 px-2 rounded-xl border-2 text-xs font-bold transition-all ${
+                        !damageForm.canRepair
+                          ? 'bg-red-50 border-red-400 text-red-700 shadow-sm'
+                          : 'bg-slate-50 border-slate-200 text-slate-400 hover:border-slate-300'
+                      }`}
                     >
-                      Không sửa được (Hủy)
+                      <span className="text-lg mb-1">🚫</span>
+                      <span>Đề xuất hủy</span>
+                      <span className="text-[9px] font-normal mt-0.5 opacity-70">Chuyển sang "Chờ hủy"</span>
                     </button>
                   </div>
+                  {!damageForm.canRepair && (
+                    <p className="text-[10px] text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                      ⚠️ Đề xuất hủy sẽ được gửi lên màn hình <strong>Chờ xử lý</strong> để Admin phê duyệt trước khi chính thức hủy.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Lý do hư hỏng / Ghi chú</label>
@@ -1673,7 +1789,13 @@ export const ToolDetail: React.FC = () => {
               </div>
               <div className="p-4 bg-slate-50 border-t flex justify-end gap-2">
                 <button type="button" onClick={() => setActiveStockModal('NONE')} className="px-4 py-2 border rounded-xl text-xs font-bold bg-white text-slate-700">Hủy</button>
-                <button type="submit" className="px-5 py-2 bg-red-650 hover:bg-red-750 text-white rounded-xl text-xs font-bold transition-colors">Báo hỏng</button>
+                <button type="submit" className={`px-5 py-2 text-white rounded-xl text-xs font-bold transition-colors ${
+                  damageForm.canRepair
+                    ? 'bg-teal-600 hover:bg-teal-700'
+                    : 'bg-red-600 hover:bg-red-700'
+                }`}>
+                  {damageForm.canRepair ? 'Gửi sửa chữa' : 'Đề xuất hủy'}
+                </button>
               </div>
             </form>
           </div>

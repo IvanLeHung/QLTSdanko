@@ -861,6 +861,8 @@ model ToolHandoverDocument {
   reason               String?
   note                 String?
   attachments          String?
+  senderSignature      String?
+  recipientSignature   String?
   createdAt            DateTime             @default(now())
   confirmedAt          DateTime?
   cancelledAt          DateTime?
@@ -892,6 +894,10 @@ model ToolDamageReport {
   repairStartDate DateTime?
   repairEndDate   DateTime?
   status          String                 @default("DRAFT")
+  solutionType    String?                // REPAIR, DESTROY_PROPOSAL
+  approvalStatus  String                 @default("APPROVED") // PENDING, APPROVED, REJECTED
+  quantity        Int                    @default(1)
+  locationName    String?
   note            String?
   attachments     String?
   createdAt       DateTime               @default(now())
@@ -925,6 +931,10 @@ model ToolLostReport {
   conditionWhenFound       String?
   newStatusAfterFound      String?
   status                   String        @default("LOST")
+  approvalStatus           String        @default("APPROVED") // PENDING, APPROVED, REJECTED
+  handlingType             String?       // COMPENSATION, WAIVED
+  quantity                 Int           @default(1)
+  locationName             String?
   note                     String?
   attachments              String?
   createdAt                DateTime      @default(now())
@@ -993,6 +1003,15 @@ model ToolInventoryItem {
   actualUserId        Int?
   checkCondition      String?            @default("FOUND")
   physicalDetailsJson String?
+  
+  // Các trường số lượng mới phục vụ kiểm lô/số lượng
+  expectedQuantity    Int                @default(1)  // Số lượng theo sổ sách
+  actualGoodQty       Int                @default(0)  // Thực tế tốt / khả dụng
+  actualRepairQty     Int                @default(0)  // Hỏng sửa được
+  actualBrokenQty     Int                @default(0)  // Hỏng không sửa / hủy
+  actualLostQty       Int                @default(0)  // Mất / Chưa tìm thấy
+  mismatchQty         Int                @default(0)  // Chênh lệch (Thực tế tổng - Theo sổ)
+
   tool                ToolEquipment      @relation(fields: [toolId], references: [id])
   inventoryCheck      ToolInventoryCheck @relation(fields: [inventoryCheckId], references: [id])
 }

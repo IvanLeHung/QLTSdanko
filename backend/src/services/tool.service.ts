@@ -216,7 +216,8 @@ export class ToolService {
     const stockSums = stockAggregates._sum;
     const totalAvailable = stockSums.quantityAvailable || 0;
     const totalUsing = stockSums.quantityUsing || 0;
-    const totalBroken = (stockSums.quantityBroken || 0) + (stockSums.quantityRepairing || 0);
+    const totalBroken = stockSums.quantityBroken || 0;
+    const totalRepairing = stockSums.quantityRepairing || 0;
     const totalLostQty = stockSums.quantityLost || 0;
     const totalDestroyed = stockSums.quantityDestroyed || 0;
     const totalTransit = stockSums.quantityTransit || 0;
@@ -243,6 +244,7 @@ export class ToolService {
       totalAvailable,
       totalUsing,
       totalBroken,
+      totalRepairing,
       totalLostQty,
       totalDestroyed,
       totalTransit
@@ -1246,6 +1248,35 @@ export class ToolService {
 
       const expectedTools = await tx.toolEquipment.findMany({ where });
 
+      const itemsToCreate = [];
+      for (const t of expectedTools) {
+        let expectedQty = t.quantity || 0;
+        if (t.managementType === 'QUANTITY') {
+          if (data.scopeType === 'LOCATION' && data.scopeValue) {
+            const stock = await tx.toolStock.findFirst({
+              where: { toolId: t.id, locationName: { contains: data.scopeValue } }
+            });
+            expectedQty = stock ? stock.quantityAvailable : 0;
+          }
+        } else {
+          expectedQty = 1;
+        }
+
+        itemsToCreate.push({
+          toolId: t.id,
+          toolCode: t.toolCode,
+          expectedStatus: t.status,
+          expectedLocation: t.locationName,
+          checkStatus: 'PENDING',
+          expectedQuantity: expectedQty,
+          actualGoodQty: expectedQty, // Gán mặc định bằng sổ sách lúc tạo
+          actualRepairQty: 0,
+          actualBrokenQty: 0,
+          actualLostQty: 0,
+          mismatchQty: 0
+        });
+      }
+
       const check = await tx.toolInventoryCheck.create({
         data: {
           inventoryCode,
@@ -1256,13 +1287,7 @@ export class ToolService {
           scopeValue: data.scopeValue,
           note: data.note,
           items: {
-            create: expectedTools.map(t => ({
-              toolId: t.id,
-              toolCode: t.toolCode,
-              expectedStatus: t.status,
-              expectedLocation: t.locationName,
-              checkStatus: 'PENDING'
-            }))
+            create: itemsToCreate
           }
         },
         include: { items: true }
@@ -1274,43 +1299,71 @@ export class ToolService {
 
   static async submitItemCheck(checkId: number, data: {
     toolId: number;
-    actualStatus: string;
+    actualStatus?: string;
     actualLocation?: string;
     quality?: string;
     checkCondition: 'FOUND' | 'MISSING' | 'DAMAGED' | 'WRONG_LOCATION';
     note?: string;
+    actualGoodQty?: number;
+    actualRepairQty?: number;
+    actualBrokenQty?: number;
+    actualLostQty?: number;
+    photos?: string[];
   }, performedBy: string) {
     return await prisma.$transaction(async (tx) => {
       const checkItem = await tx.toolInventoryItem.findFirst({
-        where: { inventoryCheckId: checkId, toolId: data.toolId }
+        where: { inventoryCheckId: checkId, toolId: data.toolId },
+        include: { tool: true }
       });
 
       if (!checkItem) throw new Error('CCDC không nằm trong đợt kiểm kê này.');
 
+      const isQtyMode = checkItem.tool.managementType === 'QUANTITY';
+
+      let actualGood = data.actualGoodQty !== undefined ? Number(data.actualGoodQty) : (isQtyMode ? checkItem.expectedQuantity : 1);
+      let actualRepair = data.actualRepairQty !== undefined ? Number(data.actualRepairQty) : 0;
+      let actualBroken = data.actualBrokenQty !== undefined ? Number(data.actualBrokenQty) : 0;
+      let actualLost = data.actualLostQty !== undefined ? Number(data.actualLostQty) : 0;
+
+      if (!isQtyMode) {
+        actualGood = data.checkCondition === 'FOUND' ? 1 : 0;
+        actualRepair = data.checkCondition === 'DAMAGED' ? 1 : 0;
+        actualBroken = 0;
+        actualLost = data.checkCondition === 'MISSING' ? 1 : 0;
+      }
+
+      const totalActual = actualGood + actualRepair + actualBroken + actualLost;
+      const expected = checkItem.expectedQuantity;
+      const mismatch = totalActual - expected;
+
       // Calculate matching result
       let result = 'MATCHED';
-      if (data.checkCondition === 'MISSING') {
-        result = 'MISSING';
-      } else if (data.actualStatus !== checkItem.expectedStatus) {
-        result = 'WRONG_STATUS';
+      if (mismatch !== 0) {
+        result = mismatch < 0 ? 'MISSING' : 'EXTRA';
+      } else if (actualRepair > 0 || actualBroken > 0) {
+        result = 'DAMAGED';
       } else if (data.actualLocation && data.actualLocation !== checkItem.expectedLocation) {
         result = 'WRONG_LOCATION';
-      } else if (data.checkCondition === 'DAMAGED') {
-        result = 'DAMAGED';
       }
 
       const updatedItem = await tx.toolInventoryItem.update({
         where: { id: checkItem.id },
         data: {
-          actualStatus: data.actualStatus,
-          actualLocation: data.actualLocation,
-          quality: data.quality,
+          actualStatus: data.actualStatus || (actualGood > 0 ? 'IN_STOCK' : 'LOST'),
+          actualLocation: data.actualLocation || checkItem.expectedLocation,
+          quality: data.quality || (actualGood > 0 ? 'GOOD' : 'NORMAL'),
           checkCondition: data.checkCondition,
           note: data.note,
           result,
           checkStatus: 'CHECKED',
           checkedAt: new Date(),
-          checkedBy: performedBy
+          checkedBy: performedBy,
+          actualGoodQty: actualGood,
+          actualRepairQty: actualRepair,
+          actualBrokenQty: actualBroken,
+          actualLostQty: actualLost,
+          mismatchQty: mismatch,
+          photos: data.photos || []
         }
       });
 
@@ -1322,41 +1375,114 @@ export class ToolService {
     return await prisma.$transaction(async (tx) => {
       const check = await tx.toolInventoryCheck.findUnique({
         where: { id },
-        include: { items: true }
+        include: { items: { include: { tool: true } } }
       });
 
       if (!check) throw new Error('Phiếu kiểm kê không tồn tại.');
       if (check.status === 'COMPLETED') throw new Error('Phiếu kiểm kê đã hoàn tất.');
 
-      // Update CCDC database entries after inventory
+      // Update CCDC database entries / ToolStock after inventory
       for (const item of check.items) {
         if (item.checkStatus === 'CHECKED') {
-          const updates: any = {};
-          if (item.actualStatus) updates.status = item.actualStatus;
-          if (item.actualLocation) updates.locationName = item.actualLocation;
+          const isQtyMode = item.tool.managementType === 'QUANTITY';
+          const location = item.actualLocation || item.expectedLocation || 'Kho chính';
 
-          if (Object.keys(updates).length > 0) {
-            const tool = await tx.toolEquipment.findUnique({ where: { id: item.toolId } });
-            if (!tool) continue;
-
-            await tx.toolEquipment.update({
-              where: { id: item.toolId },
-              data: updates
+          if (isQtyMode) {
+            // Update ToolStock for this location
+            const stock = await tx.toolStock.findUnique({
+              where: { toolId_locationName: { toolId: item.toolId, locationName: location } }
             });
 
+            // Cập nhật lại số lượng tồn kho theo thực tế kiểm kê
+            await tx.toolStock.upsert({
+              where: { toolId_locationName: { toolId: item.toolId, locationName: location } },
+              update: {
+                quantityAvailable: item.actualGoodQty,
+                quantityRepairing: item.actualRepairQty,
+                quantityBroken: item.actualBrokenQty,
+                quantityLost: item.actualLostQty
+              },
+              create: {
+                toolId: item.toolId,
+                locationName: location,
+                quantityAvailable: item.actualGoodQty,
+                quantityRepairing: item.actualRepairQty,
+                quantityBroken: item.actualBrokenQty,
+                quantityLost: item.actualLostQty
+              }
+            });
+
+            // Đồng bộ lại tổng số lượng của CCDC chung
+            const allStocks = await tx.toolStock.findMany({
+              where: { toolId: item.toolId }
+            });
+            const totalQty = allStocks.reduce((sum: number, s: any) => sum + s.quantityAvailable + s.quantityUsing + s.quantityTransit + s.quantityRepairing + s.quantityBroken + s.quantityLost, 0);
+            
+            await tx.toolEquipment.update({
+              where: { id: item.toolId },
+              data: {
+                quantity: totalQty,
+                status: totalQty > 0 ? 'IN_STOCK' : 'LOST',
+                updatedAt: new Date()
+              }
+            });
+
+            // Ghi nhận lịch sử giao dịch kho
+            await tx.toolStockTransaction.create({
+              data: {
+                toolId: item.toolId,
+                type: 'ADJUST',
+                quantity: item.mismatchQty,
+                toLocation: location,
+                performedBy,
+                note: `Điều chỉnh kiểm kê đợt ${check.inventoryCode}. Lệch: ${item.mismatchQty}. Khả dụng: ${item.actualGoodQty}, Đang sửa: ${item.actualRepairQty}, Hỏng hủy: ${item.actualBrokenQty}, Mất: ${item.actualLostQty}`
+              }
+            });
+
+            // Ghi lịch sử CCDC
             await tx.toolHistory.create({
               data: {
                 toolId: item.toolId,
                 toolCode: item.toolCode,
                 eventTime: new Date(),
                 actionType: 'INVENTORY',
-                oldStatus: tool.status,
-                newStatus: updates.status || tool.status,
-                oldLocationName: tool.locationName,
-                newLocationName: updates.locationName || tool.locationName,
-                oldNote: `Cập nhật dữ liệu từ phiếu kiểm kê ${check.inventoryCode}. Kết quả: ${item.result}`
+                oldStatus: item.expectedStatus || 'IN_STOCK',
+                newStatus: totalQty > 0 ? 'IN_STOCK' : 'LOST',
+                oldLocationName: item.expectedLocation,
+                newLocationName: location,
+                oldNote: `Kiểm kê kỳ ${check.inventoryCode}: Lệch ${item.mismatchQty}, Tốt ${item.actualGoodQty}, Sửa ${item.actualRepairQty}, Hủy ${item.actualBrokenQty}, Mất ${item.actualLostQty}`
               }
             });
+
+          } else {
+            // Xử lý CCDC kiểm kê từng mã cá thể (INDIVIDUAL)
+            const updates: any = {};
+            if (item.actualStatus) updates.status = item.actualStatus;
+            if (item.actualLocation) updates.locationName = item.actualLocation;
+
+            if (Object.keys(updates).length > 0) {
+              const tool = await tx.toolEquipment.findUnique({ where: { id: item.toolId } });
+              if (!tool) continue;
+
+              await tx.toolEquipment.update({
+                where: { id: item.toolId },
+                data: updates
+              });
+
+              await tx.toolHistory.create({
+                data: {
+                  toolId: item.toolId,
+                  toolCode: item.toolCode,
+                  eventTime: new Date(),
+                  actionType: 'INVENTORY',
+                  oldStatus: tool.status,
+                  newStatus: updates.status || tool.status,
+                  oldLocationName: tool.locationName,
+                  newLocationName: updates.locationName || tool.locationName,
+                  oldNote: `Cập nhật dữ liệu từ phiếu kiểm kê ${check.inventoryCode}. Kết quả: ${item.result}`
+                }
+              });
+            }
           }
         }
       }
@@ -1481,6 +1607,7 @@ export class ToolService {
     fromLocation: string;
     toLocation: string;
     qtyGood: number;
+    qtyRepair: number;
     qtyBroken: number;
     qtyLost: number;
     note?: string;
@@ -1489,7 +1616,7 @@ export class ToolService {
       const tool = await tx.toolEquipment.findUnique({ where: { id: data.toolId } });
       if (!tool) throw new Error('Không tìm thấy CCDC.');
 
-      if (data.qtyGood + data.qtyBroken + data.qtyLost !== data.quantity) {
+      if (data.qtyGood + data.qtyRepair + data.qtyBroken + data.qtyLost !== data.quantity) {
         throw new Error('Tổng số lượng thu hồi chi tiết không khớp tổng số lượng yêu cầu.');
       }
 
@@ -1515,11 +1642,13 @@ export class ToolService {
           toolId: data.toolId,
           locationName: data.toLocation,
           quantityAvailable: data.qtyGood,
+          quantityRepairing: data.qtyRepair,
           quantityBroken: data.qtyBroken,
           quantityLost: data.qtyLost
         },
         update: {
           quantityAvailable: { increment: data.qtyGood },
+          quantityRepairing: { increment: data.qtyRepair },
           quantityBroken: { increment: data.qtyBroken },
           quantityLost: { increment: data.qtyLost }
         }
@@ -1533,7 +1662,7 @@ export class ToolService {
           fromLocation: data.fromLocation,
           toLocation: data.toLocation,
           performedBy,
-          note: data.note || `Thu hồi (Tốt: ${data.qtyGood}, Hỏng: ${data.qtyBroken}, Mất: ${data.qtyLost})`
+          note: data.note || `Thu hồi (Tốt: ${data.qtyGood}, Sửa: ${data.qtyRepair}, Hỏng hủy: ${data.qtyBroken}, Mất: ${data.qtyLost})`
         }
       });
 
@@ -1541,7 +1670,7 @@ export class ToolService {
         entityType: 'TOOL_EQUIPMENT',
         entityId: data.toolId,
         action: 'RECALL_STOCK' as any,
-        details: { quantity: data.quantity, good: data.qtyGood, broken: data.qtyBroken, lost: data.qtyLost, from: data.fromLocation, to: data.toLocation },
+        details: { quantity: data.quantity, good: data.qtyGood, repair: data.qtyRepair, broken: data.qtyBroken, lost: data.qtyLost, from: data.fromLocation, to: data.toLocation },
         performedBy,
         tx
       });
@@ -1561,16 +1690,23 @@ export class ToolService {
       const stock = await tx.toolStock.findUnique({
         where: { toolId_locationName: { toolId: data.toolId, locationName: data.locationName } }
       });
-      if (!stock || stock.quantityAvailable < data.quantity) {
-        throw new Error('Số lượng khả dụng không đủ để báo hỏng.');
+      if (!stock) throw new Error('Không tìm thấy CCDC tại vị trí này.');
+      
+      const totalAvail = stock.quantityAvailable + stock.quantityUsing;
+      if (totalAvail < data.quantity) {
+        throw new Error('Số lượng khả dụng/đang dùng không đủ để báo hỏng.');
       }
+
+      let qtyToDecAvail = Math.min(stock.quantityAvailable, data.quantity);
+      let qtyToDecUsing = data.quantity - qtyToDecAvail;
 
       if (data.canRepair) {
         await tx.toolStock.update({
           where: { id: stock.id },
           data: {
-            quantityAvailable: { decrement: data.quantity },
-            quantityBroken: { increment: data.quantity }
+            quantityAvailable: { decrement: qtyToDecAvail },
+            quantityUsing: { decrement: qtyToDecUsing },
+            quantityRepairing: { increment: data.quantity }
           }
         });
         await tx.toolStockTransaction.create({
@@ -1587,24 +1723,38 @@ export class ToolService {
         await tx.toolStock.update({
           where: { id: stock.id },
           data: {
-            quantityAvailable: { decrement: data.quantity },
-            quantityDestroyed: { increment: data.quantity }
+            quantityAvailable: { decrement: qtyToDecAvail },
+            quantityUsing: { decrement: qtyToDecUsing },
+            quantityBroken: { increment: data.quantity }
           }
         });
-        await tx.toolEquipment.update({
-          where: { id: data.toolId },
+
+        const reportCode = await generateDocumentNo(tx, 'DXH-CCDC');
+        await tx.toolDamageReport.create({
           data: {
-            quantity: { decrement: data.quantity }
+            reportCode,
+            description: data.note || 'Báo hỏng đề xuất hủy',
+            solutionType: 'DESTROY_PROPOSAL',
+            approvalStatus: 'PENDING',
+            quantity: data.quantity,
+            locationName: data.locationName,
+            status: 'PENDING',
+            items: {
+              create: [{
+                toolId: data.toolId
+              }]
+            }
           }
         });
+
         await tx.toolStockTransaction.create({
           data: {
             toolId: data.toolId,
-            type: 'DESTROY',
+            type: 'DAMAGE',
             quantity: data.quantity,
             fromLocation: data.locationName,
             performedBy,
-            note: data.note || 'Hủy bỏ (Không thể sửa)'
+            note: data.note || 'Báo hỏng (Đề xuất hủy)'
           }
         });
       }
@@ -1631,14 +1781,14 @@ export class ToolService {
       const stock = await tx.toolStock.findUnique({
         where: { toolId_locationName: { toolId: data.toolId, locationName: data.locationName } }
       });
-      if (!stock || stock.quantityBroken < data.quantity) {
-        throw new Error('Số lượng đang báo hỏng tại vị trí không đủ.');
+      if (!stock || stock.quantityRepairing < data.quantity) {
+        throw new Error('Số lượng đang sửa chữa tại vị trí không đủ.');
       }
 
       await tx.toolStock.update({
         where: { id: stock.id },
         data: {
-          quantityBroken: { decrement: data.quantity },
+          quantityRepairing: { decrement: data.quantity },
           quantityAvailable: { increment: data.quantity }
         }
       });
@@ -1678,15 +1828,37 @@ export class ToolService {
       const stock = await tx.toolStock.findUnique({
         where: { toolId_locationName: { toolId: data.toolId, locationName: data.locationName } }
       });
-      if (!stock || stock.quantityAvailable < data.quantity) {
-        throw new Error('Số lượng khả dụng không đủ để báo mất.');
+      
+      const totalAvail = stock ? (stock.quantityAvailable + stock.quantityUsing) : 0;
+      if (!stock || totalAvail < data.quantity) {
+        throw new Error('Số lượng khả dụng/đang dùng không đủ để báo mất.');
       }
+
+      let qtyToDecAvail = Math.min(stock.quantityAvailable, data.quantity);
+      let qtyToDecUsing = data.quantity - qtyToDecAvail;
 
       await tx.toolStock.update({
         where: { id: stock.id },
         data: {
-          quantityAvailable: { decrement: data.quantity },
+          quantityAvailable: { decrement: qtyToDecAvail },
+          quantityUsing: { decrement: qtyToDecUsing },
           quantityLost: { increment: data.quantity }
+        }
+      });
+
+      const lostCode = await generateDocumentNo(tx, 'BMT-CCDC');
+      await tx.toolLostReport.create({
+        data: {
+          lostCode,
+          toolId: data.toolId,
+          reportedBy: performedBy,
+          responsibleUser: data.responsibleUser,
+          remainingValue: data.compensationValue || 0,
+          incidentDescription: data.note || 'Báo mất thất thoát CCDC',
+          status: 'PENDING',
+          approvalStatus: 'PENDING',
+          quantity: data.quantity,
+          locationName: data.locationName
         }
       });
 
@@ -1697,7 +1869,7 @@ export class ToolService {
           quantity: data.quantity,
           fromLocation: data.locationName,
           performedBy,
-          note: data.note || `Báo mất (Trách nhiệm: ${data.responsibleUser || '---'}, Bồi hoàn: ${data.compensationValue?.toLocaleString()} VNĐ, Biên bản: ${data.documentNo || '---'})`
+          note: data.note || `Báo mất (Chờ duyệt)`
         }
       });
 
@@ -1705,9 +1877,92 @@ export class ToolService {
         entityType: 'TOOL_EQUIPMENT',
         entityId: data.toolId,
         action: 'LOST_STOCK' as any,
-        details: { quantity: data.quantity, user: data.responsibleUser, comp: data.compensationValue, doc: data.documentNo, location: data.locationName },
+        details: { quantity: data.quantity, location: data.locationName },
         performedBy,
         tx
+      });
+    });
+  }
+
+  static async approveDestroyProposal(id: number, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const report = await tx.toolDamageReport.findUnique({
+        where: { id },
+        include: { items: true }
+      });
+      if (!report) throw new Error('Không tìm thấy phiếu đề xuất hủy.');
+      if (report.approvalStatus !== 'PENDING') throw new Error('Phiếu này đã được xử lý.');
+
+      const item = report.items[0];
+      if (!item) throw new Error('Không tìm thấy CCDC trong phiếu.');
+
+      const location = report.locationName || 'Kho chính';
+
+      const stock = await tx.toolStock.findUnique({
+        where: { toolId_locationName: { toolId: item.toolId, locationName: location } }
+      });
+      if (!stock || stock.quantityBroken < report.quantity) {
+        throw new Error('Số lượng chờ hủy tại kho không đủ.');
+      }
+
+      await tx.toolStock.update({
+        where: { id: stock.id },
+        data: {
+          quantityBroken: { decrement: report.quantity },
+          quantityDestroyed: { increment: report.quantity }
+        }
+      });
+
+      await tx.toolDamageReport.update({
+        where: { id },
+        data: {
+          approvalStatus: 'APPROVED',
+          status: 'APPROVED',
+          note: `Phê duyệt bởi ${performedBy}`
+        }
+      });
+
+      await tx.toolStockTransaction.create({
+        data: {
+          toolId: item.toolId,
+          type: 'DESTROY',
+          quantity: report.quantity,
+          fromLocation: location,
+          performedBy,
+          note: `Phê duyệt hủy từ đề xuất ${report.reportCode}`
+        }
+      });
+    });
+  }
+
+  static async approveLostReport(id: number, data: { handlingType: 'COMPENSATION' | 'WAIVED', compensationNote?: string }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const report = await tx.toolLostReport.findUnique({
+        where: { id }
+      });
+      if (!report) throw new Error('Không tìm thấy phiếu báo mất.');
+      if (report.approvalStatus !== 'PENDING') throw new Error('Phiếu này đã được xử lý.');
+
+      await tx.toolLostReport.update({
+        where: { id },
+        data: {
+          approvalStatus: 'APPROVED',
+          status: 'APPROVED',
+          handlingType: data.handlingType,
+          compensationNote: data.compensationNote,
+          completedAt: new Date()
+        }
+      });
+
+      await tx.toolStockTransaction.create({
+        data: {
+          toolId: report.toolId,
+          type: 'ADJUST',
+          quantity: report.quantity,
+          fromLocation: report.locationName,
+          performedBy,
+          note: `Phê duyệt báo mất ${report.lostCode}. Phương án: ${data.handlingType === 'COMPENSATION' ? 'Bồi thường' : 'Miễn trách nhiệm'}. Ghi chú: ${data.compensationNote || ''}`
+        }
       });
     });
   }

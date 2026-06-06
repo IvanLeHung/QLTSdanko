@@ -472,6 +472,8 @@ export const ToolList: React.FC = () => {
 
     setLoading(true);
     try {
+      let createdHandoverDocId: number | null = null;
+
       for (const item of modalItems) {
         if (type === 'TRANSFER') {
           await api.post('/tools/stock/transfer', {
@@ -518,7 +520,44 @@ export const ToolList: React.FC = () => {
         }
       }
 
-      toast.success("Đã hoàn tất xử lý biến động CCDC thành công!");
+      // For ALLOCATE: auto-generate a handover document (BBBG)
+      if (type === 'ALLOCATE' && handoverForm.recipientName) {
+        try {
+          const docRes = await api.post('/tools/handover', {
+            type: 'HANDOVER',
+            recipientName: handoverForm.recipientName,
+            recipientDepartment: handoverForm.recipientDepartment,
+            recipientPosition: handoverForm.recipientPosition,
+            recipientPhone: handoverForm.recipientPhone,
+            newLocation: destinationLocation,
+            reason: handoverForm.reason,
+            note: handoverForm.note,
+            toolIds: modalItems.map(i => i.toolId),
+            autoComplete: false
+          });
+          createdHandoverDocId = docRes.data.id;
+        } catch (docErr) {
+          console.warn('Không thể tạo biên bản bàn giao:', docErr);
+        }
+      }
+
+      if (createdHandoverDocId) {
+        toast.success(
+          <div>
+            <div className="font-bold">Cấp phát thành công! Biên bản đã được tạo.</div>
+            <button
+              onClick={() => navigate(`/tools/handover/${createdHandoverDocId}`)}
+              className="mt-1 text-xs underline text-primary-600 font-bold"
+            >
+              👉 Xem & ký biên bản bàn giao
+            </button>
+          </div>,
+          { autoClose: 6000 }
+        );
+      } else {
+        toast.success("Đã hoàn tất xử lý biến động CCDC thành công!");
+      }
+
       setActiveModal('NONE');
       setSelectedIds([]);
       resetHandoverLocationStates();
@@ -641,24 +680,24 @@ export const ToolList: React.FC = () => {
                 <span className="text-[10px] text-blue-500">cái đang sử dụng</span>
               </div>
               <div className="bg-gradient-to-br from-orange-50 to-amber-50 p-4 rounded-2xl border border-orange-100 shadow-sm flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">🟠 Hỏng/Sửa</span>
-                <span className="text-2xl font-black text-orange-700">{stats.totalBroken?.toLocaleString('vi-VN')}</span>
-                <span className="text-[10px] text-orange-500">cái hỏng/đang sửa</span>
+                <span className="text-[10px] font-bold text-orange-600 uppercase tracking-widest">🛠️ Đang sửa</span>
+                <span className="text-2xl font-black text-orange-700">{stats.totalRepairing?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-orange-500">cái đang sửa chữa</span>
               </div>
-              <div className="bg-gradient-to-br from-red-50 to-rose-50 p-4 rounded-2xl border border-red-100 shadow-sm flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">🔴 Mất</span>
-                <span className="text-2xl font-black text-red-700">{stats.totalLostQty?.toLocaleString('vi-VN')}</span>
-                <span className="text-[10px] text-red-500">cái ghi nhận mất</span>
+              <div className="bg-gradient-to-br from-yellow-50 to-yellow-100 p-4 rounded-2xl border border-yellow-250 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-yellow-750 uppercase tracking-widest">⚠️ Chờ hủy</span>
+                <span className="text-2xl font-black text-yellow-800">{stats.totalBroken?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-yellow-600">cái đề xuất hủy</span>
               </div>
               <div className="bg-gradient-to-br from-slate-50 to-gray-50 p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
                 <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">⚫ Đã hủy</span>
                 <span className="text-2xl font-black text-slate-700">{stats.totalDestroyed?.toLocaleString('vi-VN')}</span>
-                <span className="text-[10px] text-slate-400">cái đã thanh lý</span>
+                <span className="text-[10px] text-slate-400">cái đã hủy</span>
               </div>
-              <div className="bg-gradient-to-br from-purple-50 to-violet-50 p-4 rounded-2xl border border-purple-100 shadow-sm flex flex-col gap-1">
-                <span className="text-[10px] font-bold text-purple-600 uppercase tracking-widest">🚚 Đang vận chuyển</span>
-                <span className="text-2xl font-black text-purple-700">{stats.totalTransit?.toLocaleString('vi-VN')}</span>
-                <span className="text-[10px] text-purple-500">cái đang luân chuyển</span>
+              <div className="bg-gradient-to-br from-red-50 to-rose-50 p-4 rounded-2xl border border-red-100 shadow-sm flex flex-col gap-1">
+                <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">🔴 Mất</span>
+                <span className="text-2xl font-black text-red-700">{stats.totalLostQty?.toLocaleString('vi-VN')}</span>
+                <span className="text-[10px] text-red-500">cái báo mất</span>
               </div>
             </div>
           )}
@@ -685,6 +724,18 @@ export const ToolList: React.FC = () => {
             className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
           >
             <Plus className="h-4 w-4 text-primary-600" /> Nhập chứng từ
+          </button>
+          <button 
+            onClick={() => navigate('/tools/inventory')}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+          >
+            <ClipboardList className="h-4 w-4 text-orange-500" /> Kiểm kê CCDC
+          </button>
+          <button 
+            onClick={() => navigate('/tools/approvals')}
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-600 hover:bg-slate-50 transition-colors shadow-sm cursor-pointer"
+          >
+            <ShieldAlert className="h-4 w-4 text-rose-500" /> Chờ xử lý duyệt
           </button>
           <button 
             onClick={() => navigate('/tools/import')}
@@ -876,7 +927,9 @@ export const ToolList: React.FC = () => {
                   <th className="px-6 py-4 text-center">Tổng SL</th>
                   <th className="px-6 py-4 text-center text-emerald-600">🟢 Khả dụng</th>
                   <th className="px-6 py-4 text-center text-blue-600">🔵 Đang dùng</th>
-                  <th className="px-6 py-4 text-center text-orange-500">🟠 Hỏng</th>
+                  <th className="px-6 py-4 text-center text-teal-600">🔧 Đang sửa</th>
+                  <th className="px-6 py-4 text-center text-orange-500">🟠 Chờ hủy</th>
+                  <th className="px-6 py-4 text-center text-slate-500">⚫ Đã hủy</th>
                   <th className="px-6 py-4 text-center text-red-500">🔴 Mất</th>
                   <th className="px-6 py-4">Người sử dụng</th>
                   <th className="px-6 py-4">Phòng ban</th>
@@ -1010,14 +1063,16 @@ export const ToolList: React.FC = () => {
                       </td>
                       <td className="px-6 py-4 border-b text-slate-500">{tool.category}</td>
                       <td className="px-6 py-4 border-b text-center font-bold text-slate-800">{tool.quantity} {tool.unit}</td>
-                      {/* Quantity breakdown columns for QUANTITY type */}
+                      {/* Quantity breakdown columns for QUANTITY type - 6 ledger columns */}
                       {(() => {
                         if (tool.managementType === 'QUANTITY' && tool.stocks && tool.stocks.length > 0) {
-                          let available = 0, using = 0, broken = 0, lost = 0;
+                          let available = 0, using = 0, repairing = 0, broken = 0, destroyed = 0, lost = 0;
                           tool.stocks.forEach((s: any) => {
                             available += s.quantityAvailable || 0;
                             using += s.quantityUsing || 0;
-                            broken += (s.quantityBroken || 0) + (s.quantityRepairing || 0);
+                            repairing += s.quantityRepairing || 0;
+                            broken += s.quantityBroken || 0;
+                            destroyed += s.quantityDestroyed || 0;
                             lost += s.quantityLost || 0;
                           });
                           return (
@@ -1029,7 +1084,13 @@ export const ToolList: React.FC = () => {
                                 {using > 0 ? <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 font-black text-sm">{using}</span> : <span className="text-slate-300 text-xs">—</span>}
                               </td>
                               <td className="px-6 py-4 border-b text-center">
+                                {repairing > 0 ? <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-teal-50 text-teal-700 font-black text-sm">{repairing}</span> : <span className="text-slate-300 text-xs">—</span>}
+                              </td>
+                              <td className="px-6 py-4 border-b text-center">
                                 {broken > 0 ? <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 font-black text-sm">{broken}</span> : <span className="text-slate-300 text-xs">—</span>}
+                              </td>
+                              <td className="px-6 py-4 border-b text-center">
+                                {destroyed > 0 ? <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-black text-sm">{destroyed}</span> : <span className="text-slate-300 text-xs">—</span>}
                               </td>
                               <td className="px-6 py-4 border-b text-center">
                                 {lost > 0 ? <span className="inline-flex items-center justify-center min-w-[2rem] px-2 py-0.5 rounded-full bg-red-50 text-red-700 font-black text-sm">{lost}</span> : <span className="text-slate-300 text-xs">—</span>}
@@ -1039,6 +1100,8 @@ export const ToolList: React.FC = () => {
                         } else {
                           return (
                             <>
+                              <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
+                              <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
                               <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
                               <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
                               <td className="px-6 py-4 border-b text-center text-slate-300 text-xs">—</td>
