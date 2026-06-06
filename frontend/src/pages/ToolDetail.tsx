@@ -154,7 +154,6 @@ export const ToolDetail: React.FC = () => {
               currentFiles[fileType] = secureUrl;
               
               const payload = {
-                ...tool,
                 filesJson: JSON.stringify(currentFiles)
               };
               
@@ -182,7 +181,6 @@ export const ToolDetail: React.FC = () => {
       currentFiles[fileType] = '';
       
       const payload = {
-        ...tool,
         filesJson: JSON.stringify(currentFiles)
       };
       
