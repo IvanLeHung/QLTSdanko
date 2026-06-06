@@ -29,7 +29,11 @@ import {
   Layers,
   Settings,
   X,
-  Image as ImageIcon
+  Image as ImageIcon,
+  ChevronDown,
+  BarChart3,
+  Receipt,
+  AlertTriangle
 } from 'lucide-react';
 
 export const ToolDetail: React.FC = () => {
@@ -38,7 +42,8 @@ export const ToolDetail: React.FC = () => {
 
   const [tool, setTool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'inventoryPhotos' | 'history'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'inventoryPhotos' | 'history' | 'documents' | 'analytics'>('info');
+  const [transactionMenuOpen, setTransactionMenuOpen] = useState(false);
   
   // Stock Actions Modal State
   const [activeStockModal, setActiveStockModal] = useState<'NONE' | 'TRANSFER' | 'ALLOCATE' | 'RECALL' | 'DAMAGE' | 'REPAIR_COMPLETE' | 'LOST' | 'BATCH' | 'ADJUST'>('NONE');
@@ -313,6 +318,21 @@ export const ToolDetail: React.FC = () => {
   }
 
   const isQuantityMode = tool.managementType === 'QUANTITY';
+  const sameInvoiceCount = tool.invoiceBatch?._count?.tools || tool.invoiceBatch?.tools?.length || 0;
+  const hasRealPhoto = !!(filesInfo.avatarUrl || filesInfo.photoUrl);
+  const hasSignedInvoice = !!(tool.invoiceBatch?.invoiceLegalStatus === 'SIGNED_VALID' || tool.invoiceBatch?.signedFileUrl || tool.invoiceBatch?.fileUrl);
+  const hasHandoverDocument = (tool.assignments?.length || 0) > 0 || !!tool.handoverDate;
+  const missingProfileItems = [
+    !hasSignedInvoice ? 'Hóa đơn đã ký' : '',
+    !hasRealPhoto ? 'Ảnh thực tế' : '',
+    !hasHandoverDocument ? 'Biên bản bàn giao' : ''
+  ].filter(Boolean);
+  const usageCount = (tool.assignments?.length || 0) + (tool.stockTransactions?.filter((t: any) => ['USE', 'ALLOCATE', 'TRANSFER', 'RECALL'].includes(t.type)).length || 0);
+  const repairCount = tool.repairTickets?.length || 0;
+  const repairCost = tool.repairTickets?.reduce((sum: number, ticket: any) => sum + (ticket.actualCost || ticket.estimatedCost || 0), 0) || 0;
+  const lostCount = totalLost + (tool.lostReports?.length || 0);
+  const lossRate = totalStock > 0 ? Math.round((lostCount / totalStock) * 100) : 0;
+  const lastInventoryDate = tool.inventoryItems?.[0]?.checkedAt || tool.inventoryItems?.[0]?.inventoryCheck?.completedAt || tool.inventoryItems?.[0]?.inventoryCheck?.createdAt;
 
   return (
     <div className="space-y-6 pb-20 px-4 max-w-7xl mx-auto">
@@ -347,6 +367,16 @@ export const ToolDetail: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {missingProfileItems.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3 text-amber-800">
+          <AlertTriangle className="h-5 w-5 shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-black">Hồ sơ chưa hoàn thiện</p>
+            <p className="text-xs font-bold mt-1">Thiếu: {missingProfileItems.join(', ')}</p>
+          </div>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
@@ -403,6 +433,36 @@ export const ToolDetail: React.FC = () => {
               </span>
             </div>
             {tool.invoiceBatch && (
+              <div className="bg-blue-50/70 border border-blue-100 rounded-2xl p-4 space-y-3">
+                <h4 className="text-[11px] font-black text-blue-800 uppercase tracking-widest flex items-center gap-2">
+                  <Receipt className="h-4 w-4" /> NGUỒN HÌNH THÀNH
+                </h4>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold uppercase tracking-wider">Hóa đơn</span>
+                  <span className="text-slate-900 font-black">{tool.invoiceBatch.invoiceNo}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold uppercase tracking-wider">Nhà cung cấp</span>
+                  <span className="text-slate-800 font-bold">{tool.invoiceBatch.supplierName}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold uppercase tracking-wider">Ngày mua</span>
+                  <span className="text-slate-800 font-bold">{new Date(tool.invoiceBatch.invoiceDate).toLocaleDateString('vi-VN')}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500 font-bold uppercase tracking-wider">Phiếu nhập</span>
+                  <span className="text-primary-750 font-black">PN-CCDC-{tool.invoiceBatch.id.toString().padStart(6, '0')}</span>
+                </div>
+                <button
+                  onClick={() => navigate(`/tools/invoices/${tool.invoiceBatch.id}`)}
+                  className="w-full mt-1 flex items-center justify-center gap-1.5 px-3 py-2 bg-primary-600 hover:bg-primary-700 rounded-xl text-xs font-bold text-white transition-all"
+                >
+                  <FileText className="h-3.5 w-3.5" />
+                  Xem các món cùng hóa đơn
+                </button>
+              </div>
+            )}
+            {false && tool.invoiceBatch && (
               <>
                 <hr className="border-slate-100" />
                 <h4 className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Hồ sơ mua hàng</h4>
@@ -597,6 +657,18 @@ export const ToolDetail: React.FC = () => {
             >
               Nhật ký hệ thống ({tool.histories?.length || 0})
             </button>
+            <button 
+              onClick={() => setActiveTab('documents')}
+              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'documents' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+            >
+              Hồ sơ chứng từ
+            </button>
+            <button 
+              onClick={() => setActiveTab('analytics')}
+              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'analytics' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+            >
+              Phân tích
+            </button>
           </div>
 
           {/* TAB CONTENT */}
@@ -651,7 +723,38 @@ export const ToolDetail: React.FC = () => {
                     {/* Stock Operations Panel */}
                     <div className="border-t border-slate-200 pt-4 space-y-2">
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center gap-1"><Settings className="h-3 w-3" /> Tác vụ nghiệp vụ kho</p>
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                      <div className="relative w-full sm:w-72">
+                        <button
+                          onClick={() => setTransactionMenuOpen(prev => !prev)}
+                          className="w-full flex items-center justify-between gap-2 px-4 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl text-xs font-black transition-all"
+                        >
+                          <span className="flex items-center gap-2"><Plus className="h-4 w-4" /> Tạo giao dịch</span>
+                          <ChevronDown className={`h-4 w-4 transition-transform ${transactionMenuOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                        {transactionMenuOpen && (
+                          <div className="absolute left-0 top-full mt-2 w-full bg-white border border-slate-200 rounded-2xl shadow-xl z-20 py-1 overflow-hidden">
+                            {[
+                              { label: 'Điều chuyển kho', icon: <ArrowRightLeft className="h-3.5 w-3.5 text-blue-500" />, modal: 'TRANSFER' as const },
+                              { label: 'Cấp phát sử dụng', icon: <User className="h-3.5 w-3.5 text-green-500" />, modal: 'ALLOCATE' as const },
+                              { label: 'Thu hồi', icon: <Box className="h-3.5 w-3.5 text-amber-500" />, modal: 'RECALL' as const },
+                              { label: 'Báo hỏng/mất', icon: <ShieldAlert className="h-3.5 w-3.5 text-orange-500" />, modal: 'DAMAGE' as const },
+                              { label: 'Kiểm kê', icon: <ClipboardCheck className="h-3.5 w-3.5 text-slate-500" />, modal: 'ADJUST' as const }
+                            ].map(action => (
+                              <button
+                                key={action.label}
+                                onClick={() => {
+                                  setTransactionMenuOpen(false);
+                                  setActiveStockModal(action.modal);
+                                }}
+                                className="w-full flex items-center gap-2.5 px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors"
+                              >
+                                {action.icon} {action.label}
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                      <div className="hidden grid-cols-2 sm:grid-cols-4 gap-2">
                         <button 
                           onClick={() => setActiveStockModal('TRANSFER')} 
                           className="flex items-center justify-center gap-1.5 px-3 py-2 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 transition-all"
@@ -1463,6 +1566,71 @@ export const ToolDetail: React.FC = () => {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {activeTab === 'documents' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {[
+                    { title: 'Hóa đơn mua hàng', ok: !!tool.invoiceBatch, meta: tool.invoiceBatch ? `HĐ ${tool.invoiceBatch.invoiceNo}` : 'Chưa liên kết hóa đơn' },
+                    { title: 'Biên bản bàn giao', ok: (tool.assignments?.length || 0) > 0 || !!tool.handoverDate, meta: `${tool.assignments?.length || 0} bản ghi cấp phát` },
+                    { title: 'Biên bản thu hồi', ok: (tool.stockTransactions?.some((t: any) => t.type === 'RECALL') || false), meta: `${tool.stockTransactions?.filter((t: any) => t.type === 'RECALL').length || 0} lần thu hồi` },
+                    { title: 'Biên bản báo hỏng', ok: (tool.repairTickets?.length || 0) > 0 || (tool.damageReports?.length || 0) > 0, meta: `${(tool.repairTickets?.length || 0) + (tool.damageReports?.length || 0)} hồ sơ` },
+                    { title: 'Biên bản mất', ok: (tool.lostReports?.length || 0) > 0, meta: `${tool.lostReports?.length || 0} hồ sơ` },
+                    { title: 'Biên bản hủy', ok: (tool.liquidations?.length || 0) > 0 || tool.status === 'LIQUIDATED', meta: `${tool.liquidations?.length || 0} hồ sơ thanh lý/hủy` }
+                  ].map(doc => (
+                    <div key={doc.title} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 flex items-start gap-3">
+                      {doc.ok ? <CheckCircle2 className="h-5 w-5 text-emerald-600 mt-0.5" /> : <AlertCircle className="h-5 w-5 text-slate-300 mt-0.5" />}
+                      <div>
+                        <h4 className="text-sm font-black text-slate-800">{doc.title}</h4>
+                        <p className="text-xs text-slate-500 font-bold mt-1">{doc.meta}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                {tool.invoiceBatch && (
+                  <button
+                    onClick={() => navigate(`/tools/invoices/${tool.invoiceBatch.id}`)}
+                    className="flex items-center justify-center gap-2 px-4 py-3 bg-primary-50 border border-primary-200 rounded-xl text-xs font-black text-primary-700 hover:bg-primary-100"
+                  >
+                    <FileText className="h-4 w-4" /> Xem các món cùng hóa đơn
+                  </button>
+                )}
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center justify-center gap-2 px-4 py-3 bg-slate-800 border border-slate-800 rounded-xl text-xs font-black text-white hover:bg-slate-900"
+                >
+                  <ClipboardList className="h-4 w-4" /> In lịch sử hồ sơ
+                </button>
+              </div>
+            )}
+
+            {activeTab === 'analytics' && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {[
+                    { label: 'Số lần sử dụng', value: `${usageCount} lần` },
+                    { label: 'Số lần sửa', value: repairCount.toLocaleString('vi-VN') },
+                    { label: 'Chi phí sửa', value: `${repairCost.toLocaleString('vi-VN')} VNĐ` },
+                    { label: 'Tỷ lệ thất thoát', value: `${lossRate}%` },
+                    { label: 'Lần kiểm kê cuối', value: lastInventoryDate ? new Date(lastInventoryDate).toLocaleDateString('vi-VN') : '---' },
+                    { label: 'Tổng biến động kho', value: `${tool.stockTransactions?.length || 0} giao dịch` }
+                  ].map(metric => (
+                    <div key={metric.label} className="bg-slate-50 border border-slate-200 rounded-2xl p-5">
+                      <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{metric.label}</p>
+                      <p className="text-xl font-black text-slate-900 mt-2">{metric.value}</p>
+                    </div>
+                  ))}
+                </div>
+                <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                  <h4 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
+                    <BarChart3 className="h-4 w-4 text-primary-600" /> Tóm tắt quản lý
+                  </h4>
+                  <p className="text-sm text-slate-600 font-medium mt-3">
+                    Hồ sơ hiện có {missingProfileItems.length === 0 ? 'đầy đủ các chứng từ chính.' : `còn thiếu ${missingProfileItems.join(', ')}.`}
+                  </p>
+                </div>
               </div>
             )}
           </div>
