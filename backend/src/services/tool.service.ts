@@ -5,8 +5,8 @@ import { generateDocumentNo } from '../utils/document';
 
 export class ToolService {
   /**
-   * Generates CCDC tool codes in format: CCDC.{NHOM}.{DONVI}.{NAM}.{STT}
-   * STT is a 5-digit zero-padded running number unique to the Nhóm, Đơn vị and year.
+   * Generates CCDC tool codes in format: CCDC.{NHOM}.{NAM}.{STT}
+   * STT is a 5-digit zero-padded running number unique to the Nhóm and year.
    */
   static async generateToolCodes(
     params: {
@@ -66,7 +66,7 @@ export class ToolService {
 
     // 3. Resolve year
     const year = purchaseDate ? new Date(purchaseDate).getFullYear() : new Date().getFullYear();
-    const baseCode = `CCDC.${nhomCode}.${donviCode}.${year}`;
+    const baseCode = `CCDC.${nhomCode}.${year}`;
 
     const execute = async (tx: any) => {
       // Find latest STT in the database using startsWith
@@ -92,7 +92,7 @@ export class ToolService {
       }
 
       // Also check documentCounter
-      const counterKey = `TOOL_CODE_${nhomCode}_${donviCode}_${year}`;
+      const counterKey = `TOOL_CODE_${nhomCode}_${year}`;
       let counter = await tx.documentCounter.findUnique({
         where: { documentType: counterKey }
       });
