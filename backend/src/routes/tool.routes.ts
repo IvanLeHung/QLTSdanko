@@ -717,6 +717,7 @@ router.post('/merge', authenticateToken, async (req: any, res) => {
     const result = await ToolService.mergeToolsIntoQuantity(req.body, performedBy);
     res.json({ success: true, result });
   } catch (err: any) {
+    console.error('Merge tools failed:', err);
     res.status(500).json({ message: err.message });
   }
 });

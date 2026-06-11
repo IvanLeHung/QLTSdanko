@@ -653,7 +653,9 @@ export const ToolList: React.FC = () => {
       setSelectedIds([]);
       fetchTools();
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Loi khi gop ma CCDC.');
+      const status = err.response?.status;
+      const backendMessage = err.response?.data?.message;
+      toast.error(backendMessage || (status ? `Loi khi gop ma CCDC (HTTP ${status}).` : 'Loi khi gop ma CCDC.'));
     } finally {
       setLoading(false);
     }

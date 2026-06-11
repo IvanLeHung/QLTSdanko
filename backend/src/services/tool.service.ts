@@ -2447,9 +2447,34 @@ export class ToolService {
         }
       }
 
-      await tx.toolStock.deleteMany({ where: { toolId: targetTool.id } });
+      const mergedLocations = Array.from(stockBuckets.keys());
       for (const stock of stockBuckets.values()) {
-        await tx.toolStock.create({ data: { toolId: targetTool.id, ...stock } });
+        await tx.toolStock.upsert({
+          where: {
+            toolId_locationName: {
+              toolId: targetTool.id,
+              locationName: stock.locationName
+            }
+          },
+          create: { toolId: targetTool.id, ...stock },
+          update: {
+            quantityAvailable: stock.quantityAvailable,
+            quantityUsing: stock.quantityUsing,
+            quantityBroken: stock.quantityBroken,
+            quantityRepairing: stock.quantityRepairing,
+            quantityLost: stock.quantityLost,
+            quantityDestroyed: stock.quantityDestroyed,
+            quantityTransit: stock.quantityTransit
+          }
+        });
+      }
+      if (mergedLocations.length) {
+        await tx.toolStock.deleteMany({
+          where: {
+            toolId: targetTool.id,
+            locationName: { notIn: mergedLocations }
+          }
+        });
       }
 
       const updatedTarget = await tx.toolEquipment.update({
