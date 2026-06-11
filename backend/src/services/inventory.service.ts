@@ -96,6 +96,10 @@ export class InventoryService {
     return await prisma.inventoryCheck.findUnique({
       where: { id },
       include: {
+        sessions: {
+          orderBy: [{ scheduledDate: 'asc' }, { id: 'asc' }],
+          include: { _count: { select: { details: true } } }
+        },
         items: {
           include: {
             asset: {
@@ -113,6 +117,202 @@ export class InventoryService {
         }
       }
     });
+  }
+
+  static async getInventorySessions(inventoryCheckId: number) {
+    return await prisma.inventorySession.findMany({
+      where: { inventoryCheckId },
+      orderBy: [{ scheduledDate: 'asc' }, { id: 'asc' }],
+      include: { _count: { select: { details: true } }, details: true }
+    });
+  }
+
+  static async createInventoryVisit(inventoryCheckId: number, data: any) {
+    const where = this.buildAssetInventoryScopeWhere(data.departmentName, data.locationName);
+    const assetCountPlan = await prisma.asset.count({ where });
+
+    return await prisma.inventorySession.create({
+      data: {
+        inventoryCheckId,
+        scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : new Date(),
+        companyName: data.companyName || null,
+        projectName: data.projectName || null,
+        departmentName: data.departmentName || null,
+        locationName: data.locationName || null,
+        checkerName: data.checkerName || null,
+        representativeName: data.representativeName || null,
+        assetCountPlan,
+        note: data.note || null
+      }
+    });
+  }
+
+  static async startInventoryVisit(sessionId: number) {
+    return await prisma.$transaction(async (tx) => {
+      const session = await tx.inventorySession.findUnique({ where: { id: sessionId }, include: { details: true } });
+      if (!session) throw new Error('Không tìm thấy phiên kiểm kê tài sản.');
+
+      if (session.details.length === 0) {
+        const where = this.buildAssetInventoryScopeWhere(session.departmentName || undefined, session.locationName || undefined);
+        const assets = await tx.asset.findMany({ where, orderBy: { assetCode: 'asc' } });
+        if (assets.length > 0) {
+          await tx.inventoryDetail.createMany({
+            data: assets.map((asset) => ({
+              sessionId,
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              assetName: asset.assetName,
+              serialNumber: asset.serialNumber || null,
+              bookUserName: asset.currentUserName || null,
+              actualUserName: asset.currentUserName || null,
+              bookDepartmentName: asset.departmentName || null,
+              actualDepartmentName: asset.departmentName || null,
+              bookLocationName: asset.locationName || null,
+              actualLocationName: asset.locationName || null,
+              resultStatus: 'MATCH'
+            }))
+          });
+        }
+
+        await tx.inventorySession.update({ where: { id: sessionId }, data: { assetCountPlan: assets.length } });
+      }
+
+      await tx.inventoryCheck.update({ where: { id: session.inventoryCheckId }, data: { status: 'IN_PROGRESS' } });
+      return await tx.inventorySession.update({
+        where: { id: sessionId },
+        data: { status: 'IN_PROGRESS' },
+        include: { details: { include: { asset: true } } }
+      });
+    });
+  }
+
+  static async getInventoryVisitDetail(sessionId: number) {
+    const session = await prisma.inventorySession.findUnique({
+      where: { id: sessionId },
+      include: { inventoryCheck: true, details: { include: { asset: true }, orderBy: { id: 'asc' } } }
+    });
+    if (!session) throw new Error('Không tìm thấy phiên kiểm kê tài sản.');
+    return session;
+  }
+
+  static async updateInventoryVisitDetail(detailId: number, data: any, checkedBy: string) {
+    const detail = await prisma.inventoryDetail.findUnique({ where: { id: detailId }, include: { session: true } });
+    if (!detail) throw new Error('Không tìm thấy dòng kiểm kê tài sản.');
+    if (detail.session.status === 'COMPLETED') throw new Error('Phiên kiểm kê đã chốt, không thể sửa.');
+
+    const resultStatus = data.resultStatus || this.resolveInventoryResultStatus({
+      bookUserName: detail.bookUserName,
+      actualUserName: data.actualUserName,
+      bookLocationName: detail.bookLocationName,
+      actualLocationName: data.actualLocationName,
+      condition: data.condition
+    });
+
+    const updated = await prisma.inventoryDetail.update({
+      where: { id: detailId },
+      data: {
+        actualUserName: data.actualUserName ?? detail.actualUserName,
+        actualDepartmentName: data.actualDepartmentName ?? detail.actualDepartmentName,
+        actualLocationName: data.actualLocationName ?? detail.actualLocationName,
+        resultStatus,
+        note: data.note ?? detail.note,
+        imageUrl: data.imageUrl ?? detail.imageUrl,
+        checkedAt: new Date()
+      }
+    });
+
+    if (updated.assetId) {
+      await prisma.asset.update({
+        where: { id: updated.assetId },
+        data: { lastInventoryDate: new Date(), lastInventoryStatus: resultStatus }
+      });
+      await AuditService.log({
+        entityType: 'ASSET',
+        entityId: updated.assetId,
+        action: 'UPDATE',
+        details: { sessionId: detail.sessionId, resultStatus, checkedBy },
+        performedBy: checkedBy
+      });
+    }
+
+    return updated;
+  }
+
+  static async addExtraInventoryVisitAsset(sessionId: number, data: any) {
+    const session = await prisma.inventorySession.findUnique({ where: { id: sessionId } });
+    if (!session) throw new Error('Không tìm thấy phiên kiểm kê tài sản.');
+    if (session.status === 'COMPLETED') throw new Error('Phiên kiểm kê đã chốt, không thể thêm.');
+
+    return await prisma.inventoryDetail.create({
+      data: {
+        sessionId,
+        assetId: null,
+        assetCode: null,
+        assetName: data.assetName || data.name,
+        serialNumber: data.serialNumber || null,
+        actualUserName: data.actualUserName || null,
+        actualDepartmentName: data.actualDepartmentName || session.departmentName || null,
+        actualLocationName: data.actualLocationName || session.locationName || null,
+        resultStatus: 'EXTRA',
+        note: data.note || 'Tài sản phát sinh ngoài sổ, chờ xác minh nguồn gốc',
+        imageUrl: data.imageUrl || null,
+        checkedAt: new Date()
+      }
+    });
+  }
+
+  static async completeInventoryVisit(sessionId: number) {
+    return await prisma.$transaction(async (tx) => {
+      const session = await tx.inventorySession.update({
+        where: { id: sessionId },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+        include: { details: true }
+      });
+
+      const remaining = await tx.inventorySession.count({
+        where: { inventoryCheckId: session.inventoryCheckId, status: { not: 'COMPLETED' } }
+      });
+      if (remaining === 0) {
+        await tx.inventoryCheck.update({ where: { id: session.inventoryCheckId }, data: { status: 'COMPLETED' } });
+      }
+
+      return session;
+    });
+  }
+
+  static async getInventoryVisitReport(sessionId: number) {
+    const session = await this.getInventoryVisitDetail(sessionId);
+    const details = session.details || [];
+    const matched = details.filter((d: any) => d.resultStatus === 'MATCH').length;
+    return {
+      title: `BIÊN BẢN KIỂM KÊ ${session.departmentName || session.locationName || 'TÀI SẢN'} NGÀY ${session.scheduledDate.toLocaleDateString('vi-VN')}`,
+      session,
+      summary: {
+        bookTotal: details.filter((d: any) => d.resultStatus !== 'EXTRA').length,
+        actualTotal: details.filter((d: any) => d.resultStatus !== 'MISSING').length,
+        matched,
+        deviations: details.length - matched
+      },
+      deviations: details.filter((d: any) => d.resultStatus !== 'MATCH'),
+      signatures: ['Đại diện phòng ban', 'Người kiểm kê', 'Trưởng HCNS']
+    };
+  }
+
+  private static buildAssetInventoryScopeWhere(departmentName?: string, locationName?: string) {
+    const where: any = { isDeleted: false };
+    const or: any[] = [];
+    if (departmentName) or.push({ departmentName });
+    if (locationName) or.push({ locationName: { contains: locationName } });
+    if (or.length > 0) where.OR = or;
+    return where;
+  }
+
+  private static resolveInventoryResultStatus(data: any) {
+    if (data.condition === 'MISSING') return 'MISSING';
+    if (data.condition === 'DAMAGED') return 'DAMAGED';
+    if (data.bookUserName && data.actualUserName && data.bookUserName !== data.actualUserName) return 'WRONG_USER';
+    if (data.bookLocationName && data.actualLocationName && data.bookLocationName !== data.actualLocationName) return 'WRONG_LOCATION';
+    return 'MATCH';
   }
 
   static async submitItemCheck(itemId: number, data: {

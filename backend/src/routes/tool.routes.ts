@@ -495,12 +495,93 @@ router.get('/inventory/list', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/inventory/:id/sessions', authenticateToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const sessions = await ToolService.getInventorySessions(id);
+    res.json(sessions);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/inventory/:id/sessions', authenticateToken, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const session = await ToolService.createInventorySession(id, req.body);
+    res.json(session);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/inventory/sessions/:sessionId', authenticateToken, async (req, res) => {
+  try {
+    const sessionId = parseInt(req.params.sessionId as string, 10);
+    const session = await ToolService.getInventorySessionDetail(sessionId);
+    res.json(session);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/inventory/sessions/:sessionId/start', authenticateToken, async (req, res) => {
+  try {
+    const sessionId = parseInt(req.params.sessionId as string, 10);
+    const session = await ToolService.startInventorySession(sessionId);
+    res.json(session);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/inventory/sessions/:sessionId/extra', authenticateToken, async (req, res) => {
+  try {
+    const sessionId = parseInt(req.params.sessionId as string, 10);
+    const detail = await ToolService.addExtraInventoryDetail(sessionId, req.body);
+    res.json(detail);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/inventory/session-details/:detailId', authenticateToken, async (req: any, res) => {
+  try {
+    const detailId = parseInt(req.params.detailId as string, 10);
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const detail = await ToolService.updateInventoryDetail(detailId, req.body, performedBy);
+    res.json(detail);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.post('/inventory/sessions/:sessionId/complete', authenticateToken, async (req, res) => {
+  try {
+    const sessionId = parseInt(req.params.sessionId as string, 10);
+    const session = await ToolService.completeInventorySession(sessionId);
+    res.json(session);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
+router.get('/inventory/sessions/:sessionId/report', authenticateToken, async (req, res) => {
+  try {
+    const sessionId = parseInt(req.params.sessionId as string, 10);
+    const report = await ToolService.getInventorySessionReport(sessionId);
+    res.json(report);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 router.get('/inventory/:id', authenticateToken, async (req, res) => {
   try {
     const id = parseInt(req.params.id as string, 10);
     const check = await prisma.toolInventoryCheck.findUnique({
       where: { id },
-      include: { items: { include: { tool: true } } }
+      include: { items: { include: { tool: true } }, sessions: { include: { _count: { select: { details: true } } } } }
     });
     if (!check) return res.status(404).json({ message: 'Đợt kiểm kê không tồn tại.' });
     res.json(check);

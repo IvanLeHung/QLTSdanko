@@ -1717,6 +1717,247 @@ export class ToolService {
     });
   }
 
+  static async getInventorySessions(inventoryCheckId: number) {
+    return await prisma.toolInventorySession.findMany({
+      where: { inventoryCheckId },
+      orderBy: [{ scheduledDate: 'asc' }, { id: 'asc' }],
+      include: {
+        _count: { select: { details: true } },
+        details: true
+      }
+    });
+  }
+
+  static async createInventorySession(inventoryCheckId: number, data: any) {
+    const where = this.buildToolInventoryScopeWhere(data.departmentName, data.locationName);
+    const assetCountPlan = await prisma.toolEquipment.count({ where });
+
+    return await prisma.toolInventorySession.create({
+      data: {
+        inventoryCheckId,
+        scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : new Date(),
+        companyName: data.companyName || null,
+        projectName: data.projectName || null,
+        departmentName: data.departmentName || null,
+        locationName: data.locationName || null,
+        checkerName: data.checkerName || null,
+        representativeName: data.representativeName || null,
+        assetCountPlan,
+        note: data.note || null
+      }
+    });
+  }
+
+  static async startInventorySession(sessionId: number) {
+    return await prisma.$transaction(async (tx) => {
+      const session = await tx.toolInventorySession.findUnique({
+        where: { id: sessionId },
+        include: { details: true }
+      });
+      if (!session) throw new Error('Không tìm thấy phiên kiểm kê CCDC.');
+
+      if (session.details.length === 0) {
+        const where = this.buildToolInventoryScopeWhere(session.departmentName || undefined, session.locationName || undefined);
+        const tools = await tx.toolEquipment.findMany({ where, orderBy: { toolCode: 'asc' } });
+        if (tools.length > 0) {
+          await tx.toolInventoryDetail.createMany({
+            data: tools.map((tool) => ({
+              sessionId,
+              toolId: tool.id,
+              toolCode: tool.toolCode,
+              toolName: tool.toolName,
+              bookUserName: tool.currentUserName || null,
+              bookDepartmentName: tool.departmentName || null,
+              bookLocationName: tool.specificLocation || tool.locationName || tool.areaName || tool.floorName || tool.buildingName || null,
+              actualUserName: tool.currentUserName || null,
+              actualDepartmentName: tool.departmentName || null,
+              actualLocationName: tool.specificLocation || tool.locationName || tool.areaName || tool.floorName || tool.buildingName || null,
+              expectedQuantity: tool.quantity || 1,
+              actualQuantity: tool.quantity || 1,
+              resultStatus: 'MATCH'
+            }))
+          });
+        }
+
+        await tx.toolInventorySession.update({
+          where: { id: sessionId },
+          data: { assetCountPlan: tools.length }
+        });
+      }
+
+      await tx.toolInventoryCheck.update({
+        where: { id: session.inventoryCheckId },
+        data: { status: 'IN_PROGRESS' }
+      });
+
+      return await tx.toolInventorySession.update({
+        where: { id: sessionId },
+        data: { status: 'IN_PROGRESS' },
+        include: { details: { include: { tool: true } } }
+      });
+    });
+  }
+
+  static async getInventorySessionDetail(sessionId: number) {
+    const session = await prisma.toolInventorySession.findUnique({
+      where: { id: sessionId },
+      include: {
+        inventoryCheck: true,
+        details: {
+          orderBy: [{ resultStatus: 'asc' }, { id: 'asc' }],
+          include: { tool: true }
+        }
+      }
+    });
+    if (!session) throw new Error('Không tìm thấy phiên kiểm kê CCDC.');
+    return session;
+  }
+
+  static async updateInventoryDetail(detailId: number, data: any, performedBy: string) {
+    const detail = await prisma.toolInventoryDetail.findUnique({
+      where: { id: detailId },
+      include: { session: true }
+    });
+    if (!detail) throw new Error('Không tìm thấy dòng kiểm kê CCDC.');
+    if (detail.session.status === 'COMPLETED') throw new Error('Phiên kiểm kê đã chốt, không thể sửa.');
+
+    const resultStatus = data.resultStatus || this.resolveInventoryResultStatus({
+      bookUserName: detail.bookUserName,
+      actualUserName: data.actualUserName,
+      bookLocationName: detail.bookLocationName,
+      actualLocationName: data.actualLocationName,
+      condition: data.condition
+    });
+
+    const updated = await prisma.toolInventoryDetail.update({
+      where: { id: detailId },
+      data: {
+        actualUserName: data.actualUserName ?? detail.actualUserName,
+        actualDepartmentName: data.actualDepartmentName ?? detail.actualDepartmentName,
+        actualLocationName: data.actualLocationName ?? detail.actualLocationName,
+        actualQuantity: data.actualQuantity !== undefined ? Number(data.actualQuantity) : detail.actualQuantity,
+        resultStatus,
+        note: data.note ?? detail.note,
+        imageUrl: data.imageUrl ?? detail.imageUrl,
+        checkedAt: new Date()
+      }
+    });
+
+    await prisma.toolInventorySession.update({
+      where: { id: detail.sessionId },
+      data: { status: 'IN_PROGRESS' }
+    });
+
+    if (updated.toolId) {
+      await prisma.toolHistory.create({
+        data: {
+          toolId: updated.toolId,
+          toolCode: updated.toolCode || '',
+          eventTime: new Date(),
+          actionType: 'INVENTORY',
+          oldUserName: updated.bookUserName,
+          newUserName: updated.actualUserName,
+          oldDepartmentName: updated.bookDepartmentName,
+          newDepartmentName: updated.actualDepartmentName,
+          oldLocationName: updated.bookLocationName,
+          newLocationName: updated.actualLocationName,
+          oldNote: `Kiểm kê phiên ${detail.sessionId}: ${updated.resultStatus}. Người ghi nhận: ${performedBy}`
+        }
+      });
+    }
+
+    return updated;
+  }
+
+  static async addExtraInventoryDetail(sessionId: number, data: any) {
+    const session = await prisma.toolInventorySession.findUnique({ where: { id: sessionId } });
+    if (!session) throw new Error('Không tìm thấy phiên kiểm kê CCDC.');
+    if (session.status === 'COMPLETED') throw new Error('Phiên kiểm kê đã chốt, không thể thêm.');
+
+    return await prisma.toolInventoryDetail.create({
+      data: {
+        sessionId,
+        toolId: null,
+        toolCode: null,
+        toolName: data.toolName || data.name,
+        serialNumber: data.serialNumber || null,
+        actualUserName: data.actualUserName || null,
+        actualDepartmentName: data.actualDepartmentName || session.departmentName || null,
+        actualLocationName: data.actualLocationName || session.locationName || null,
+        expectedQuantity: 0,
+        actualQuantity: data.actualQuantity ? Number(data.actualQuantity) : 1,
+        resultStatus: 'EXTRA',
+        note: data.note || 'Tài sản phát sinh ngoài sổ, chờ xác minh nguồn gốc',
+        imageUrl: data.imageUrl || null,
+        checkedAt: new Date()
+      }
+    });
+  }
+
+  static async completeInventorySession(sessionId: number) {
+    return await prisma.$transaction(async (tx) => {
+      const session = await tx.toolInventorySession.update({
+        where: { id: sessionId },
+        data: { status: 'COMPLETED', completedAt: new Date() },
+        include: { inventoryCheck: { include: { sessions: true } }, details: true }
+      });
+
+      const remaining = await tx.toolInventorySession.count({
+        where: { inventoryCheckId: session.inventoryCheckId, status: { not: 'COMPLETED' } }
+      });
+      if (remaining === 0) {
+        await tx.toolInventoryCheck.update({
+          where: { id: session.inventoryCheckId },
+          data: { status: 'COMPLETED' }
+        });
+      }
+
+      return session;
+    });
+  }
+
+  static async getInventorySessionReport(sessionId: number) {
+    const session = await this.getInventorySessionDetail(sessionId);
+    const details = session.details || [];
+    const matched = details.filter((d: any) => d.resultStatus === 'MATCH').length;
+    const deviations = details.length - matched;
+    return {
+      title: `BIÊN BẢN KIỂM KÊ ${session.departmentName || session.locationName || 'CCDC'} NGÀY ${session.scheduledDate.toLocaleDateString('vi-VN')}`,
+      session,
+      summary: {
+        bookTotal: details.filter((d: any) => d.resultStatus !== 'EXTRA').length,
+        actualTotal: details.filter((d: any) => d.resultStatus !== 'MISSING').length,
+        matched,
+        deviations
+      },
+      deviations: details.filter((d: any) => d.resultStatus !== 'MATCH'),
+      signatures: ['Đại diện phòng ban', 'Người kiểm kê', 'Trưởng HCNS']
+    };
+  }
+
+  private static buildToolInventoryScopeWhere(departmentName?: string, locationName?: string) {
+    const where: any = { isDeleted: false };
+    const or: any[] = [];
+    if (departmentName) or.push({ departmentName });
+    if (locationName) {
+      or.push({ locationName: { contains: locationName } });
+      or.push({ buildingName: { contains: locationName } });
+      or.push({ floorName: { contains: locationName } });
+      or.push({ areaName: { contains: locationName } });
+      or.push({ specificLocation: { contains: locationName } });
+    }
+    if (or.length > 0) where.OR = or;
+    return where;
+  }
+
+  private static resolveInventoryResultStatus(data: any) {
+    if (data.condition === 'MISSING') return 'MISSING';
+    if (data.condition === 'DAMAGED') return 'DAMAGED';
+    if (data.bookUserName && data.actualUserName && data.bookUserName !== data.actualUserName) return 'WRONG_USER';
+    if (data.bookLocationName && data.actualLocationName && data.bookLocationName !== data.actualLocationName) return 'WRONG_LOCATION';
+    return 'MATCH';
+  }
+
   // --- QUANTITY STOCK MANAGEMENT TRANSACTION SERVICES ---
 
   static async transferStock(data: {

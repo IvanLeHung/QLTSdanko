@@ -1,602 +1,542 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
-import { 
-  ChevronLeft, 
-  Search, 
-  Filter, 
-  CheckCircle2, 
-  AlertCircle, 
-  Loader2, 
-  Package, 
-  MapPin, 
-  ClipboardList, 
-  Save, 
-  Lock, 
-  Upload, 
-  Check, 
-  Trash2,
-  X,
-  Image as ImageIcon
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  ChevronLeft,
+  ClipboardCheck,
+  FileText,
+  Loader2,
+  MapPin,
+  PackagePlus,
+  Play,
+  Plus,
+  Save,
+  Search,
+  Users,
+  X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
 
+const RESULT_OPTIONS = [
+  { value: 'MATCH', label: 'Khớp' },
+  { value: 'WRONG_LOCATION', label: 'Sai vị trí' },
+  { value: 'WRONG_USER', label: 'Sai người sử dụng' },
+  { value: 'UNSYNCED_TRANSFER', label: 'Điều chuyển chưa cập nhật' },
+  { value: 'MISSING', label: 'Thiếu mất' },
+  { value: 'EXTRA', label: 'Tài sản ngoài sổ' },
+  { value: 'DAMAGED', label: 'Hỏng cần xử lý' }
+];
+
+const resultLabel = (value?: string) => RESULT_OPTIONS.find((item) => item.value === value)?.label || value || 'Chưa kiểm';
+
+const resultClass = (value?: string) => {
+  if (value === 'MATCH') return 'bg-emerald-50 text-emerald-700 border-emerald-100';
+  if (value === 'EXTRA') return 'bg-blue-50 text-blue-700 border-blue-100';
+  if (value === 'DAMAGED') return 'bg-amber-50 text-amber-700 border-amber-100';
+  return 'bg-rose-50 text-rose-700 border-rose-100';
+};
+
 export const ToolInventoryDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
-
-  const [session, setSession] = useState<any>(null);
+  const [inventory, setInventory] = useState<any>(null);
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [activeSession, setActiveSession] = useState<any>(null);
+  const [activeTab, setActiveTab] = useState<'schedule' | 'session'>('schedule');
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [search, setSearch] = useState('');
-  const [filter, setFilter] = useState('ALL'); // ALL, PENDING, CHECKED
-  
-  // Selected item modal state
-  const [selectedItemForCheck, setSelectedItemForCheck] = useState<any>(null);
-  const [checkForm, setCheckForm] = useState<any>({
-    checkCondition: 'FOUND', // FOUND, MISSING, DAMAGED, WRONG_LOCATION
-    actualLocation: '',
-    actualStatus: 'IN_STOCK',
-    quality: 'GOOD',
-    note: '',
-    actualGoodQty: 0,
-    actualRepairQty: 0,
-    actualBrokenQty: 0,
-    actualLostQty: 0,
-    photos: [] as string[]
-  });
-  
-  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const [editingDetail, setEditingDetail] = useState<any>(null);
+  const [showExtraModal, setShowExtraModal] = useState(false);
+  const [report, setReport] = useState<any>(null);
 
-  const fetchDetail = async () => {
+  const [sessionForm, setSessionForm] = useState({
+    scheduledDate: new Date().toISOString().slice(0, 10),
+    companyName: '',
+    projectName: '',
+    departmentName: '',
+    locationName: '',
+    checkerName: '',
+    representativeName: '',
+    note: ''
+  });
+
+  const [detailForm, setDetailForm] = useState({
+    actualUserName: '',
+    actualDepartmentName: '',
+    actualLocationName: '',
+    actualQuantity: 1,
+    resultStatus: 'MATCH',
+    note: '',
+    imageUrl: ''
+  });
+
+  const [extraForm, setExtraForm] = useState({
+    toolName: '',
+    serialNumber: '',
+    actualUserName: '',
+    actualLocationName: '',
+    actualQuantity: 1,
+    note: ''
+  });
+
+  const loadInventory = async () => {
+    setLoading(true);
     try {
-      const res = await api.get(`/tools/inventory/${id}`);
-      setSession(res.data);
-    } catch (err) {
-      console.error(err);
-      toast.error("Không thể tải thông tin đợt kiểm kê CCDC");
+      const [detailRes, sessionRes] = await Promise.all([
+        api.get(`/tools/inventory/${id}`),
+        api.get(`/tools/inventory/${id}/sessions`)
+      ]);
+      setInventory(detailRes.data);
+      setSessions(sessionRes.data);
+      if (activeSession) {
+        const fresh = sessionRes.data.find((item: any) => item.id === activeSession.id);
+        if (fresh) await openSession(fresh, false);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể tải đợt kiểm kê CCDC');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchDetail();
+    loadInventory();
   }, [id]);
 
-  const uploadToCloudinary = async (file: File) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('upload_preset', 'ccdcdanko');
-    const res = await fetch('https://api.cloudinary.com/v1_1/drjajjthw/image/upload', {
-      method: 'POST',
-      body: formData
-    });
-    if (!res.ok) throw new Error('Failed to upload image');
-    const data = await res.json();
-    return data.secure_url;
-  };
-
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (!e.target.files || e.target.files.length === 0) return;
-    setUploadingPhoto(true);
+  const openSession = async (session: any, switchTab = true) => {
     try {
-      const urls: string[] = [];
-      for (let i = 0; i < e.target.files.length; i++) {
-        const url = await uploadToCloudinary(e.target.files[i]);
-        urls.push(url);
-      }
-      setCheckForm((prev: any) => ({
-        ...prev,
-        photos: [...prev.photos, ...urls]
-      }));
-      toast.success("Tải ảnh kiểm kê thành công");
-    } catch (err) {
-      console.error(err);
-      toast.error("Lỗi khi tải ảnh lên Cloudinary");
-    } finally {
-      setUploadingPhoto(false);
+      const res = await api.get(`/tools/inventory/sessions/${session.id}`);
+      setActiveSession(res.data);
+      if (switchTab) setActiveTab('session');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể tải phiên kiểm kê');
     }
   };
 
-  const removePhoto = (index: number) => {
-    setCheckForm((prev: any) => ({
-      ...prev,
-      photos: prev.photos.filter((_: any, i: number) => i !== index)
-    }));
-  };
-
-  const openCheckModal = (item: any) => {
-    setSelectedItemForCheck(item);
-    setCheckForm({
-      checkCondition: item.checkCondition || 'FOUND',
-      actualLocation: item.actualLocation || item.expectedLocation || item.tool.locationName || '',
-      actualStatus: item.actualStatus || item.expectedStatus || 'IN_STOCK',
-      quality: item.quality || 'GOOD',
-      note: item.note || '',
-      actualGoodQty: item.actualGoodQty !== undefined ? item.actualGoodQty : item.expectedQuantity,
-      actualRepairQty: item.actualRepairQty || 0,
-      actualBrokenQty: item.actualBrokenQty || 0,
-      actualLostQty: item.actualLostQty || 0,
-      photos: item.photos || []
-    });
-  };
-
-  const handleCheckItem = async (e: React.FormEvent) => {
+  const createSession = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedItemForCheck) return;
+    if (!sessionForm.departmentName.trim() && !sessionForm.locationName.trim()) {
+      toast.warning('Vui lòng nhập phòng ban hoặc vị trí kiểm kê');
+      return;
+    }
     setSubmitting(true);
     try {
-      const isQtyMode = selectedItemForCheck.tool.managementType === 'QUANTITY';
-      let payload: any = {
-        toolId: selectedItemForCheck.toolId,
-        checkCondition: checkForm.checkCondition,
-        note: checkForm.note,
-        photos: checkForm.photos,
-        actualLocation: checkForm.actualLocation,
-        actualStatus: checkForm.actualStatus,
-        quality: checkForm.quality
-      };
-
-      if (isQtyMode) {
-        payload.actualGoodQty = Number(checkForm.actualGoodQty);
-        payload.actualRepairQty = Number(checkForm.actualRepairQty);
-        payload.actualBrokenQty = Number(checkForm.actualBrokenQty);
-        payload.actualLostQty = Number(checkForm.actualLostQty);
-      }
-
-      await api.post(`/tools/inventory/${id}/check`, payload);
-      toast.success("Đã lưu kết quả kiểm kê thành công");
-      setSelectedItemForCheck(null);
-      fetchDetail();
+      await api.post(`/tools/inventory/${id}/sessions`, sessionForm);
+      toast.success('Đã thêm lịch kiểm kê');
+      setShowSessionModal(false);
+      await loadInventory();
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.message || "Lỗi khi lưu kết quả kiểm kê");
+      toast.error(err.response?.data?.message || 'Không thể tạo lịch kiểm kê');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleCompleteSession = async () => {
-    if (!window.confirm("Bạn có chắc chắn muốn hoàn tất đợt kiểm kê? Dữ liệu thực tế sẽ được cập nhật vào kho CCDC.")) return;
+  const startSession = async (session: any) => {
     setSubmitting(true);
     try {
-      await api.post(`/tools/inventory/${id}/complete`);
-      toast.success("Đã hoàn tất đợt kiểm kê CCDC thành công!");
-      fetchDetail();
+      const res = await api.post(`/tools/inventory/sessions/${session.id}/start`);
+      toast.success('Đã bắt đầu phiên kiểm kê');
+      setActiveSession(res.data);
+      setActiveTab('session');
+      await loadInventory();
     } catch (err: any) {
-      console.error(err);
-      toast.error(err.response?.data?.message || "Lỗi khi hoàn tất đợt kiểm kê");
+      toast.error(err.response?.data?.message || 'Không thể bắt đầu phiên kiểm kê');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const filteredItems = session?.items.filter((item: any) => {
-    const toolName = item.tool.toolName.toLowerCase();
-    const toolCode = item.tool.toolCode.toLowerCase();
-    const matchesSearch = toolName.includes(search.toLowerCase()) || toolCode.includes(search.toLowerCase());
-    
-    if (filter === 'PENDING') {
-      return matchesSearch && item.checkStatus === 'PENDING';
+  const openDetailModal = (detail: any) => {
+    setEditingDetail(detail);
+    setDetailForm({
+      actualUserName: detail.actualUserName || '',
+      actualDepartmentName: detail.actualDepartmentName || '',
+      actualLocationName: detail.actualLocationName || '',
+      actualQuantity: detail.actualQuantity ?? detail.expectedQuantity ?? 1,
+      resultStatus: detail.resultStatus || 'MATCH',
+      note: detail.note || '',
+      imageUrl: detail.imageUrl || ''
+    });
+  };
+
+  const saveDetail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDetail) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/tools/inventory/session-details/${editingDetail.id}`, detailForm);
+      toast.success('Đã lưu kết quả kiểm kê');
+      setEditingDetail(null);
+      await openSession(activeSession);
+      await loadInventory();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể lưu kết quả kiểm kê');
+    } finally {
+      setSubmitting(false);
     }
-    if (filter === 'CHECKED') {
-      return matchesSearch && item.checkStatus === 'CHECKED';
+  };
+
+  const addExtra = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!activeSession) return;
+    if (!extraForm.toolName.trim()) {
+      toast.warning('Vui lòng nhập tên CCDC phát hiện');
+      return;
     }
-    return matchesSearch;
-  }) || [];
+    setSubmitting(true);
+    try {
+      await api.post(`/tools/inventory/sessions/${activeSession.id}/extra`, extraForm);
+      toast.success('Đã thêm CCDC ngoài sổ');
+      setShowExtraModal(false);
+      await openSession(activeSession);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể thêm CCDC ngoài sổ');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const completeSession = async () => {
+    if (!activeSession) return;
+    if (!window.confirm('Chốt biên bản phiên kiểm kê này? Sau khi chốt sẽ không sửa được kết quả.')) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/tools/inventory/sessions/${activeSession.id}/complete`);
+      const reportRes = await api.get(`/tools/inventory/sessions/${activeSession.id}/report`);
+      setReport(reportRes.data);
+      toast.success('Đã chốt biên bản kiểm kê');
+      await openSession(activeSession);
+      await loadInventory();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể chốt phiên kiểm kê');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const filteredDetails = useMemo(() => {
+    const rows = activeSession?.details || [];
+    if (!search.trim()) return rows;
+    const keyword = search.toLowerCase();
+    return rows.filter((item: any) =>
+      `${item.toolCode || ''} ${item.toolName || ''} ${item.serialNumber || ''} ${item.actualUserName || ''} ${item.actualLocationName || ''}`.toLowerCase().includes(keyword)
+    );
+  }, [activeSession, search]);
+
+  const stats = useMemo(() => {
+    const rows = activeSession?.details || [];
+    return {
+      total: rows.length,
+      matched: rows.filter((item: any) => item.resultStatus === 'MATCH').length,
+      deviations: rows.filter((item: any) => item.resultStatus !== 'MATCH').length,
+      checked: rows.filter((item: any) => item.checkedAt || item.resultStatus === 'EXTRA').length
+    };
+  }, [activeSession]);
+
+  if (loading && !inventory) {
+    return <div className="p-20 flex justify-center"><Loader2 className="h-10 w-10 animate-spin text-orange-600" /></div>;
+  }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-20">
-      {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-        <div className="flex items-center space-x-4">
-          <button 
-            onClick={() => navigate('/tools/inventory')}
-            className="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 transition-all border-0 cursor-pointer"
-          >
+    <div className="max-w-7xl mx-auto space-y-6 pb-20">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div className="flex items-start gap-4">
+          <button onClick={() => navigate('/tools/inventory')} className="w-10 h-10 rounded-xl bg-slate-100 hover:bg-slate-200 flex items-center justify-center text-slate-700">
             <ChevronLeft className="h-5 w-5" />
           </button>
           <div>
-            <div className="flex items-center space-x-3">
-              <h1 className="text-2xl font-[900] text-[#0F172A] tracking-tight leading-none">
-                {session?.inventoryName}
-              </h1>
-              <span className={`px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border ${
-                session?.status === 'OPEN' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' : 'bg-purple-50 text-purple-650 border-purple-100'
-              }`}>
-                {session?.status === 'OPEN' ? 'Đang mở' : 'Đã hoàn tất'}
-              </span>
-            </div>
-            <p className="text-slate-500 text-xs mt-2 font-semibold flex items-center gap-4">
-              <span>Mã đợt: <strong className="font-mono">{session?.inventoryCode}</strong></span>
-              <span>Ngày tạo: <strong>{session?.inventoryDate && format(new Date(session.inventoryDate), 'dd/MM/yyyy')}</strong></span>
-              <span>Phạm vi: <strong>{session?.scopeType === 'ALL' ? 'Toàn công ty' : session?.scopeType === 'DEPARTMENT' ? 'Bộ phận' : 'Vị trí'} {session?.scopeValue ? `(${session.scopeValue})` : ''}</strong></span>
+            <h1 className="text-2xl font-black text-slate-900 tracking-tight">{inventory?.inventoryName}</h1>
+            <p className="text-xs font-semibold text-slate-500 mt-2 flex flex-wrap gap-4">
+              <span>Mã đợt: <b className="font-mono">{inventory?.inventoryCode}</b></span>
+              <span>Ngày tạo: <b>{inventory?.inventoryDate ? format(new Date(inventory.inventoryDate), 'dd/MM/yyyy') : '-'}</b></span>
+              <span>Trạng thái: <b>{inventory?.status}</b></span>
             </p>
           </div>
         </div>
-
-        {session?.status === 'OPEN' && (
-          <button 
-            onClick={handleCompleteSession}
-            disabled={submitting}
-            className="bg-slate-900 hover:bg-slate-800 text-white px-6 py-3.5 rounded-xl font-bold text-sm transition-all flex items-center shadow-lg disabled:opacity-50"
-          >
-            <Lock className="mr-2 h-4 w-4 text-orange-500" /> Hoàn tất đợt kiểm kê
-          </button>
-        )}
+        <button onClick={() => setShowSessionModal(true)} className="bg-orange-600 hover:bg-orange-700 text-white px-5 py-3 rounded-xl text-sm font-bold flex items-center">
+          <Plus className="h-4 w-4 mr-2" /> Thêm lịch kiểm kê
+        </button>
       </div>
 
-      {/* SEARCH AND FILTERS */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-lg">
-          <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <input 
-            type="text" 
-            placeholder="Tìm theo mã CCDC, tên CCDC..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-11 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 font-semibold"
-          />
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <button 
-            onClick={() => setFilter('ALL')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-              filter === 'ALL' ? 'bg-orange-600 border-orange-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-50'
-            }`}
-          >
-            Tất cả ({session?.items?.length || 0})
-          </button>
-          <button 
-            onClick={() => setFilter('PENDING')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-              filter === 'PENDING' ? 'bg-orange-600 border-orange-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-50'
-            }`}
-          >
-            Chờ kiểm ({session?.items?.filter((i: any) => i.checkStatus === 'PENDING').length || 0})
-          </button>
-          <button 
-            onClick={() => setFilter('CHECKED')}
-            className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${
-              filter === 'CHECKED' ? 'bg-orange-600 border-orange-600 text-white shadow-md' : 'bg-white border-slate-200 text-slate-650 hover:bg-slate-50'
-            }`}
-          >
-            Đã kiểm ({session?.items?.filter((i: any) => i.checkStatus === 'CHECKED').length || 0})
-          </button>
-        </div>
+      <div className="bg-white border border-slate-200 rounded-2xl p-2 flex gap-2 w-fit">
+        <button onClick={() => setActiveTab('schedule')} className={`px-4 py-2 rounded-xl text-sm font-bold ${activeTab === 'schedule' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          Lịch kiểm kê
+        </button>
+        <button onClick={() => setActiveTab('session')} className={`px-4 py-2 rounded-xl text-sm font-bold ${activeTab === 'session' ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'}`}>
+          Kiểm kê phiên
+        </button>
       </div>
 
-      {/* ITEMS LIST */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
-            <thead>
-              <tr className="bg-slate-50/50 border-b border-slate-200">
-                <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-widest">CCDC</th>
-                <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-widest">Phương thức quản lý</th>
-                <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Sổ sách</th>
-                <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Thực tế (Tốt / Sửa / Hủy / Mất)</th>
-                <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-widest text-center">Chênh lệch</th>
-                <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-widest">Kết quả</th>
-                <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-widest">Hình ảnh</th>
-                <th className="p-4 text-xs font-black text-slate-400 uppercase tracking-widest text-right">Thao tác</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={8} className="p-20 text-center">
-                    <Loader2 className="h-10 w-10 text-orange-600 animate-spin mx-auto" />
-                  </td>
-                </tr>
-              ) : filteredItems.length === 0 ? (
-                <tr>
-                  <td colSpan={8} className="p-20 text-center">
-                    <Package className="h-10 w-10 text-slate-200 mx-auto mb-2" />
-                    <p className="text-slate-400 font-bold text-sm">Không tìm thấy công cụ dụng cụ nào</p>
-                  </td>
-                </tr>
-              ) : filteredItems.map((item: any) => {
-                const totalActual = (item.actualGoodQty || 0) + (item.actualRepairQty || 0) + (item.actualBrokenQty || 0) + (item.actualLostQty || 0);
-                const isQty = item.tool.managementType === 'QUANTITY';
-
-                return (
-                  <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                    <td className="p-4">
-                      <div>
-                        <span className="text-xs font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded uppercase">{item.tool.toolCode}</span>
-                        <h4 className="text-sm font-[800] text-slate-800 mt-1">{item.tool.toolName}</h4>
-                        <div className="flex gap-4 text-xs text-slate-400 mt-1">
-                          <span>Phân loại: <strong>{item.tool.category}</strong></span>
-                          <span>ĐVT: <strong>{item.tool.unit}</strong></span>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="p-4">
-                      <span className={`px-2 py-1 rounded text-[10px] font-bold ${
-                        isQty ? 'bg-blue-50 text-blue-600 border border-blue-100' : 'bg-amber-50 text-amber-600 border border-amber-100'
-                      }`}>
-                        {isQty ? 'Theo Số Lượng' : 'Theo Cá Thể'}
-                      </span>
-                    </td>
-                    <td className="p-4 text-center font-bold text-slate-700">{item.expectedQuantity}</td>
-                    <td className="p-4 text-center font-semibold text-slate-700">
-                      {item.checkStatus === 'PENDING' ? (
-                        <span className="text-slate-400 text-xs italic">Chưa kiểm kê</span>
-                      ) : (
-                        <span>
-                          {item.actualGoodQty} / {item.actualRepairQty} / {item.actualBrokenQty} / {item.actualLostQty}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4 text-center font-bold">
-                      {item.checkStatus === 'PENDING' ? (
-                        '-'
-                      ) : item.mismatchQty === 0 ? (
-                        <span className="text-emerald-600">0</span>
-                      ) : item.mismatchQty > 0 ? (
-                        <span className="text-blue-600">+{item.mismatchQty}</span>
-                      ) : (
-                        <span className="text-rose-600">{item.mismatchQty}</span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      {item.checkStatus === 'PENDING' ? (
-                        <span className="px-2 py-1 rounded bg-slate-100 text-slate-400 text-[10px] font-bold">CHỜ KIỂM</span>
-                      ) : (
-                        <span className={`px-2 py-1 rounded text-[10px] font-bold ${
-                          item.result === 'MATCHED' ? 'bg-emerald-55 text-emerald-650' : 'bg-rose-55 text-rose-650'
-                        }`}>
-                          {item.result === 'MATCHED' ? 'KHỚP SỔ' : item.result || 'SAI LỆCH'}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-4">
-                      {item.photos && item.photos.length > 0 ? (
-                        <div className="flex -space-x-2">
-                          {item.photos.slice(0, 3).map((photo: string, idx: number) => (
-                            <img 
-                              key={idx} 
-                              src={photo} 
-                              alt="CCDC Proof" 
-                              className="w-8 h-8 rounded-full border-2 border-white object-cover shadow-sm bg-slate-100" 
-                            />
-                          ))}
-                          {item.photos.length > 3 && (
-                            <div className="w-8 h-8 rounded-full border-2 border-white bg-slate-200 text-slate-650 text-[10px] font-bold flex items-center justify-center">
-                              +{item.photos.length - 3}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-350 text-xs italic">Không có ảnh</span>
-                      )}
-                    </td>
-                    <td className="p-4 text-right">
-                      {session?.status === 'OPEN' ? (
-                        <button 
-                          onClick={() => openCheckModal(item)}
-                          className="px-3 py-1.5 bg-orange-50 hover:bg-orange-100 text-orange-650 rounded-lg text-xs font-bold transition-all border-0 cursor-pointer"
-                        >
-                          Kiểm kê
-                        </button>
-                      ) : (
-                        <span className="text-slate-400 text-xs">Không thể sửa</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* CHECK ITEM MODAL */}
-      {selectedItemForCheck && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-3xl shadow-xl w-full max-w-2xl overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="p-6 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <div className="w-8 h-8 bg-orange-600 rounded-lg flex items-center justify-center text-white">
-                  <ClipboardList className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-base font-[900] text-slate-800 tracking-tight">
-                    {selectedItemForCheck.tool.toolName}
-                  </h3>
-                  <span className="text-xs font-mono font-bold text-slate-400">
-                    Mã CCDC: {selectedItemForCheck.tool.toolCode}
-                  </span>
-                </div>
-              </div>
-              <button 
-                onClick={() => setSelectedItemForCheck(null)} 
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-200 text-slate-400 transition-colors border-0 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCheckItem} className="flex-1 overflow-y-auto p-6 space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Sổ sách gốc</label>
-                  <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-700">
-                    {selectedItemForCheck.expectedQuantity} {selectedItemForCheck.tool.unit}
-                  </div>
-                </div>
-                <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vị trí dự kiến</label>
-                  <div className="w-full bg-slate-100 border border-slate-200 rounded-xl px-4 py-3 text-xs font-semibold text-slate-650 flex items-center">
-                    <MapPin className="h-4 w-4 mr-1.5 text-slate-450" />
-                    {selectedItemForCheck.expectedLocation || 'Chưa định vị'}
-                  </div>
-                </div>
-              </div>
-
-              {selectedItemForCheck.tool.managementType === 'QUANTITY' ? (
-                <div className="space-y-4 bg-slate-50 p-4 rounded-2xl border border-slate-150">
-                  <h4 className="text-xs font-bold text-slate-650 uppercase tracking-wider">Khai báo số lượng thực tế kiểm kê</h4>
-                  <div className="grid grid-cols-4 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-emerald-600 uppercase tracking-wider ml-1">🟢 Sử dụng tốt</label>
-                      <input 
-                        type="number"
-                        min="0"
-                        className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-sm font-bold text-slate-800"
-                        value={checkForm.actualGoodQty}
-                        onChange={(e) => setCheckForm({ ...checkForm, actualGoodQty: Number(e.target.value) || 0 })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-amber-600 uppercase tracking-wider ml-1">🟡 Cần sửa chữa</label>
-                      <input 
-                        type="number"
-                        min="0"
-                        className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-sm font-bold text-slate-800"
-                        value={checkForm.actualRepairQty}
-                        onChange={(e) => setCheckForm({ ...checkForm, actualRepairQty: Number(e.target.value) || 0 })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-rose-600 uppercase tracking-wider ml-1">🔴 Hỏng chờ thanh lý</label>
-                      <input 
-                        type="number"
-                        min="0"
-                        className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-sm font-bold text-slate-800"
-                        value={checkForm.actualBrokenQty}
-                        onChange={(e) => setCheckForm({ ...checkForm, actualBrokenQty: Number(e.target.value) || 0 })}
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider ml-1">⚫ Đã mất</label>
-                      <input 
-                        type="number"
-                        min="0"
-                        className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-sm font-bold text-slate-800"
-                        value={checkForm.actualLostQty}
-                        onChange={(e) => setCheckForm({ ...checkForm, actualLostQty: Number(e.target.value) || 0 })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex justify-between items-center border-t border-slate-200 pt-3 text-xs font-bold">
-                    <span className="text-slate-500">Tổng thực tế khai báo:</span>
-                    <span className="text-slate-800">
-                      {Number(checkForm.actualGoodQty) + Number(checkForm.actualRepairQty) + Number(checkForm.actualBrokenQty) + Number(checkForm.actualLostQty)} {selectedItemForCheck.tool.unit}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center text-xs font-bold">
-                    <span className="text-slate-500">Chênh lệch so với sổ sách:</span>
-                    {((Number(checkForm.actualGoodQty) + Number(checkForm.actualRepairQty) + Number(checkForm.actualBrokenQty) + Number(checkForm.actualLostQty)) - selectedItemForCheck.expectedQuantity) === 0 ? (
-                      <span className="text-emerald-600">Khớp sổ (0)</span>
-                    ) : (
-                      <span className="text-rose-600">
-                        {((Number(checkForm.actualGoodQty) + Number(checkForm.actualRepairQty) + Number(checkForm.actualBrokenQty) + Number(checkForm.actualLostQty)) - selectedItemForCheck.expectedQuantity) > 0 ? '+' : ''}
-                        {(Number(checkForm.actualGoodQty) + Number(checkForm.actualRepairQty) + Number(checkForm.actualBrokenQty) + Number(checkForm.actualLostQty)) - selectedItemForCheck.expectedQuantity}
-                      </span>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-4">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Đánh giá tình trạng</label>
-                    <select 
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-2 focus:ring-orange-500 text-slate-800"
-                      value={checkForm.checkCondition}
-                      onChange={(e) => setCheckForm({ ...checkForm, checkCondition: e.target.value })}
-                    >
-                      <option value="FOUND">Tìm thấy (Tốt/Khớp)</option>
-                      <option value="DAMAGED">Hỏng hóc / Cần sửa</option>
-                      <option value="MISSING">Mất tích / Thất lạc</option>
-                      <option value="WRONG_LOCATION">Sai vị trí thực tế</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Vị trí thực tế</label>
-                    <input 
-                      type="text"
-                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-xs font-semibold focus:ring-2 focus:ring-orange-500 text-slate-800"
-                      placeholder="Nhập vị trí thực tế..."
-                      value={checkForm.actualLocation}
-                      onChange={(e) => setCheckForm({ ...checkForm, actualLocation: e.target.value })}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Ghi chú kiểm kê</label>
-                <textarea 
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2 text-xs font-semibold focus:ring-2 focus:ring-orange-500 h-16 resize-none text-slate-800"
-                  placeholder="Thêm mô tả hoặc ghi nhận cụ thể..."
-                  value={checkForm.note}
-                  onChange={(e) => setCheckForm({ ...checkForm, note: e.target.value })}
-                />
-              </div>
-
-              {/* CLOUDINARY PHOTO UPLOAD */}
-              <div className="space-y-2">
-                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1 flex justify-between">
-                  <span>Ảnh chụp bằng chứng kiểm kê</span>
-                  {uploadingPhoto && <span className="text-orange-600 font-bold animate-pulse">Đang tải lên...</span>}
-                </label>
-                
-                <div className="grid grid-cols-4 gap-3">
-                  {checkForm.photos.map((photo: string, index: number) => (
-                    <div key={index} className="relative aspect-video rounded-xl overflow-hidden border border-slate-200 group">
-                      <img src={photo} alt="CCDC Evidence" className="w-full h-full object-cover" />
-                      <button 
-                        type="button"
-                        onClick={() => removePhoto(index)}
-                        className="absolute top-1 right-1 w-6 h-6 rounded-full bg-rose-600 hover:bg-rose-700 text-white flex items-center justify-center transition-colors border-0 cursor-pointer"
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                  
-                  <label className="border-2 border-dashed border-slate-200 hover:border-orange-500 rounded-xl aspect-video flex flex-col items-center justify-center cursor-pointer transition-all hover:bg-orange-50/20">
-                    <Upload className="h-5 w-5 text-slate-400" />
-                    <span className="text-[10px] font-bold text-slate-500 mt-1">Tải ảnh lên</span>
-                    <input 
-                      type="file" 
-                      multiple
-                      accept="image/*"
-                      className="hidden" 
-                      onChange={handleFileChange} 
-                    />
-                  </label>
-                </div>
-              </div>
-
-              <div className="flex space-x-3 pt-4 border-t border-slate-100">
-                <button 
-                  type="button" 
-                  onClick={() => setSelectedItemForCheck(null)}
-                  className="flex-1 bg-white border border-slate-200 text-slate-700 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-50 transition-all cursor-pointer"
-                >
-                  Đóng
-                </button>
-                <button 
-                  type="submit" 
-                  disabled={submitting}
-                  className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all shadow-md disabled:opacity-50 cursor-pointer flex items-center justify-center"
-                >
-                  {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Lưu kết quả"}
-                </button>
-              </div>
-            </form>
+      {activeTab === 'schedule' && (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <div className="grid grid-cols-12 bg-slate-50 border-b border-slate-200 px-4 py-3 text-[11px] font-black text-slate-500 uppercase tracking-widest">
+            <div className="col-span-2">Ngày kiểm kê</div>
+            <div className="col-span-3">Đơn vị / vị trí</div>
+            <div className="col-span-2">Người kiểm kê</div>
+            <div className="col-span-2">Đại diện phòng</div>
+            <div className="col-span-1 text-center">Số CCDC</div>
+            <div className="col-span-2 text-right">Trạng thái</div>
           </div>
+          {sessions.length === 0 ? (
+            <div className="p-16 text-center text-slate-400 font-bold">Chưa có lịch kiểm kê. Hãy tách đợt kiểm kê thành từng phiên theo ngày và phòng ban/vị trí.</div>
+          ) : sessions.map((item) => (
+            <div key={item.id} className="grid grid-cols-12 px-4 py-4 border-b border-slate-100 hover:bg-slate-50 items-center">
+              <div className="col-span-2 text-sm font-bold text-slate-800">{format(new Date(item.scheduledDate), 'dd/MM/yyyy')}</div>
+              <div className="col-span-3">
+                <p className="text-sm font-bold text-slate-800">{item.departmentName || 'Không chỉ định phòng ban'}</p>
+                <p className="text-xs text-slate-500 flex items-center mt-1"><MapPin className="h-3 w-3 mr-1" />{item.locationName || 'Không chỉ định vị trí'}</p>
+              </div>
+              <div className="col-span-2 text-sm text-slate-700">{item.checkerName || '-'}</div>
+              <div className="col-span-2 text-sm text-slate-700">{item.representativeName || '-'}</div>
+              <div className="col-span-1 text-center text-sm font-black text-slate-800">{item.assetCountPlan || item._count?.details || 0}</div>
+              <div className="col-span-2 flex justify-end gap-2">
+                <button onClick={() => openSession(item)} className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-700 hover:bg-slate-100">Xem</button>
+                {item.status !== 'COMPLETED' && (
+                  <button onClick={() => startSession(item)} disabled={submitting} className="px-3 py-2 bg-emerald-600 text-white rounded-lg text-xs font-bold hover:bg-emerald-700 flex items-center">
+                    <Play className="h-3 w-3 mr-1" /> Bắt đầu
+                  </button>
+                )}
+                {item.status === 'COMPLETED' && <span className="px-3 py-2 rounded-lg text-xs font-bold bg-purple-50 text-purple-700">Đã chốt</span>}
+              </div>
+            </div>
+          ))}
         </div>
+      )}
+
+      {activeTab === 'session' && (
+        <div className="space-y-5">
+          {!activeSession ? (
+            <div className="bg-white border border-slate-200 rounded-2xl p-16 text-center">
+              <CalendarDays className="h-12 w-12 text-slate-300 mx-auto mb-3" />
+              <p className="text-slate-500 font-bold">Chọn một phiên trong tab Lịch kiểm kê để bắt đầu kiểm kê theo đúng phòng ban/vị trí.</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Phiên kiểm kê</p>
+                  <p className="text-lg font-black text-slate-900 mt-1">{activeSession.departmentName || activeSession.locationName || 'Theo phạm vi'}</p>
+                  <p className="text-xs text-slate-500 mt-1">{format(new Date(activeSession.scheduledDate), 'dd/MM/yyyy')}</p>
+                </div>
+                <div className="bg-emerald-50 border border-emerald-100 rounded-2xl p-5">
+                  <p className="text-[10px] font-black text-emerald-600 uppercase tracking-widest">Khớp</p>
+                  <p className="text-2xl font-black text-emerald-700 mt-1">{stats.matched}</p>
+                </div>
+                <div className="bg-rose-50 border border-rose-100 rounded-2xl p-5">
+                  <p className="text-[10px] font-black text-rose-600 uppercase tracking-widest">Sai lệch</p>
+                  <p className="text-2xl font-black text-rose-700 mt-1">{stats.deviations}</p>
+                </div>
+                <div className="bg-white border border-slate-200 rounded-2xl p-5">
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Đã ghi nhận</p>
+                  <p className="text-2xl font-black text-slate-900 mt-1">{stats.checked}/{stats.total}</p>
+                </div>
+              </div>
+
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 flex flex-col md:flex-row gap-3 md:items-center justify-between">
+                <div className="relative flex-1 max-w-md">
+                  <Search className="h-4 w-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Tìm mã, tên, serial, người dùng, vị trí..." className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm font-semibold" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => setShowExtraModal(true)} disabled={activeSession.status === 'COMPLETED'} className="px-4 py-2.5 rounded-xl bg-blue-600 text-white text-xs font-bold hover:bg-blue-700 disabled:opacity-50 flex items-center">
+                    <PackagePlus className="h-4 w-4 mr-2" /> Thêm CCDC ngoài sổ
+                  </button>
+                  <button onClick={completeSession} disabled={activeSession.status === 'COMPLETED' || submitting} className="px-4 py-2.5 rounded-xl bg-slate-900 text-white text-xs font-bold hover:bg-slate-800 disabled:opacity-50 flex items-center">
+                    <FileText className="h-4 w-4 mr-2" /> Chốt biên bản
+                  </button>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left">
+                    <thead className="bg-slate-50 border-b border-slate-200">
+                      <tr>
+                        <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Mã CCDC</th>
+                        <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Tên CCDC</th>
+                        <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Người dùng sổ sách</th>
+                        <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Vị trí sổ sách</th>
+                        <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Thực tế</th>
+                        <th className="p-4 text-[11px] font-black text-slate-500 uppercase tracking-widest">Ghi nhận</th>
+                        <th className="p-4 text-right text-[11px] font-black text-slate-500 uppercase tracking-widest">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {filteredDetails.map((item: any) => (
+                        <tr key={item.id} className="hover:bg-slate-50">
+                          <td className="p-4 text-xs font-mono font-bold text-slate-600">{item.toolCode || 'Ngoài sổ'}</td>
+                          <td className="p-4">
+                            <p className="text-sm font-bold text-slate-900">{item.toolName}</p>
+                            <p className="text-xs text-slate-400">SL: {item.actualQuantity}/{item.expectedQuantity}</p>
+                          </td>
+                          <td className="p-4 text-sm text-slate-700">{item.bookUserName || '-'}</td>
+                          <td className="p-4 text-sm text-slate-700">{item.bookLocationName || '-'}</td>
+                          <td className="p-4">
+                            <p className="text-sm text-slate-800">{item.actualUserName || '-'}</p>
+                            <p className="text-xs text-slate-500">{item.actualLocationName || '-'}</p>
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2.5 py-1 rounded-lg border text-[11px] font-black ${resultClass(item.resultStatus)}`}>{resultLabel(item.resultStatus)}</span>
+                          </td>
+                          <td className="p-4 text-right">
+                            <button onClick={() => openDetailModal(item)} disabled={activeSession.status === 'COMPLETED'} className="px-3 py-2 rounded-lg bg-orange-50 text-orange-700 text-xs font-bold hover:bg-orange-100 disabled:opacity-50">
+                              Ghi nhận
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
+      {showSessionModal && (
+        <Modal title="Thêm lịch kiểm kê" onClose={() => setShowSessionModal(false)}>
+          <form onSubmit={createSession} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Ngày kiểm kê" type="date" value={sessionForm.scheduledDate} onChange={(value: string) => setSessionForm({ ...sessionForm, scheduledDate: value })} />
+              <Field label="Công ty" value={sessionForm.companyName} onChange={(value: string) => setSessionForm({ ...sessionForm, companyName: value })} />
+              <Field label="Dự án / địa điểm" value={sessionForm.projectName} onChange={(value: string) => setSessionForm({ ...sessionForm, projectName: value })} />
+              <Field label="Phòng ban" value={sessionForm.departmentName} onChange={(value: string) => setSessionForm({ ...sessionForm, departmentName: value })} />
+              <Field label="Vị trí / kho" value={sessionForm.locationName} onChange={(value: string) => setSessionForm({ ...sessionForm, locationName: value })} />
+              <Field label="Người phụ trách kiểm kê" value={sessionForm.checkerName} onChange={(value: string) => setSessionForm({ ...sessionForm, checkerName: value })} />
+              <Field label="Đại diện phòng ban" value={sessionForm.representativeName} onChange={(value: string) => setSessionForm({ ...sessionForm, representativeName: value })} />
+            </div>
+            <TextArea label="Ghi chú" value={sessionForm.note} onChange={(value: string) => setSessionForm({ ...sessionForm, note: value })} />
+            <SubmitBar submitting={submitting} label="Tạo lịch kiểm kê" onCancel={() => setShowSessionModal(false)} />
+          </form>
+        </Modal>
+      )}
+
+      {editingDetail && (
+        <Modal title="Ghi nhận kiểm kê CCDC" onClose={() => setEditingDetail(null)}>
+          <form onSubmit={saveDetail} className="space-y-4">
+            <div className="bg-slate-50 rounded-xl p-4 border border-slate-200">
+              <p className="text-sm font-black text-slate-900">{editingDetail.toolName}</p>
+              <p className="text-xs text-slate-500 mt-1">Sổ sách: {editingDetail.bookUserName || '-'} | {editingDetail.bookLocationName || '-'}</p>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Người dùng thực tế" value={detailForm.actualUserName} onChange={(value: string) => setDetailForm({ ...detailForm, actualUserName: value })} />
+              <Field label="Phòng ban thực tế" value={detailForm.actualDepartmentName} onChange={(value: string) => setDetailForm({ ...detailForm, actualDepartmentName: value })} />
+              <Field label="Vị trí thực tế" value={detailForm.actualLocationName} onChange={(value: string) => setDetailForm({ ...detailForm, actualLocationName: value })} />
+              <Field label="Số lượng thực tế" type="number" value={String(detailForm.actualQuantity)} onChange={(value: string) => setDetailForm({ ...detailForm, actualQuantity: Number(value) || 0 })} />
+            </div>
+            <label className="block">
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kết quả kiểm kê</span>
+              <select value={detailForm.resultStatus} onChange={(e) => setDetailForm({ ...detailForm, resultStatus: e.target.value })} className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold">
+                {RESULT_OPTIONS.map((item) => <option key={item.value} value={item.value}>{item.label}</option>)}
+              </select>
+            </label>
+            <TextArea label="Ghi chú / đề xuất xử lý" value={detailForm.note} onChange={(value: string) => setDetailForm({ ...detailForm, note: value })} />
+            <Field label="Link ảnh / chứng từ" value={detailForm.imageUrl} onChange={(value: string) => setDetailForm({ ...detailForm, imageUrl: value })} />
+            <SubmitBar submitting={submitting} label="Lưu kết quả" onCancel={() => setEditingDetail(null)} />
+          </form>
+        </Modal>
+      )}
+
+      {showExtraModal && (
+        <Modal title="Thêm CCDC ngoài sổ" onClose={() => setShowExtraModal(false)}>
+          <form onSubmit={addExtra} className="space-y-4">
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Tên CCDC" value={extraForm.toolName} onChange={(value: string) => setExtraForm({ ...extraForm, toolName: value })} />
+              <Field label="Serial / đặc điểm" value={extraForm.serialNumber} onChange={(value: string) => setExtraForm({ ...extraForm, serialNumber: value })} />
+              <Field label="Người đang dùng" value={extraForm.actualUserName} onChange={(value: string) => setExtraForm({ ...extraForm, actualUserName: value })} />
+              <Field label="Vị trí phát hiện" value={extraForm.actualLocationName} onChange={(value: string) => setExtraForm({ ...extraForm, actualLocationName: value })} />
+              <Field label="Số lượng" type="number" value={String(extraForm.actualQuantity)} onChange={(value: string) => setExtraForm({ ...extraForm, actualQuantity: Number(value) || 1 })} />
+            </div>
+            <TextArea label="Ghi chú" value={extraForm.note} onChange={(value: string) => setExtraForm({ ...extraForm, note: value })} />
+            <SubmitBar submitting={submitting} label="Thêm ngoài sổ" onCancel={() => setShowExtraModal(false)} />
+          </form>
+        </Modal>
+      )}
+
+      {report && (
+        <Modal title="Biên bản kiểm kê" onClose={() => setReport(null)}>
+          <div className="space-y-4">
+            <div className="border border-slate-200 rounded-xl p-4">
+              <h3 className="font-black text-slate-900 uppercase">{report.title}</h3>
+              <div className="grid grid-cols-4 gap-3 mt-4">
+                <Stat label="Theo sổ" value={report.summary.bookTotal} />
+                <Stat label="Thực tế" value={report.summary.actualTotal} />
+                <Stat label="Khớp" value={report.summary.matched} />
+                <Stat label="Sai lệch" value={report.summary.deviations} />
+              </div>
+            </div>
+            <div>
+              <p className="text-xs font-black uppercase tracking-widest text-slate-500 mb-2">Chi tiết sai lệch</p>
+              <div className="max-h-56 overflow-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
+                {report.deviations.length === 0 ? <p className="p-4 text-sm text-slate-500">Không có sai lệch.</p> : report.deviations.map((item: any) => (
+                  <div key={item.id} className="p-3 text-sm flex justify-between gap-4">
+                    <span className="font-bold text-slate-800">{item.toolCode || 'Ngoài sổ'} - {item.toolName}</span>
+                    <span className="text-rose-700 font-bold">{resultLabel(item.resultStatus)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="grid grid-cols-3 gap-4 pt-6">
+              {report.signatures.map((item: string) => (
+                <div key={item} className="text-center border-t border-slate-300 pt-3 text-xs font-bold text-slate-600">{item}</div>
+              ))}
+            </div>
+            <button onClick={() => window.print()} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold text-sm flex items-center justify-center">
+              <FileText className="h-4 w-4 mr-2" /> In biên bản
+            </button>
+          </div>
+        </Modal>
       )}
     </div>
   );
 };
+
+const Modal = ({ title, children, onClose }: any) => (
+  <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
+    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+      <div className="p-5 border-b border-slate-200 flex items-center justify-between bg-slate-50">
+        <h3 className="text-base font-black text-slate-900 flex items-center"><ClipboardCheck className="h-5 w-5 mr-2 text-orange-600" />{title}</h3>
+        <button onClick={onClose} className="w-8 h-8 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-500"><X className="h-5 w-5" /></button>
+      </div>
+      <div className="p-5 overflow-y-auto">{children}</div>
+    </div>
+  </div>
+);
+
+const Field = ({ label, value, onChange, type = 'text' }: any) => (
+  <label className="block">
+    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
+    <input type={type} value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800" />
+  </label>
+);
+
+const TextArea = ({ label, value, onChange }: any) => (
+  <label className="block">
+    <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</span>
+    <textarea value={value} onChange={(e) => onChange(e.target.value)} className="mt-1 w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-semibold text-slate-800 h-20 resize-none" />
+  </label>
+);
+
+const SubmitBar = ({ submitting, label, onCancel }: any) => (
+  <div className="flex gap-3 pt-3 border-t border-slate-100">
+    <button type="button" onClick={onCancel} className="flex-1 bg-white border border-slate-200 text-slate-700 py-3 rounded-xl font-bold text-xs uppercase">Hủy</button>
+    <button type="submit" disabled={submitting} className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold text-xs uppercase disabled:opacity-50 flex items-center justify-center">
+      {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : <><Save className="h-4 w-4 mr-2" />{label}</>}
+    </button>
+  </div>
+);
+
+const Stat = ({ label, value }: any) => (
+  <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{label}</p>
+    <p className="text-xl font-black text-slate-900 mt-1">{value}</p>
+  </div>
+);

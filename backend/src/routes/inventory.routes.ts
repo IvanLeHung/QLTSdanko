@@ -52,6 +52,79 @@ router.get('/:id', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/:id/sessions', authenticateToken, async (req, res) => {
+  try {
+    const sessions = await InventoryService.getInventorySessions(Number(req.params.id));
+    res.json(sessions);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/:id/sessions', authenticateToken, async (req, res) => {
+  try {
+    const session = await InventoryService.createInventoryVisit(Number(req.params.id), req.body);
+    res.status(201).json(session);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.get('/sessions/:sessionId', authenticateToken, async (req, res) => {
+  try {
+    const session = await InventoryService.getInventoryVisitDetail(Number(req.params.sessionId));
+    res.json(session);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/sessions/:sessionId/start', authenticateToken, async (req, res) => {
+  try {
+    const session = await InventoryService.startInventoryVisit(Number(req.params.sessionId));
+    res.json(session);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/session-details/:detailId', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const checkedBy = req.user?.fullName || req.user?.username || 'system';
+    const detail = await InventoryService.updateInventoryVisitDetail(Number(req.params.detailId), req.body, checkedBy);
+    res.json(detail);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/sessions/:sessionId/extra', authenticateToken, async (req, res) => {
+  try {
+    const detail = await InventoryService.addExtraInventoryVisitAsset(Number(req.params.sessionId), req.body);
+    res.status(201).json(detail);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/sessions/:sessionId/complete', authenticateToken, async (req, res) => {
+  try {
+    const session = await InventoryService.completeInventoryVisit(Number(req.params.sessionId));
+    res.json(session);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.get('/sessions/:sessionId/report', authenticateToken, async (req, res) => {
+  try {
+    const report = await InventoryService.getInventoryVisitReport(Number(req.params.sessionId));
+    res.json(report);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.post('/', authenticateToken, async (req: AuthRequest, res) => {
   const performedBy = req.user?.username || 'system';
   try {

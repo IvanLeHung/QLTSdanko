@@ -245,6 +245,7 @@ model Asset {
   repairTickets           AssetRepairTicket[]
   damageReports           DamageReportItem[]
   inventoryItems          InventoryItem[]
+  inventoryDetails        InventoryDetail[]
   liquidations            LiquidationItem[]
   lostReports             LostReport[]
   lostLogs                LostReportLog[]
@@ -309,6 +310,7 @@ model InventoryCheck {
   note               String?
   createdAt          DateTime        @default(now())
   items              InventoryItem[]
+  sessions           InventorySession[]
   discoveredAssets   DiscoveredAsset[]
 }
 
@@ -335,6 +337,47 @@ model InventoryItem {
   physicalDetailsJson String?
   asset               Asset          @relation(fields: [assetId], references: [id])
   inventoryCheck      InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+}
+
+model InventorySession {
+  id                 Int               @id @default(autoincrement())
+  inventoryCheckId   Int
+  scheduledDate      DateTime
+  companyName        String?
+  projectName        String?
+  departmentName     String?
+  locationName       String?
+  checkerName        String?
+  representativeName String?
+  assetCountPlan     Int               @default(0)
+  status             String            @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  completedAt        DateTime?
+  note               String?
+  createdAt          DateTime          @default(now())
+  inventoryCheck     InventoryCheck    @relation(fields: [inventoryCheckId], references: [id])
+  details            InventoryDetail[]
+}
+
+model InventoryDetail {
+  id                 Int               @id @default(autoincrement())
+  sessionId          Int
+  assetId            Int?
+  assetCode          String?
+  assetName          String
+  serialNumber       String?
+  bookUserName       String?
+  actualUserName     String?
+  bookDepartmentName String?
+  actualDepartmentName String?
+  bookLocationName   String?
+  actualLocationName String?
+  resultStatus       String            @default("MATCH") // MATCH, WRONG_LOCATION, WRONG_USER, UNSYNCED_TRANSFER, MISSING, EXTRA, DAMAGED
+  note               String?
+  imageUrl           String?
+  checkedAt          DateTime?
+  createdAt          DateTime          @default(now())
+  session            InventorySession  @relation(fields: [sessionId], references: [id])
+  asset              Asset?            @relation(fields: [assetId], references: [id])
 }
 
 
@@ -813,6 +856,7 @@ model ToolEquipment {
   repairTickets    ToolRepairTicket[]
   damageReports    ToolDamageReportItem[]
   inventoryItems   ToolInventoryItem[]
+  inventoryDetails ToolInventoryDetail[]
   liquidations     ToolLiquidationItem[]
   lostReports      ToolLostReport[]
   histories        ToolHistory[]
@@ -981,6 +1025,7 @@ model ToolInventoryCheck {
   note               String?
   createdAt          DateTime            @default(now())
   items              ToolInventoryItem[]
+  sessions           ToolInventorySession[]
 }
 
 model ToolInventoryItem {
@@ -1014,6 +1059,49 @@ model ToolInventoryItem {
 
   tool                ToolEquipment      @relation(fields: [toolId], references: [id])
   inventoryCheck      ToolInventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+}
+
+model ToolInventorySession {
+  id                 Int                    @id @default(autoincrement())
+  inventoryCheckId   Int
+  scheduledDate      DateTime
+  companyName        String?
+  projectName        String?
+  departmentName     String?
+  locationName       String?
+  checkerName        String?
+  representativeName String?
+  assetCountPlan     Int                    @default(0)
+  status             String                 @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  completedAt        DateTime?
+  note               String?
+  createdAt          DateTime               @default(now())
+  inventoryCheck     ToolInventoryCheck     @relation(fields: [inventoryCheckId], references: [id])
+  details            ToolInventoryDetail[]
+}
+
+model ToolInventoryDetail {
+  id                   Int                  @id @default(autoincrement())
+  sessionId            Int
+  toolId               Int?
+  toolCode             String?
+  toolName             String
+  serialNumber         String?
+  bookUserName         String?
+  actualUserName       String?
+  bookDepartmentName   String?
+  actualDepartmentName String?
+  bookLocationName     String?
+  actualLocationName   String?
+  expectedQuantity     Int                  @default(1)
+  actualQuantity       Int                  @default(1)
+  resultStatus         String               @default("MATCH") // MATCH, WRONG_LOCATION, WRONG_USER, UNSYNCED_TRANSFER, MISSING, EXTRA, DAMAGED
+  note                 String?
+  imageUrl             String?
+  checkedAt            DateTime?
+  createdAt            DateTime             @default(now())
+  session              ToolInventorySession @relation(fields: [sessionId], references: [id])
+  tool                 ToolEquipment?       @relation(fields: [toolId], references: [id])
 }
 
 model ToolRepairTicket {
