@@ -29,7 +29,8 @@ import {
   Upload,
   Check,
   Layers,
-  TrendingDown
+  TrendingDown,
+  Wrench
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'react-toastify';
@@ -84,7 +85,7 @@ export const InventoryDetail: React.FC = () => {
   const [filter, setFilter] = useState('ALL'); // ALL, PENDING, CHECKED
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'CHECK_LIST' | 'DISCOVERED_LIST'>('CHECK_LIST');
+  const [activeTab, setActiveTab] = useState<'CHECK_LIST' | 'DISCOVERED_LIST' | 'POST_INVENTORY'>('CHECK_LIST');
 
   // Sessions workflow states
   const [sessions, setSessions] = useState<any[]>([]);
@@ -1127,19 +1128,27 @@ export const InventoryDetail: React.FC = () => {
             <button 
               onClick={handleStartSession}
               disabled={submitting}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-emerald-100 disabled:opacity-50"
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-emerald-100 disabled:opacity-50 cursor-pointer"
             >
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />} Bắt đầu kiểm kê
             </button>
           )}
 
           {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && !activeSession && (
-            <button
-              onClick={() => setShowSessionModal(true)}
-              className="bg-primary-600 hover:bg-primary-750 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-primary-100"
-            >
-              <Plus className="mr-2 h-4 w-4" /> Tạo phiên kiểm kê
-            </button>
+            <>
+              <button
+                onClick={() => setShowSessionModal(true)}
+                className="bg-primary-600 hover:bg-primary-750 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-primary-100 cursor-pointer"
+              >
+                <Plus className="mr-2 h-4 w-4" /> Tạo phiên kiểm kê
+              </button>
+              <button
+                onClick={() => document.getElementById('sessions-list-section')?.scrollIntoView({ behavior: 'smooth' })}
+                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-sm cursor-pointer"
+              >
+                Danh sách phiên
+              </button>
+            </>
           )}
 
           {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
@@ -1147,7 +1156,7 @@ export const InventoryDetail: React.FC = () => {
               <button 
                 onClick={handleCloseSession}
                 disabled={submitting || (sessions.length > 0 && !sessions.every((s: any) => s.status === 'COMPLETED'))}
-                className="bg-slate-900 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center shadow-xl shadow-slate-200 disabled:opacity-50"
+                className="bg-slate-900 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center shadow-xl shadow-slate-250 disabled:opacity-50 cursor-pointer"
               >
                 {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />} Chốt đợt kiểm kê
               </button>
@@ -1159,11 +1168,37 @@ export const InventoryDetail: React.FC = () => {
             </div>
           )}
 
+          {(session.status === 'OPEN' || session.status === 'IN_PROGRESS' || session.status === 'COMPLETED') && (
+            <button
+              onClick={async () => {
+                try {
+                  const response = await api.get('/inventory/export-by-time', {
+                    params: { startDate: '', endDate: '' },
+                    responseType: 'blob'
+                  });
+                  const url = window.URL.createObjectURL(new Blob([response.data]));
+                  const link = document.createElement('a');
+                  link.href = url;
+                  link.setAttribute('download', `bao_cao_tong_hop_kiem_ke_${session.inventoryCode}.xlsx`);
+                  document.body.appendChild(link);
+                  link.click();
+                  link.remove();
+                  toast.success("Tải báo cáo tổng hợp kiểm kê tài sản thành công!");
+                } catch (err) {
+                  toast.error("Lỗi khi tải báo cáo tổng hợp");
+                }
+              }}
+              className="bg-blue-600 hover:bg-blue-750 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-blue-100 cursor-pointer"
+            >
+              <FileText className="mr-2 h-4 w-4" /> Xuất báo cáo tổng hợp
+            </button>
+          )}
+
           {(session.status === 'DRAFT' || session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
             <button 
               onClick={handleCancelSession}
               disabled={submitting}
-              className="bg-white border border-rose-250 text-rose-600 hover:bg-rose-50 px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-sm disabled:opacity-50"
+              className="bg-white border border-rose-250 text-rose-600 hover:bg-rose-50 px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-sm disabled:opacity-50 cursor-pointer"
             >
               {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />} Hủy đợt kiểm kê
             </button>
@@ -1173,76 +1208,97 @@ export const InventoryDetail: React.FC = () => {
 
       {/* STATS CARDS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tổng tài sản cần kiểm</p>
-            <p className="text-3xl font-black text-slate-900">{stats.total}</p>
-            <p className="text-[11px] text-slate-450 mt-1 font-bold">{stats.checked} đã kiểm • {stats.pending} đang chờ</p>
-          </div>
-          <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><ClipboardList className="h-6 w-6" /></div>
-        </div>
-
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Tiến độ hoàn thành</p>
-            <p className="text-3xl font-black text-emerald-600">{Math.round((stats.checked / stats.total) * 100) || 0}%</p>
-            <div className="w-24 bg-slate-100 rounded-full h-1.5 mt-2">
-              <div 
-                className="bg-emerald-500 h-1.5 rounded-full transition-all duration-500" 
-                style={{ width: `${Math.round((stats.checked / stats.total) * 100) || 0}%` }}
-              />
+        {activeSession ? (
+          <>
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tài sản cần kiểm</p>
+                <p className="text-3xl font-black text-slate-900">{stats.total}</p>
+                <p className="text-[11px] text-slate-450 mt-1 font-bold">Phiên: {activeSession.departmentName || activeSession.locationName}</p>
+              </div>
+              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><ClipboardList className="h-6 w-6" /></div>
             </div>
-          </div>
-          <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-400"><CheckCircle2 className="h-6 w-6" /></div>
-        </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-rose-450 uppercase tracking-widest mb-1">Tổng số chênh lệch</p>
-            <p className="text-3xl font-black text-rose-600">
-              {stats.wrongLocation + stats.missing + stats.damaged + stats.wrongStatus}
-            </p>
-            <p className="text-[11px] text-slate-450 mt-1 font-bold">Khớp sổ sách: {stats.matched}</p>
-          </div>
-          <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-550"><AlertCircle className="h-6 w-6" /></div>
-        </div>
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Đã kiểm</p>
+                <p className="text-3xl font-black text-emerald-600">
+                  {stats.checked} <span className="text-sm text-slate-450">/ {stats.total}</span>
+                </p>
+                <p className="text-[11px] text-slate-450 mt-1 font-bold">Hoàn thành {Math.round((stats.checked / stats.total) * 100) || 0}%</p>
+              </div>
+              <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-400"><CheckCircle2 className="h-6 w-6" /></div>
+            </div>
 
-        <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Thông tin cập nhật</p>
-            <p className="text-sm font-black text-slate-800 leading-tight">
-              {lastUpdatedAt ? format(lastUpdatedAt, 'HH:mm dd/MM/yyyy') : 'Chưa có cập nhật'}
-            </p>
-            <p className="text-[11px] text-slate-450 mt-1 font-bold">
-              {checkers.length > 0 ? `${checkers.length} người kiểm kê` : 'Không có người kiểm'}
-            </p>
-          </div>
-          <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><User className="h-6 w-6" /></div>
-        </div>
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-blue-450 uppercase tracking-widest mb-1">Khớp</p>
+                <p className="text-3xl font-black text-blue-600">{stats.matched}</p>
+                <p className="text-[11px] text-slate-450 mt-1 font-bold">Sổ sách thực tế trùng khớp</p>
+              </div>
+              <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-550"><CheckCircle2 className="h-6 w-6" /></div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-rose-450 uppercase tracking-widest mb-1">Sai lệch</p>
+                <p className="text-3xl font-black text-rose-600">{stats.checked - stats.matched}</p>
+                <p className="text-[11px] text-slate-450 mt-1 font-bold">Cần lập biên bản xử lý</p>
+              </div>
+              <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-550"><AlertCircle className="h-6 w-6" /></div>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tổng TS toàn công ty</p>
+                <p className="text-3xl font-black text-slate-900">{stats.total}</p>
+                <p className="text-[11px] text-slate-450 mt-1 font-bold">{stats.checked} đã kiểm • {stats.pending} đang chờ</p>
+              </div>
+              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><ClipboardList className="h-6 w-6" /></div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Số phiên kiểm kê</p>
+                <p className="text-3xl font-black text-slate-900">{sessions.length}</p>
+                <p className="text-[11px] text-slate-450 mt-1 font-bold">Tách theo ngày và bộ phận</p>
+              </div>
+              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><Calendar className="h-6 w-6" /></div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Đã hoàn thành</p>
+                <p className="text-3xl font-black text-emerald-600">
+                  {sessions.filter((s: any) => s.status === 'COMPLETED').length} <span className="text-sm text-slate-450">/ {sessions.length}</span>
+                </p>
+                <p className="text-[11px] text-slate-450 mt-1 font-bold">Tiến độ đợt</p>
+              </div>
+              <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-400"><CheckCircle2 className="h-6 w-6" /></div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+              <div>
+                <p className="text-[10px] font-black text-rose-450 uppercase tracking-widest mb-1">Sai lệch toàn đợt</p>
+                <p className="text-3xl font-black text-rose-600">
+                  {stats.wrongLocation + stats.missing + stats.damaged + stats.wrongStatus}
+                </p>
+                <p className="text-[11px] text-slate-450 mt-1 font-bold">Khớp sổ sách: {stats.matched}</p>
+              </div>
+              <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-550"><AlertCircle className="h-6 w-6" /></div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* DISCREPANCY BREAKDOWN BANNER */}
-      <div className="bg-slate-550/5 p-4 rounded-2xl border border-slate-150 flex flex-wrap items-center justify-between gap-4 font-bold text-xs text-slate-650">
-        <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">Chi tiết đối soát:</span>
-        <div className="flex flex-wrap gap-4">
-          <span className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-100 rounded-lg text-emerald-700">
-            Khớp: {stats.matched}
-          </span>
-          <span className="flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-100 rounded-lg text-amber-700">
-            Lệch vị trí: {stats.wrongLocation}
-          </span>
-          <span className="flex items-center gap-1.5 px-3 py-1 bg-rose-50 border border-rose-100 rounded-lg text-rose-700">
-            Thiếu (Báo mất): {stats.missing}
-          </span>
-        </div>
-      </div>
-
-      {/* SESSIONS LIST SECTION */}
+      {/* DISCRE      {/* SESSIONS LIST SECTION */}
       {!activeSession && sessions.length > 0 && (
-        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+        <div id="sessions-list-section" className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center gap-2">
-              <Calendar className="h-4 w-4 text-primary-500" /> Danh sách phiên kiểm kê
+              <Calendar className="h-4 w-4 text-primary-500" /> Các phiên kiểm kê trong đợt
             </h3>
           </div>
           <div className="overflow-x-auto">
@@ -1250,12 +1306,12 @@ export const InventoryDetail: React.FC = () => {
               <thead>
                 <tr className="bg-slate-50/20 border-b border-slate-100">
                   <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày</th>
-                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Phiên kiểm kê</th>
-                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Phòng ban/Vị trí</th>
-                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Số TS</th>
-                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Đã kiểm</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Phiên</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Phạm vi</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">TS</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Hoàn thành</th>
                   <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Sai lệch</th>
-                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Trạng thái</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">BB</th>
                   <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Thao tác</th>
                 </tr>
               </thead>
@@ -1264,54 +1320,44 @@ export const InventoryDetail: React.FC = () => {
                   const totalCount = item.assetCountPlan || item._count?.details || 0;
                   const checkedCount = item.details?.filter((d: any) => d.checkedAt).length || 0;
                   const deviationCount = item.details?.filter((d: any) => d.checkedAt && d.resultStatus !== 'MATCH').length || 0;
+                  const completionRate = totalCount > 0 ? Math.round((checkedCount / totalCount) * 100) : 0;
                   return (
                     <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-4 text-sm font-bold text-slate-800">{format(new Date(item.scheduledDate), 'dd/MM/yyyy')}</td>
+                      <td className="p-4 text-sm font-bold text-slate-800">{format(new Date(item.scheduledDate), 'dd/MM')}</td>
                       <td className="p-4">
-                        <p className="text-sm font-black text-slate-800">Kiểm kê {item.departmentName || item.locationName}</p>
+                        <p className="text-sm font-black text-slate-800">{item.projectName || item.locationName || 'Tất cả vị trí'}</p>
                         <p className="text-[10px] text-slate-400 mt-0.5">Phụ trách: {item.checkerName || '-'}</p>
                       </td>
-                      <td className="p-4">
-                        <p className="text-sm font-bold text-slate-700">{item.departmentName || 'Tất cả phòng ban'}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">{item.locationName || 'Tất cả vị trí'}</p>
-                      </td>
+                      <td className="p-4 text-sm font-bold text-slate-700">{item.departmentName || 'Toàn bộ'}</td>
                       <td className="p-4 text-center text-sm font-bold text-slate-800">{totalCount}</td>
-                      <td className="p-4 text-center text-sm font-bold text-slate-800">{checkedCount}</td>
+                      <td className="p-4 text-center text-sm font-bold text-slate-800">{completionRate}%</td>
                       <td className="p-4 text-center text-sm font-bold text-rose-600">{deviationCount}</td>
-                      <td className="p-4">
-                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
-                          item.status === 'PENDING' ? 'bg-slate-100 text-slate-650 border-slate-200' :
-                          item.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-600 border-blue-200' :
-                          'bg-purple-50 text-purple-650 border-purple-200'
-                        }`}>
-                          {item.status === 'PENDING' ? 'Chưa kiểm' : item.status === 'IN_PROGRESS' ? 'Đang kiểm' : 'Đã chốt'}
-                        </span>
-                      </td>
-                      <td className="p-4 text-right flex justify-end gap-2 items-center">
+                      <td className="p-4 text-center">
                         <button
                           onClick={() => handleViewSessionReport(item.id)}
-                          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                          title="Xem biên bản kiểm kê phiên"
+                          className="p-1 text-slate-500 hover:text-slate-800 transition-colors border-0 bg-transparent cursor-pointer text-base"
                         >
-                          <FileText className="h-3.5 w-3.5" /> Biên bản
+                          📄
                         </button>
-                        {item.status === 'PENDING' && (
+                      </td>
+                      <td className="p-4 text-right flex justify-end gap-2 items-center">
+                        {item.status === 'PENDING' ? (
                           <button
                             onClick={() => handleStartSessionVisit(item)}
                             className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
                           >
                             <Play className="h-3.5 w-3.5" /> Bắt đầu
                           </button>
-                        )}
-                        {item.status === 'IN_PROGRESS' && (
+                        ) : item.status === 'IN_PROGRESS' ? (
                           <button
                             onClick={() => openSession(item)}
-                            className="px-4 py-1.5 bg-primary-600 hover:bg-primary-750 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                            className="px-4 py-1.5 bg-primary-600 hover:bg-primary-750 text-white rounded-xl text-xs font-bold transition-all cursor-pointer shadow-md shadow-primary-100"
                           >
                             Vào kiểm kê
                           </button>
-                        )}
-                        {item.status === 'COMPLETED' && (
-                          <span className="text-slate-400 text-xs font-bold italic mr-2">Hoàn tất</span>
+                        ) : (
+                          <span className="text-slate-400 text-xs font-bold italic mr-2">Đã chốt</span>
                         )}
                       </td>
                     </tr>
@@ -1346,7 +1392,7 @@ export const InventoryDetail: React.FC = () => {
                 onClick={() => handleCompleteSession(activeSession.id)}
                 className="bg-white text-primary-750 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer"
               >
-                Chốt phiên kiểm kê
+                Hoàn thành phiên kiểm kê
               </button>
             )}
             <button
@@ -1382,9 +1428,21 @@ export const InventoryDetail: React.FC = () => {
         >
           <Plus className="h-4 w-4" /> Tài sản ngoài sổ ({discoveredAssets.length})
         </button>
+        {session?.status === 'COMPLETED' && (
+          <button
+            onClick={() => setActiveTab('POST_INVENTORY')}
+            className={`flex items-center gap-2 py-4 px-6 font-black text-xs uppercase tracking-widest border-b-2 transition-all ${
+              activeTab === 'POST_INVENTORY' 
+                ? 'border-primary-600 text-primary-650' 
+                : 'border-transparent text-slate-400 hover:text-slate-600'
+            }`}
+          >
+            <CheckCircle2 className="h-4 w-4" /> Kết quả sau kiểm kê
+          </button>
+        )}
       </div>
 
-      {activeTab === 'CHECK_LIST' ? (
+      {activeTab === 'CHECK_LIST' && (
         <div className="bg-white rounded-b-[2.5rem] shadow-xl border border-slate-200 overflow-hidden">
           <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
             <div className="flex flex-1 max-w-lg gap-3">
@@ -1552,7 +1610,9 @@ export const InventoryDetail: React.FC = () => {
             </table>
           </div>
         </div>
-      ) : (
+      )}
+
+      {activeTab === 'DISCOVERED_LIST' && (
         <div className="bg-white rounded-b-[2.5rem] shadow-xl border border-slate-200 overflow-hidden">
           <div className="p-8 border-b border-slate-100 flex items-center justify-between">
             <h3 className="text-sm font-black uppercase tracking-widest text-slate-800">Danh sách tài sản ngoài sổ ghi nhận</h3>
@@ -1685,6 +1745,243 @@ export const InventoryDetail: React.FC = () => {
                 )}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'POST_INVENTORY' && (
+        <div className="bg-white rounded-b-[2.5rem] shadow-xl border border-slate-200 p-8 space-y-8">
+          <div className="border-b border-slate-100 pb-4">
+            <h3 className="text-lg font-black uppercase tracking-widest text-slate-800">Kết quả sau kiểm kê</h3>
+            <p className="text-xs text-slate-500 font-bold mt-1">Danh sách hành động xử lý sau khi chốt đợt kiểm kê</p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-6">
+            {/* 1. Cần cập nhật hồ sơ */}
+            <div className="border border-slate-200 rounded-2xl p-6 bg-slate-50/30">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600 font-bold text-sm">1</div>
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-800">Cần cập nhật hồ sơ</h4>
+                    <p className="text-[11px] text-slate-450 font-bold mt-0.5">Tài sản sai lệch thông tin người dùng hoặc vị trí thực tế</p>
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tài sản</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Sổ sách</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Thực tế</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(() => {
+                      const list = (session?.items || []).filter((item: any) => 
+                        item.checkStatus === 'CHECKED' && 
+                        (item.result === 'WRONG_LOCATION' || item.result === 'WRONG_USER')
+                      );
+                      if (list.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={4} className="py-4 text-center text-slate-400 font-bold italic">Không có tài sản nào cần cập nhật hồ sơ</td>
+                          </tr>
+                        );
+                      }
+                      return list.map((item: any) => (
+                        <tr key={item.id} className="hover:bg-slate-50/40">
+                          <td className="py-3 font-bold">
+                            <div className="font-bold text-slate-850">{item.asset?.assetName}</div>
+                            <div className="text-[10px] font-mono text-slate-450 uppercase tracking-tight mt-0.5">{item.assetCode}</div>
+                          </td>
+                          <td className="py-3 text-slate-500 font-medium">
+                            <div>Người dùng: {item.asset?.currentUserName || 'Chưa phân bổ'}</div>
+                            <div>Vị trí: {item.asset?.locationName || 'N/A'}</div>
+                          </td>
+                          <td className="py-3 text-slate-800 font-bold">
+                            <div className={item.result === 'WRONG_USER' ? 'text-amber-600' : ''}>
+                              Người dùng: {item.actualUserName || 'N/A'}
+                            </div>
+                            <div className={item.result === 'WRONG_LOCATION' ? 'text-amber-600' : ''}>
+                              Vị trí: {item.actualLocation || 'N/A'}
+                            </div>
+                          </td>
+                          <td className="py-3 text-right">
+                            <button
+                              onClick={() => navigate('/handover', { state: { assetCode: item.assetCode } })}
+                              className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                            >
+                              Tạo điều chuyển
+                            </button>
+                          </td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 2. Chờ xử lý mất */}
+            <div className="border border-slate-200 rounded-2xl p-6 bg-slate-50/30">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600 font-bold text-sm">2</div>
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-800">Chờ xử lý mất</h4>
+                    <p className="text-[11px] text-slate-450 font-bold mt-0.5">Tài sản không tìm thấy</p>
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tài sản</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí sổ sách</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(() => {
+                      const list = (session?.items || []).filter((item: any) => 
+                        item.checkStatus === 'CHECKED' && item.result === 'MISSING'
+                      );
+                      if (list.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={3} className="py-4 text-center text-slate-400 font-bold italic">Không có tài sản nào chờ xử lý mất</td>
+                          </tr>
+                        );
+                      }
+                      return list.map((item: any) => (
+                        <tr key={item.id} className="hover:bg-slate-50/40">
+                          <td className="py-3 font-bold">
+                            <div className="font-bold text-slate-850">{item.asset?.assetName}</div>
+                            <div className="text-[10px] font-mono text-slate-450 uppercase tracking-tight mt-0.5">{item.assetCode}</div>
+                          </td>
+                          <td className="py-3 text-slate-500 font-medium">{item.asset?.locationName || 'N/A'}</td>
+                          <td className="py-3 text-right">
+                            <button
+                              onClick={() => navigate('/operational/lost', { state: { assetCode: item.assetCode } })}
+                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                            >
+                              Biên bản mất
+                            </button>
+                          </td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 3. Chờ sửa chữa */}
+            <div className="border border-slate-200 rounded-2xl p-6 bg-slate-50/30">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-red-50 rounded-xl flex items-center justify-center text-red-655 font-bold text-sm">3</div>
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-800">Chờ sửa chữa</h4>
+                    <p className="text-[11px] text-slate-450 font-bold mt-0.5">Tài sản báo hỏng cần sửa chữa khắc phục</p>
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tài sản</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Người sử dụng</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(() => {
+                      const list = (session?.items || []).filter((item: any) => 
+                        item.checkStatus === 'CHECKED' && item.result === 'DAMAGED'
+                      );
+                      if (list.length === 0) {
+                        return (
+                          <tr>
+                            <td colSpan={3} className="py-4 text-center text-slate-400 font-bold italic">Không có tài sản nào chờ sửa chữa</td>
+                          </tr>
+                        );
+                      }
+                      return list.map((item: any) => (
+                        <tr key={item.id} className="hover:bg-slate-50/40">
+                          <td className="py-3 font-bold">
+                            <div className="font-bold text-slate-850">{item.asset?.assetName}</div>
+                            <div className="text-[10px] font-mono text-slate-455 uppercase tracking-tight mt-0.5">{item.assetCode}</div>
+                          </td>
+                          <td className="py-3 text-slate-500 font-medium">{item.asset?.currentUserName || 'N/A'}</td>
+                          <td className="py-3 text-right">
+                            <button
+                              onClick={() => navigate('/operational/damage', { state: { assetCode: item.assetCode } })}
+                              className="px-3 py-1.5 bg-red-655 hover:bg-red-750 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                            >
+                              Phiếu sửa chữa
+                            </button>
+                          </td>
+                        </tr>
+                      ));
+                    })()}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {/* 4. Tài sản ngoài sổ */}
+            <div className="border border-slate-200 rounded-2xl p-6 bg-slate-50/30">
+              <div className="flex items-center justify-between mb-4 border-b border-slate-100 pb-3">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 font-bold text-sm">4</div>
+                  <div>
+                    <h4 className="text-sm font-black uppercase tracking-widest text-slate-800">Tài sản ngoài sổ</h4>
+                    <p className="text-[11px] text-slate-455 font-bold mt-0.5">Tài sản phát hiện thêm trong khi kiểm kê</p>
+                  </div>
+                </div>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200">
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã tạm</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên tài sản</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí / Người giữ</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {discoveredAssets.length === 0 ? (
+                      <tr>
+                        <td colSpan={4} className="py-4 text-center text-slate-400 font-bold italic">Không phát hiện tài sản ngoài sổ nào</td>
+                      </tr>
+                    ) : (
+                      discoveredAssets.map((item: any) => (
+                        <tr key={item.id} className="hover:bg-slate-50/40">
+                          <td className="py-3 font-mono font-bold text-slate-800">{item.tempCode}</td>
+                          <td className="py-3 font-bold">{item.name}</td>
+                          <td className="py-3 text-slate-500 font-medium">{item.foundLocationName} / {item.foundUserName}</td>
+                          <td className="py-3 text-right">
+                            <button
+                              onClick={() => navigate('/assets/new', { state: { tempName: item.name, tempLocation: item.foundLocationName } })}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                            >
+                              Tạo mã tài sản
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
