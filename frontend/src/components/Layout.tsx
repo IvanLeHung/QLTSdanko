@@ -63,7 +63,7 @@ const navSections = [
       { name: 'Báo mất Công cụ dụng cụ', path: '/tools?status=LOST', icon: ShieldAlert, requiredPermission: 'TOOL_VIEW' },
       { name: 'Thanh lý / Hủy Công cụ dụng cụ', path: '/tools?status=WAITING_LIQUIDATION', icon: Trash2, requiredPermission: 'TOOL_VIEW' },
       { name: 'Kiểm kê Công cụ dụng cụ', path: '/tools/inventory', icon: ClipboardCheck, requiredPermission: 'TOOL_VIEW' },
-      { name: 'Lịch sử tổng hợp', path: '/tools?view=history', icon: History, requiredPermission: 'TOOL_VIEW' }
+      { name: 'Lịch sử tổng hợp', path: '/tools/history', icon: History, requiredPermission: 'TOOL_VIEW' }
     ]
   },
   {

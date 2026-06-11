@@ -22,6 +22,25 @@ router.get('/dashboard', authenticateToken, async (req, res) => {
   }
 });
 
+// --- GET TOOL LIFECYCLE AUDIT HISTORY ---
+router.get('/history', authenticateToken, async (req: any, res) => {
+  try {
+    const data = await ToolService.getToolHistoryAudit({
+      dateFrom: req.query.dateFrom?.toString(),
+      dateTo: req.query.dateTo?.toString(),
+      actionType: req.query.actionType?.toString(),
+      keyword: req.query.keyword?.toString(),
+      actor: req.query.actor?.toString(),
+      location: req.query.location?.toString(),
+      page: req.query.page ? parseInt(req.query.page.toString(), 10) : 1,
+      limit: req.query.limit ? parseInt(req.query.limit.toString(), 10) : 50
+    });
+    res.json(data);
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // --- GET TOOLS LIST ---
 router.get('/', authenticateToken, async (req: any, res) => {
   try {

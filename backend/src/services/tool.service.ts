@@ -31,6 +31,32 @@ const compactVariant = (variant: ChildVariantInput = {}) => ({
   identifyingFeature: variant.identifyingFeature?.trim() || null
 });
 
+const toolActionLabels: Record<string, string> = {
+  CREATE: 'Nhập mới',
+  IMPORT: 'Nhập mới',
+  ASSIGN: 'Bàn giao',
+  HANDOVER: 'Bàn giao',
+  TRANSFER: 'Điều chuyển',
+  USE: 'Bàn giao',
+  ALLOCATE: 'Bàn giao',
+  RECALL: 'Thu hồi',
+  DAMAGE: 'Báo hỏng',
+  REPAIR: 'Gửi sửa chữa',
+  REPAIR_COMPLETE: 'Hoàn thành sửa chữa',
+  LOST: 'Mất',
+  LIQUIDATE: 'Thanh lý',
+  DESTROY: 'Hủy',
+  UPDATE: 'Cập nhật',
+  DELETE: 'Xóa',
+  ADJUST: 'Điều chỉnh',
+  STATUS_LOCATION_USER_CHANGE: 'Thay đổi trạng thái'
+};
+
+const normalizeToolAction = (action?: string | null) => {
+  if (!action) return 'Cập nhật';
+  return toolActionLabels[action] || action;
+};
+
 export class ToolService {
   /**
    * Generates CCDC tool codes in format: CCDC.{NHOM}.{NAM}.{STT}
@@ -671,6 +697,169 @@ export class ToolService {
         invoiceLine: true
       }
     });
+  }
+
+  static async getToolHistoryAudit(params: {
+    dateFrom?: string;
+    dateTo?: string;
+    actionType?: string;
+    keyword?: string;
+    actor?: string;
+    location?: string;
+    page?: number;
+    limit?: number;
+  } = {}) {
+    const page = params.page || 1;
+    const limit = params.limit || 50;
+    const dateWhere: any = {};
+    if (params.dateFrom) dateWhere.gte = new Date(params.dateFrom);
+    if (params.dateTo) {
+      const endDate = new Date(params.dateTo);
+      endDate.setHours(23, 59, 59, 999);
+      dateWhere.lte = endDate;
+    }
+
+    const historyWhere: any = {};
+    const stockWhere: any = {};
+    if (Object.keys(dateWhere).length) {
+      historyWhere.eventTime = dateWhere;
+      stockWhere.createdAt = dateWhere;
+    }
+    if (params.actionType && params.actionType !== 'ALL') {
+      historyWhere.actionType = params.actionType;
+      stockWhere.type = params.actionType;
+    }
+    if (params.keyword) {
+      historyWhere.OR = [
+        { toolCode: { contains: params.keyword, mode: 'insensitive' } },
+        { toolNameSnapshot: { contains: params.keyword, mode: 'insensitive' } },
+        { newUserName: { contains: params.keyword, mode: 'insensitive' } },
+        { oldUserName: { contains: params.keyword, mode: 'insensitive' } },
+        { newDepartmentName: { contains: params.keyword, mode: 'insensitive' } },
+        { oldDepartmentName: { contains: params.keyword, mode: 'insensitive' } },
+        { newLocationName: { contains: params.keyword, mode: 'insensitive' } },
+        { oldLocationName: { contains: params.keyword, mode: 'insensitive' } },
+        { newNote: { contains: params.keyword, mode: 'insensitive' } },
+        { oldNote: { contains: params.keyword, mode: 'insensitive' } },
+        { tool: { toolName: { contains: params.keyword, mode: 'insensitive' } } }
+      ];
+      stockWhere.OR = [
+        { note: { contains: params.keyword, mode: 'insensitive' } },
+        { fromLocation: { contains: params.keyword, mode: 'insensitive' } },
+        { toLocation: { contains: params.keyword, mode: 'insensitive' } },
+        { performedBy: { contains: params.keyword, mode: 'insensitive' } },
+        { tool: { toolCode: { contains: params.keyword, mode: 'insensitive' } } },
+        { tool: { toolName: { contains: params.keyword, mode: 'insensitive' } } },
+        { tool: { supplierName: { contains: params.keyword, mode: 'insensitive' } } }
+      ];
+    }
+    if (params.actor) {
+      stockWhere.performedBy = { contains: params.actor, mode: 'insensitive' };
+      historyWhere.source = { contains: params.actor, mode: 'insensitive' };
+    }
+    if (params.location) {
+      historyWhere.OR = [
+        ...(historyWhere.OR || []),
+        { oldLocationName: { contains: params.location, mode: 'insensitive' } },
+        { newLocationName: { contains: params.location, mode: 'insensitive' } }
+      ];
+      stockWhere.OR = [
+        ...(stockWhere.OR || []),
+        { fromLocation: { contains: params.location, mode: 'insensitive' } },
+        { toLocation: { contains: params.location, mode: 'insensitive' } }
+      ];
+    }
+
+    const [histories, stockTransactions] = await Promise.all([
+      prisma.toolHistory.findMany({
+        where: historyWhere,
+        include: { tool: { include: { invoiceBatch: true } } },
+        orderBy: { eventTime: 'desc' },
+        take: 1000
+      }),
+      prisma.toolStockTransaction.findMany({
+        where: stockWhere,
+        include: { tool: { include: { invoiceBatch: true } } },
+        orderBy: { createdAt: 'desc' },
+        take: 1000
+      })
+    ]);
+
+    const auditRows = [
+      ...histories.map((h: any) => ({
+        id: `history-${h.id}`,
+        sourceType: 'TOOL_HISTORY',
+        sourceId: h.id,
+        toolId: h.toolId,
+        toolCode: h.toolCode,
+        toolName: h.tool?.toolName || h.toolNameSnapshot || '',
+        serialNumber: null,
+        purchaseDate: h.tool?.purchaseDate || null,
+        invoiceNo: h.tool?.invoiceBatch?.invoiceNo || null,
+        eventTime: h.eventTime,
+        actionType: h.actionType,
+        actionLabel: normalizeToolAction(h.actionType),
+        before: {
+          status: h.oldStatus,
+          userName: h.oldUserName,
+          departmentName: h.oldDepartmentName,
+          locationName: h.oldLocationName,
+          projectName: h.oldProjectName,
+          cityName: h.oldCityName,
+          note: h.oldNote
+        },
+        after: {
+          status: h.newStatus,
+          userName: h.newUserName,
+          departmentName: h.newDepartmentName,
+          locationName: h.newLocationName,
+          projectName: h.newProjectName,
+          cityName: h.newCityName,
+          note: h.newNote
+        },
+        actor: h.source || 'SYSTEM',
+        note: h.newNote || h.oldNote || '',
+        attachments: []
+      })),
+      ...stockTransactions.map((t: any) => ({
+        id: `stock-${t.id}`,
+        sourceType: 'TOOL_STOCK_TRANSACTION',
+        sourceId: t.id,
+        toolId: t.toolId,
+        toolCode: t.tool?.toolCode || '',
+        toolName: t.tool?.toolName || '',
+        serialNumber: null,
+        purchaseDate: t.tool?.purchaseDate || null,
+        invoiceNo: t.tool?.invoiceBatch?.invoiceNo || null,
+        eventTime: t.createdAt,
+        actionType: t.type,
+        actionLabel: normalizeToolAction(t.type),
+        before: { locationName: t.fromLocation, quantity: t.quantity },
+        after: { locationName: t.toLocation, quantity: t.quantity },
+        actor: t.performedBy,
+        note: t.note || '',
+        attachments: []
+      }))
+    ].sort((a, b) => new Date(b.eventTime).getTime() - new Date(a.eventTime).getTime());
+
+    const stats = {
+      total: auditRows.length,
+      imports: auditRows.filter(row => ['CREATE', 'IMPORT'].includes(row.actionType)).length,
+      handovers: auditRows.filter(row => ['ASSIGN', 'HANDOVER', 'USE', 'ALLOCATE'].includes(row.actionType)).length,
+      transfers: auditRows.filter(row => row.actionType === 'TRANSFER').length,
+      recalls: auditRows.filter(row => row.actionType === 'RECALL').length,
+      repairs: auditRows.filter(row => ['DAMAGE', 'REPAIR', 'REPAIR_COMPLETE'].includes(row.actionType)).length,
+      liquidations: auditRows.filter(row => ['LIQUIDATE', 'DESTROY'].includes(row.actionType)).length
+    };
+
+    const skip = (page - 1) * limit;
+    return {
+      items: auditRows.slice(skip, skip + limit),
+      stats,
+      total: auditRows.length,
+      page,
+      limit
+    };
   }
 
   /**
