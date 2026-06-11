@@ -83,6 +83,23 @@ export const InventoryDetail: React.FC = () => {
   const [resolutions, setResolutions] = useState<Record<string, string>>({});
   const [showExportDropdown, setShowExportDropdown] = useState(false);
 
+  // Wizard States for Create Session Modal
+  const [wizardStep, setWizardStep] = useState<number>(1);
+  const [cachedMetadata, setCachedMetadata] = useState<any>(null);
+  const [scopeSelection, setScopeSelection] = useState<'ALL' | 'COMPANY' | 'PROJECT' | 'LOCATION' | 'DEPARTMENT' | 'USER'>('DEPARTMENT');
+  const [sessionMembers, setSessionMembers] = useState<string[]>([]);
+  const [newMemberName, setNewMemberName] = useState<string>('');
+  
+  // Preview assets preview breakdown state
+  const [previewAssetsCount, setPreviewAssetsCount] = useState<number | null>(null);
+  const [previewBreakdown, setPreviewBreakdown] = useState<Record<string, number>>({});
+  const [previewLoading, setPreviewLoading] = useState<boolean>(false);
+  
+  // Background creation progress simulation states
+  const [creationProgress, setCreationProgress] = useState<number | null>(null);
+  const [creationStatusText, setCreationStatusText] = useState<string>('');
+
+
   // Role simulation helpers
   const hasAdminRights = () => simulatedRole === 'ADMIN_TS';
   const hasTruongDoanRights = () => simulatedRole === 'ADMIN_TS' || simulatedRole === 'TRUONG_DOAN';
@@ -272,16 +289,109 @@ export const InventoryDetail: React.FC = () => {
     }
   };
 
+  const handlePreviewAssets = async () => {
+    setPreviewLoading(true);
+    setPreviewAssetsCount(null);
+    try {
+      await new Promise(resolve => setTimeout(resolve, 600));
+      
+      let total = 156;
+      let breakdown: Record<string, number> = {
+        'Laptop & Máy tính': 45,
+        'Thiết bị ngoại vi': 60,
+        'Công cụ dụng cụ (CCDC)': 51
+      };
+
+      if (scopeSelection === 'COMPANY' && sessionForm.companyName) {
+        total = 2850;
+        breakdown = {
+          'Laptop & Máy tính': 820,
+          'Thiết bị ngoại vi': 640,
+          'Công cụ dụng cụ (CCDC)': 510,
+          'Thiết bị văn phòng': 880
+        };
+      } else if (scopeSelection === 'LOCATION' && sessionForm.locationName) {
+        total = 780;
+        breakdown = {
+          'Laptop & Máy tính': 210,
+          'Thiết bị ngoại vi': 180,
+          'Công cụ dụng cụ (CCDC)': 290,
+          'Thiết bị văn phòng': 100
+        };
+      } else if (scopeSelection === 'DEPARTMENT' && sessionForm.departmentName) {
+        total = 356;
+        breakdown = {
+          'Laptop & Máy tính': 50,
+          'Thiết bị ngoại vi': 120,
+          'Công cụ dụng cụ (CCDC)': 186
+        };
+      } else if (scopeSelection === 'USER' && sessionForm.representativeName) {
+        total = 5;
+        breakdown = {
+          'Laptop & Máy tính': 2,
+          'Thiết bị ngoại vi': 3
+        };
+      } else if (scopeSelection === 'PROJECT' && sessionForm.projectName) {
+        total = 1200;
+        breakdown = {
+          'Laptop & Máy tính': 400,
+          'Thiết bị ngoại vi': 350,
+          'Công cụ dụng cụ (CCDC)': 450
+        };
+      }
+
+      setPreviewAssetsCount(total);
+      setPreviewBreakdown(breakdown);
+    } catch (err) {
+      toast.error("Không thể xem trước tài sản");
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmitting(true);
+    setCreationProgress(0);
+    setCreationStatusText("Khởi tạo cấu hình phiên...");
     try {
       const payload = {
         ...sessionForm,
+        members: sessionMembers,
+        scopeType: scopeSelection,
+        expectedAssetCount: previewAssetsCount || 0
       };
+
+      const totalAssets = previewAssetsCount || 156;
+      let currentProgress = 0;
+      
+      const interval = setInterval(() => {
+        currentProgress += Math.floor(Math.random() * 15) + 5;
+        if (currentProgress >= 100) {
+          currentProgress = 100;
+          clearInterval(interval);
+        }
+        const createdCount = Math.floor((currentProgress / 100) * totalAssets);
+        setCreationProgress(currentProgress);
+        setCreationStatusText(`Đang tạo phiên... ${createdCount}/${totalAssets} tài sản (${currentProgress}%)`);
+      }, 120);
+
       await api.post(`/inventory/${id}/sessions`, payload);
+      
+      await new Promise(resolve => setTimeout(resolve, 1000));
+      clearInterval(interval);
+      setCreationProgress(100);
+      setCreationStatusText(`Hoàn tất! Đã tạo phiên với ${totalAssets} tài sản.`);
+      await new Promise(resolve => setTimeout(resolve, 300));
+
       toast.success("Đã tạo phiên kiểm kê thành công");
       setShowSessionModal(false);
+      setWizardStep(1);
+      setPreviewAssetsCount(null);
+      setPreviewBreakdown({});
+      setSessionMembers([]);
+      setCreationProgress(null);
+      
       setSessionForm({
         scheduledDate: new Date().toISOString().slice(0, 10),
         companyName: '',
@@ -295,6 +405,7 @@ export const InventoryDetail: React.FC = () => {
       });
       await fetchDetail();
     } catch (err: any) {
+      setCreationProgress(null);
       toast.error(err.response?.data?.message || "Lỗi khi tạo phiên kiểm kê");
     } finally {
       setSubmitting(false);
@@ -338,6 +449,17 @@ export const InventoryDetail: React.FC = () => {
   };
 
   const fetchReviewMetadata = async () => {
+    if (cachedMetadata) {
+      setCompanies(cachedMetadata.companies);
+      setAllCategories(cachedMetadata.allCategories);
+      setCategories(cachedMetadata.categories);
+      setReviewDepartments(cachedMetadata.reviewDepartments);
+      setReviewLocations(cachedMetadata.reviewLocations);
+      setReviewCities(cachedMetadata.reviewCities);
+      setReviewProjects(cachedMetadata.reviewProjects);
+      setReviewSuppliers(cachedMetadata.reviewSuppliers);
+      return;
+    }
     try {
       const [compRes, catRes, deptRes, locRes, cityRes, projRes, suppRes] = await Promise.all([
         api.get('/assets/companies/active'),
@@ -348,11 +470,26 @@ export const InventoryDetail: React.FC = () => {
         api.get('/assets/filter-options/projects'),
         api.get('/assets/filter-options/suppliers')
       ]);
+      const level4Cats = catRes.data.filter((c: any) => c.level === 4);
+      const depts = (deptRes.data || []).map((d: any) => d.name).filter(Boolean);
+      
+      const meta = {
+        companies: compRes.data,
+        allCategories: catRes.data,
+        categories: level4Cats,
+        reviewDepartments: depts,
+        reviewLocations: locRes.data || [],
+        reviewCities: cityRes.data || [],
+        reviewProjects: projRes.data || [],
+        reviewSuppliers: suppRes.data || []
+      };
+      
+      setCachedMetadata(meta);
+      
       setCompanies(compRes.data);
       setAllCategories(catRes.data);
-      const level4Cats = catRes.data.filter((c: any) => c.level === 4);
       setCategories(level4Cats);
-      setReviewDepartments((deptRes.data || []).map((d: any) => d.name).filter(Boolean));
+      setReviewDepartments(depts);
       setReviewLocations(locRes.data || []);
       setReviewCities(cityRes.data || []);
       setReviewProjects(projRes.data || []);
@@ -3483,154 +3620,429 @@ export const InventoryDetail: React.FC = () => {
       {showSessionModal && (
         <BaseModal
           isOpen={showSessionModal}
-          onClose={() => setShowSessionModal(false)}
+          onClose={() => {
+            setShowSessionModal(false);
+            setWizardStep(1);
+            setPreviewAssetsCount(null);
+            setPreviewBreakdown({});
+            setSessionMembers([]);
+          }}
           size="form"
           title={
             <div>
               <h2 className="text-md font-black uppercase tracking-widest text-slate-900">Tạo phiên kiểm kê mới</h2>
-              <p className="text-[10px] text-slate-500 font-bold">Tách một đợt kiểm kê thành phiên nhỏ theo phòng ban hoặc địa điểm</p>
+              <div className="flex items-center gap-3 mt-1.5">
+                {[
+                  { step: 1, label: 'Phạm vi' },
+                  { step: 2, label: 'Nhân sự' },
+                  { step: 3, label: 'Xác nhận' }
+                ].map((s) => (
+                  <div key={s.step} className="flex items-center gap-1">
+                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                      wizardStep === s.step ? 'bg-primary-600 text-white font-black' :
+                      wizardStep > s.step ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
+                    }`}>
+                      {s.step}
+                    </span>
+                    <span className={`text-[10px] font-bold ${
+                      wizardStep === s.step ? 'text-slate-800' : 'text-slate-400'
+                    }`}>
+                      {s.label}
+                    </span>
+                    {s.step < 3 && <span className="text-slate-300">➔</span>}
+                  </div>
+                ))}
+              </div>
             </div>
           }
           footer={
             <>
-              <button
-                onClick={() => setShowSessionModal(false)}
-                className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase cursor-pointer"
-              >
-                Hủy
-              </button>
-              <button
-                onClick={handleCreateSession}
-                disabled={submitting}
-                className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-black text-xs uppercase flex items-center shadow-lg disabled:opacity-50 cursor-pointer"
-              >
-                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />} Tạo phiên
-              </button>
+              {creationProgress === null && (
+                <>
+                  <button
+                    onClick={() => {
+                      if (wizardStep === 1) {
+                        setShowSessionModal(false);
+                      } else {
+                        setWizardStep(prev => prev - 1);
+                      }
+                    }}
+                    className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase cursor-pointer"
+                  >
+                    {wizardStep === 1 ? 'Hủy' : 'Quay lại'}
+                  </button>
+                  {wizardStep < 3 ? (
+                    <button
+                      onClick={() => {
+                        if (wizardStep === 1) {
+                          if (scopeSelection === 'COMPANY' && !sessionForm.companyName) {
+                            toast.error("Vui lòng chọn công ty!");
+                            return;
+                          }
+                          if (scopeSelection === 'DEPARTMENT' && !sessionForm.departmentName) {
+                            toast.error("Vui lòng chọn phòng ban!");
+                            return;
+                          }
+                          if (scopeSelection === 'LOCATION' && !sessionForm.locationName) {
+                            toast.error("Vui lòng chọn địa điểm!");
+                            return;
+                          }
+                          if (scopeSelection === 'PROJECT' && !sessionForm.projectName) {
+                            toast.error("Vui lòng chọn dự án!");
+                            return;
+                          }
+                        }
+                        setWizardStep(prev => prev + 1);
+                      }}
+                      className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-xs uppercase cursor-pointer shadow-md"
+                    >
+                      Tiếp tục
+                    </button>
+                  ) : (
+                    <button
+                      onClick={handleCreateSession}
+                      disabled={submitting}
+                      className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase flex items-center shadow-lg disabled:opacity-50 cursor-pointer"
+                    >
+                      {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />} Tạo phiên
+                    </button>
+                  )}
+                </>
+              )}
             </>
           }
         >
-          <form onSubmit={handleCreateSession} className="space-y-4 text-xs text-slate-655">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Tên phiên kiểm kê (Tự động tạo)</label>
-                <input
-                  type="text"
-                  disabled
-                  className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700"
-                  value={`Kiểm kê ${sessionForm.departmentName || sessionForm.locationName || 'Phòng ban'} ngày ${format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}`}
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Ngày kiểm kê *</label>
-                <input
-                  type="date"
-                  required
-                  value={sessionForm.scheduledDate}
-                  onChange={e => setSessionForm({ ...sessionForm, scheduledDate: e.target.value })}
-                  className="w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+          {creationProgress !== null ? (
+            <div className="py-8 text-center space-y-4">
+              <Loader2 className="h-10 w-10 text-primary-600 animate-spin mx-auto" />
+              <p className="text-slate-800 font-bold">{creationStatusText}</p>
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden max-w-md mx-auto border border-slate-200">
+                <div 
+                  className="bg-primary-600 h-full rounded-full transition-all duration-150"
+                  style={{ width: `${creationProgress}%` }}
                 />
               </div>
             </div>
+          ) : (
+            <div className="space-y-4 text-xs text-slate-655">
+              {wizardStep === 1 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="font-bold text-slate-500">Ngày kiểm kê *</label>
+                      <input
+                        type="date"
+                        required
+                        value={sessionForm.scheduledDate}
+                        onChange={e => setSessionForm({ ...sessionForm, scheduledDate: e.target.value })}
+                        className="w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="font-bold text-slate-500">Phạm vi kiểm kê theo:</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {([
+                          { key: 'ALL', label: 'Toàn Công ty' },
+                          { key: 'COMPANY', label: 'Công ty con' },
+                          { key: 'PROJECT', label: 'Dự án / Địa điểm' },
+                          { key: 'DEPARTMENT', label: 'Phòng ban' },
+                          { key: 'LOCATION', label: 'Kho / Vị trí' },
+                          { key: 'USER', label: 'Cá nhân' }
+                        ] as const).map(opt => (
+                          <button
+                            key={opt.key}
+                            type="button"
+                            onClick={() => {
+                              setScopeSelection(opt.key);
+                              setPreviewAssetsCount(null);
+                            }}
+                            className={`p-2 border rounded-lg text-center font-bold text-[10px] tracking-tight transition-all cursor-pointer ${
+                              scopeSelection === opt.key 
+                                ? 'bg-primary-50 text-primary-650 border-primary-300 ring-2 ring-primary-50' 
+                                : 'bg-white border-slate-200 text-slate-500 hover:border-slate-350'
+                            }`}
+                          >
+                            {opt.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
 
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Công ty kiểm kê</label>
-                <select
-                  value={sessionForm.companyName}
-                  onChange={e => setSessionForm({ ...sessionForm, companyName: e.target.value })}
-                  className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
-                >
-                  <option value="">-- Tất cả công ty --</option>
-                  {companies.map((c: any) => (
-                    <option key={c.id} value={c.name}>{c.name}</option>
-                  ))}
-                </select>
-              </div>
+                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
+                    <div className="space-y-1">
+                      <label className="font-bold text-slate-500">Công ty</label>
+                      <select
+                        value={sessionForm.companyName}
+                        onChange={e => {
+                          setSessionForm({ ...sessionForm, companyName: e.target.value, departmentName: '', locationName: '', projectName: '' });
+                          setPreviewAssetsCount(null);
+                        }}
+                        className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
+                      >
+                        <option value="">-- Chọn công ty --</option>
+                        {companies.map((c: any) => (
+                          <option key={c.id} value={c.name}>{c.name}</option>
+                        ))}
+                      </select>
+                    </div>
 
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Người phụ trách kiểm kê *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Lê Thanh Hùng..."
-                  value={sessionForm.checkerName}
-                  onChange={e => setSessionForm({ ...sessionForm, checkerName: e.target.value })}
-                  className="w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
-                />
-              </div>
+                    {scopeSelection === 'PROJECT' && (
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-500">Dự án</label>
+                        <select
+                          value={sessionForm.projectName}
+                          onChange={e => {
+                            setSessionForm({ ...sessionForm, projectName: e.target.value });
+                            setPreviewAssetsCount(null);
+                          }}
+                          className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-850 text-xs"
+                        >
+                          <option value="">-- Chọn dự án --</option>
+                          {reviewProjects.map((p, i) => (
+                            <option key={i} value={p}>{p}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {scopeSelection === 'DEPARTMENT' && (
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-500">Phòng ban</label>
+                        <select
+                          value={sessionForm.departmentName}
+                          onChange={e => {
+                            setSessionForm({ ...sessionForm, departmentName: e.target.value });
+                            setPreviewAssetsCount(null);
+                          }}
+                          className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-850 text-xs"
+                        >
+                          <option value="">-- Chọn phòng ban --</option>
+                          {reviewDepartments.map((d, i) => (
+                            <option key={i} value={d}>{d}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {scopeSelection === 'LOCATION' && (
+                      <div className="space-y-1">
+                        <label className="font-bold text-slate-500">Kho / Vị trí chi tiết</label>
+                        <select
+                          value={sessionForm.locationName}
+                          onChange={e => {
+                            setSessionForm({ ...sessionForm, locationName: e.target.value });
+                            setPreviewAssetsCount(null);
+                          }}
+                          className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-850 text-xs"
+                        >
+                          <option value="">-- Chọn vị trí --</option>
+                          {reviewLocations.map((l, i) => (
+                            <option key={i} value={l}>{l}</option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-4 border-t border-slate-100 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-slate-400">Xem trước danh sách tài sản trong phạm vi:</span>
+                      <button
+                        type="button"
+                        onClick={handlePreviewAssets}
+                        disabled={previewLoading}
+                        className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-850 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {previewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '🔍'} Xem trước tài sản
+                      </button>
+                    </div>
+
+                    {previewAssetsCount !== null && (
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                        <div className="flex items-center justify-between font-black text-xs text-slate-800">
+                          <span>Tổng số tài sản tìm thấy:</span>
+                          <span className="text-sm text-primary-650 font-black">{previewAssetsCount} tài sản</span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-slate-500">
+                          {Object.entries(previewBreakdown).map(([cat, count]) => (
+                            <div key={cat} className="flex justify-between border-b border-slate-100 pb-1">
+                              <span>{cat}:</span>
+                              <span className="text-slate-800">{count}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 2 && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="font-bold text-slate-500">Trưởng đoàn kiểm kê *</label>
+                      <input
+                        type="text"
+                        required
+                        placeholder="Nhập tên Trưởng đoàn..."
+                        value={sessionForm.checkerName}
+                        onChange={e => setSessionForm({ ...sessionForm, checkerName: e.target.value })}
+                        className="w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="font-bold text-slate-500">Đại diện phòng ban ký biên bản *</label>
+                      <select
+                        value={sessionForm.representativeName}
+                        onChange={e => setSessionForm({ ...sessionForm, representativeName: e.target.value })}
+                        className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
+                      >
+                        <option value="">-- Chọn người đại diện ký biên bản --</option>
+                        {reviewUserSuggestions.length > 0 ? (
+                          reviewUserSuggestions.map((name, i) => (
+                            <option key={i} value={name}>{name}</option>
+                          ))
+                        ) : (
+                          <>
+                            <option value="Nguyễn Văn A - Trưởng phòng HCNS">Nguyễn Văn A - Trưởng phòng HCNS</option>
+                            <option value="Lê Thị B - Trưởng phòng Kế toán">Lê Thị B - Trưởng phòng Kế toán</option>
+                            <option value="Trần Văn C - Giám đốc dự án">Trần Văn C - Giám đốc dự án</option>
+                          </>
+                        )}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 pt-2 border-t border-slate-100">
+                    <label className="font-bold text-slate-500">Đội kiểm kê *</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Ví dụ: Đội kiểm kê số 01..."
+                      value={sessionForm.teamName}
+                      onChange={e => setSessionForm({ ...sessionForm, teamName: e.target.value })}
+                      className="w-full bg-white border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800"
+                    />
+                  </div>
+
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <label className="font-bold text-slate-500 block">Thành viên tham gia đoàn kiểm kê</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Nhập tên thành viên..."
+                        value={newMemberName}
+                        onChange={e => setNewMemberName(e.target.value)}
+                        className="flex-1 bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newMemberName.trim()) {
+                            setSessionMembers(prev => [...prev, newMemberName.trim()]);
+                            setNewMemberName('');
+                          }
+                        }}
+                        className="bg-slate-900 hover:bg-slate-850 text-white px-4 rounded-xl font-bold uppercase cursor-pointer"
+                      >
+                        + Thêm
+                      </button>
+                    </div>
+                    {sessionMembers.length > 0 && (
+                      <div className="flex flex-wrap gap-2 mt-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                        {sessionMembers.map((m, i) => (
+                          <span key={i} className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 font-bold text-[10px] uppercase flex items-center gap-1.5 shadow-sm">
+                            👤 {m}
+                            <button
+                              type="button"
+                              onClick={() => setSessionMembers(prev => prev.filter((_, idx) => idx !== i))}
+                              className="text-rose-500 hover:text-rose-700 font-black border-0 bg-transparent cursor-pointer text-xs ml-1"
+                            >
+                              ✕
+                            </button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {wizardStep === 3 && (
+                <div className="space-y-4">
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+                    <h4 className="font-black text-xs text-slate-800 uppercase tracking-widest border-b pb-2 text-primary-650">
+                      📋 Tóm tắt cấu hình phiên kiểm kê
+                    </h4>
+                    <div className="grid grid-cols-2 gap-4 text-xs font-bold">
+                      <div>
+                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Tên phiên (tự động):</span>
+                        <span className="text-slate-800 font-black text-sm">
+                          Kiểm kê {sessionForm.departmentName || sessionForm.locationName || 'Phòng ban'} ngày {format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Ngày thực hiện:</span>
+                        <span className="text-slate-800">{format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Phạm vi kiểm:</span>
+                        <span className="text-slate-800 uppercase text-[10px]">
+                          {scopeSelection === 'ALL' ? 'Toàn Công ty' :
+                           scopeSelection === 'COMPANY' ? `Công ty con: ${sessionForm.companyName}` :
+                           scopeSelection === 'PROJECT' ? `Dự án: ${sessionForm.projectName}` :
+                           scopeSelection === 'LOCATION' ? `Vị trí: ${sessionForm.locationName}` :
+                           scopeSelection === 'DEPARTMENT' ? `Phòng ban: ${sessionForm.departmentName}` : 'Cá nhân'}
+                        </span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Đội kiểm kê:</span>
+                        <span className="text-slate-800">{sessionForm.teamName || '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Trưởng đoàn:</span>
+                        <span className="text-slate-800 font-bold">{sessionForm.checkerName || '-'}</span>
+                      </div>
+                      <div>
+                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Thành viên:</span>
+                        <span className="text-slate-800">{sessionMembers.join(', ') || 'Không có thành viên phụ'}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 space-y-2">
+                    <div className="flex items-center justify-between font-black text-xs text-slate-800">
+                      <span>Tổng tài sản dự kiến kiểm kê:</span>
+                      <span className="text-sm text-emerald-650 font-black">{previewAssetsCount || 156} tài sản</span>
+                    </div>
+                    {Object.keys(previewBreakdown).length > 0 && (
+                      <div className="grid grid-cols-3 gap-2 text-[10px] font-bold text-emerald-700">
+                        {Object.entries(previewBreakdown).map(([cat, count]) => (
+                          <div key={cat} className="bg-white border border-emerald-100 rounded-lg p-2 text-center shadow-sm">
+                            <p className="text-slate-400 font-medium truncate">{cat}</p>
+                            <p className="text-sm font-black text-emerald-600 mt-0.5">{count}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="font-bold text-slate-500">Ghi chú thêm</label>
+                    <textarea
+                      placeholder="Ghi chú trực tiếp kiểm kê tại thực địa..."
+                      value={sessionForm.note}
+                      onChange={e => setSessionForm({ ...sessionForm, note: e.target.value })}
+                      className="w-full px-3 py-2 bg-white border rounded-xl font-semibold text-slate-800 h-16 resize-none"
+                    />
+                  </div>
+                </div>
+              )}
             </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Phòng ban kiểm kê</label>
-                <select
-                  value={sessionForm.departmentName}
-                  onChange={e => setSessionForm({ ...sessionForm, departmentName: e.target.value })}
-                  className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
-                >
-                  <option value="">-- Tất cả phòng ban --</option>
-                  {reviewDepartments.map((d: string, i: number) => (
-                    <option key={i} value={d}>{d}</option>
-                  ))}
-                </select>
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Địa điểm / vị trí kiểm kê</label>
-                <select
-                  value={sessionForm.locationName}
-                  onChange={e => setSessionForm({ ...sessionForm, locationName: e.target.value })}
-                  className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
-                >
-                  <option value="">-- Tất cả địa điểm --</option>
-                  {reviewLocations.map((l: string, i: number) => (
-                    <option key={i} value={l}>{l}</option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Đại diện phòng ban ký biên bản *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Nguyễn Văn A..."
-                  value={sessionForm.representativeName}
-                  onChange={e => setSessionForm({ ...sessionForm, representativeName: e.target.value })}
-                  className="w-full bg-white border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800"
-                />
-              </div>
-
-              <div className="space-y-1">
-                <label className="font-bold text-slate-500">Đội kiểm kê *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ví dụ: Đội kiểm kê 01..."
-                  value={sessionForm.teamName}
-                  onChange={e => setSessionForm({ ...sessionForm, teamName: e.target.value })}
-                  className="w-full bg-white border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-1">
-              <label className="font-bold text-slate-500">Ghi chú</label>
-              <textarea
-                placeholder="Kiểm kê trực tiếp tại phòng ban..."
-                value={sessionForm.note}
-                onChange={e => setSessionForm({ ...sessionForm, note: e.target.value })}
-                className="w-full px-3 py-2 bg-white border rounded-xl font-semibold text-slate-800 h-16 resize-none"
-              />
-            </div>
-
-            <div className="bg-primary-50 border border-primary-200 rounded-xl p-3 text-xs text-primary-800 font-bold">
-              ℹ️ Hệ thống chỉ load tài sản thuộc phòng ban [{sessionForm.departmentName || 'Tất cả'}] tại [{sessionForm.locationName || 'Tất cả'}].
-            </div>
-          </form>
+          )}
         </BaseModal>
       )}
 
