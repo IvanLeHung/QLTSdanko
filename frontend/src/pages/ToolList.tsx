@@ -27,7 +27,7 @@ import {
   ClipboardList,
   Package
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import QRCode from 'react-qr-code';
 
@@ -69,6 +69,7 @@ const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
 
 export const ToolList: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
 
   // State Variables
   const [tools, setTools] = useState<any[]>([]);
@@ -371,6 +372,40 @@ export const ToolList: React.FC = () => {
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const queryStatus = params.get('status');
+    const queryManagementType = params.get('managementType');
+    const workflow = params.get('workflow');
+    const view = params.get('view');
+
+    setStatus(queryStatus || 'ALL');
+    setManagementTypeFilter(queryManagementType || 'ALL');
+    setPage(1);
+    if (workflow === 'handover') {
+      toast.info('Chọn một hoặc nhiều CCDC rồi bấm Bàn giao / Điều chuyển để mở biểu mẫu.');
+    }
+    if (view === 'history') {
+      setSearch('');
+      toast.info('Mở từng CCDC để xem tab Lịch sử CCDC tổng hợp.');
+    }
+  }, [location.search]);
+
+  const applyQuickFilter = (nextStatus = 'ALL', nextManagementType = 'ALL') => {
+    setStatus(nextStatus);
+    setManagementTypeFilter(nextManagementType);
+    setPage(1);
+    const params = new URLSearchParams();
+    if (nextStatus !== 'ALL') params.set('status', nextStatus);
+    if (nextManagementType !== 'ALL') params.set('managementType', nextManagementType);
+    navigate(`/tools${params.toString() ? `?${params.toString()}` : ''}`, { replace: true });
+  };
+
+  const statCardClass = (isActive: boolean, colorClass: string) => [
+    'w-full text-left p-4 rounded-2xl border shadow-sm flex flex-col gap-1 transition-all hover:-translate-y-0.5 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary-500',
+    isActive ? 'ring-2 ring-primary-500 border-primary-300' : colorClass
+  ].join(' ');
 
   // Load Registry and Stats
   const fetchTools = async () => {
@@ -721,38 +756,66 @@ export const ToolList: React.FC = () => {
       {/* 1. STATS DASHBOARD CARD */}
       {stats && (
         <div className="space-y-3">
+          <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-wrap items-center gap-2">
+            <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-1">Lọc nhanh CCDC</span>
+            {[
+              { label: 'Tất cả', status: 'ALL', type: 'ALL' },
+              { label: 'Trong kho', status: 'IN_STOCK', type: 'ALL' },
+              { label: 'Đang sử dụng', status: 'USING', type: 'ALL' },
+              { label: 'Báo hỏng / sửa', status: 'DAMAGED', type: 'ALL' },
+              { label: 'Báo mất', status: 'LOST', type: 'ALL' },
+              { label: 'Thanh lý / hủy', status: 'LIQUIDATED', type: 'ALL' },
+              { label: 'CCDC số lượng', status: 'ALL', type: 'QUANTITY' }
+            ].map(filter => {
+              const active = status === filter.status && managementTypeFilter === filter.type;
+              return (
+                <button
+                  key={`${filter.status}-${filter.type}`}
+                  type="button"
+                  onClick={() => applyQuickFilter(filter.status, filter.type)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold border transition-all ${
+                    active
+                      ? 'bg-primary-600 text-white border-primary-600 shadow-sm'
+                      : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
           {/* Row 1: Record counts (INDIVIDUAL-style) */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-            <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
+            <button type="button" onClick={() => applyQuickFilter()} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1 text-left hover:shadow-md hover:-translate-y-0.5 transition-all">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tổng loại CCDC</span>
               <span className="text-2xl font-black text-slate-900">{stats.totalTools}</span>
               <span className="text-[10px] text-slate-400">hồ sơ đã tạo</span>
-            </div>
-            <div className="bg-green-50 p-4 rounded-2xl border border-green-100 shadow-sm flex flex-col gap-1">
+            </button>
+            <button type="button" onClick={() => applyQuickFilter('USING')} className="bg-green-50 p-4 rounded-2xl border border-green-100 shadow-sm flex flex-col gap-1 text-left hover:shadow-md hover:-translate-y-0.5 transition-all">
               <span className="text-[10px] font-bold text-green-600 uppercase tracking-widest">Đang sử dụng</span>
               <span className="text-2xl font-black text-green-700">{stats.using}</span>
               <span className="text-[10px] text-green-500">mã CCDC</span>
-            </div>
-            <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm flex flex-col gap-1">
+            </button>
+            <button type="button" onClick={() => applyQuickFilter('IN_STOCK')} className="bg-blue-50 p-4 rounded-2xl border border-blue-100 shadow-sm flex flex-col gap-1 text-left hover:shadow-md hover:-translate-y-0.5 transition-all">
               <span className="text-[10px] font-bold text-blue-600 uppercase tracking-widest">Trong kho</span>
               <span className="text-2xl font-black text-blue-700">{stats.inStock}</span>
               <span className="text-[10px] text-blue-500">mã khả dụng</span>
-            </div>
-            <div className="bg-amber-50 p-4 rounded-2xl border border-amber-100 shadow-sm flex flex-col gap-1">
+            </button>
+            <button type="button" onClick={() => applyQuickFilter('DAMAGED')} className="bg-amber-50 p-4 rounded-2xl border border-amber-100 shadow-sm flex flex-col gap-1 text-left hover:shadow-md hover:-translate-y-0.5 transition-all">
               <span className="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Báo hỏng</span>
               <span className="text-2xl font-black text-amber-700">{stats.damaged}</span>
               <span className="text-[10px] text-amber-500">mã cần xử lý</span>
-            </div>
-            <div className="bg-red-50 p-4 rounded-2xl border border-red-100 shadow-sm flex flex-col gap-1">
+            </button>
+            <button type="button" onClick={() => applyQuickFilter('LOST')} className="bg-red-50 p-4 rounded-2xl border border-red-100 shadow-sm flex flex-col gap-1 text-left hover:shadow-md hover:-translate-y-0.5 transition-all">
               <span className="text-[10px] font-bold text-red-600 uppercase tracking-widest">Mất / Thất thoát</span>
               <span className="text-2xl font-black text-red-700">{stats.lost}</span>
               <span className="text-[10px] text-red-500">mã báo mất</span>
-            </div>
-            <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1">
+            </button>
+            <button type="button" onClick={() => applyQuickFilter('LIQUIDATED')} className="bg-slate-50 p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1 text-left hover:shadow-md hover:-translate-y-0.5 transition-all">
               <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Đã thanh lý</span>
               <span className="text-2xl font-black text-slate-700">{stats.liquidated}</span>
               <span className="text-[10px] text-slate-400">mã đã hủy</span>
-            </div>
+            </button>
           </div>
           {/* Row 2: Physical quantity breakdown (QUANTITY-type CCDC) */}
           {(stats.totalQuantity > 0 || stats.totalAvailable > 0 || stats.totalUsing > 0) && (
