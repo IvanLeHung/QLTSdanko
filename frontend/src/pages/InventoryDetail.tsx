@@ -86,6 +86,22 @@ export const InventoryDetail: React.FC = () => {
   // Tab State
   const [activeTab, setActiveTab] = useState<'CHECK_LIST' | 'DISCOVERED_LIST'>('CHECK_LIST');
 
+  // Sessions workflow states
+  const [sessions, setSessions] = useState<any[]>([]);
+  const [activeSession, setActiveSession] = useState<any>(null);
+  const [showSessionModal, setShowSessionModal] = useState(false);
+  const [sessionForm, setSessionForm] = useState({
+    scheduledDate: new Date().toISOString().slice(0, 10),
+    companyName: '',
+    projectName: '',
+    departmentName: '',
+    locationName: '',
+    checkerName: '',
+    representativeName: '',
+    note: ''
+  });
+  const [activeSessionReport, setActiveSessionReport] = useState<any>(null);
+
   // Discovered Assets state
   const [discoveredAssets, setDiscoveredAssets] = useState<any[]>([]);
   const [isDiscoveredLoading, setIsDiscoveredLoading] = useState(false);
@@ -199,11 +215,96 @@ export const InventoryDetail: React.FC = () => {
     try {
       const res = await api.get(`/inventory/${id}`);
       setSession(res.data);
+      const sessionsRes = await api.get(`/inventory/${id}/sessions`);
+      setSessions(sessionsRes.data);
+
+      if (activeSession) {
+        const freshSession = sessionsRes.data.find((s: any) => s.id === activeSession.id);
+        if (freshSession) {
+          const detailRes = await api.get(`/inventory/sessions/${freshSession.id}`);
+          setActiveSession(detailRes.data);
+        }
+      }
     } catch (err) {
       console.error(err);
       toast.error("Không thể tải thông tin đợt kiểm kê");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const openSession = async (sessionItem: any) => {
+    try {
+      const res = await api.get(`/inventory/sessions/${sessionItem.id}`);
+      setActiveSession(res.data);
+      toast.success(`Đã vào phiên kiểm kê: ${sessionItem.departmentName || sessionItem.locationName || 'Chi tiết'}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Không thể tải chi tiết phiên kiểm kê");
+    }
+  };
+
+  const handleStartSessionVisit = async (sessionItem: any) => {
+    setSubmitting(true);
+    try {
+      const res = await api.post(`/inventory/sessions/${sessionItem.id}/start`);
+      toast.success("Đã bắt đầu phiên kiểm kê");
+      setActiveSession(res.data);
+      await fetchDetail();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Không thể bắt đầu phiên kiểm kê");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCreateSession = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitting(true);
+    try {
+      const payload = {
+        ...sessionForm,
+      };
+      await api.post(`/inventory/${id}/sessions`, payload);
+      toast.success("Đã tạo phiên kiểm kê thành công");
+      setShowSessionModal(false);
+      setSessionForm({
+        scheduledDate: new Date().toISOString().slice(0, 10),
+        companyName: '',
+        projectName: '',
+        departmentName: '',
+        locationName: '',
+        checkerName: '',
+        representativeName: '',
+        note: ''
+      });
+      await fetchDetail();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi tạo phiên kiểm kê");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleCompleteSession = async (sessionId: number) => {
+    if (!window.confirm("Bạn có chắc chắn muốn chốt phiên kiểm kê này? Dữ liệu của phiên sẽ không thể chỉnh sửa.")) return;
+    setSubmitting(true);
+    try {
+      await api.post(`/inventory/sessions/${sessionId}/complete`);
+      toast.success("Đã chốt phiên kiểm kê thành công");
+      await fetchDetail();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi chốt phiên kiểm kê");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleViewSessionReport = async (sessionId: number) => {
+    try {
+      const res = await api.get(`/inventory/sessions/${sessionId}/report`);
+      setActiveSessionReport(res.data);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Không thể tải báo cáo phiên kiểm kê");
     }
   };
 
@@ -434,6 +535,38 @@ export const InventoryDetail: React.FC = () => {
       return;
     }
     setSubmitting(true);
+    
+    if (activeSession) {
+      try {
+        await api.post(`/inventory/sessions/${activeSession.id}/extra`, {
+          assetName: discoveredForm.name,
+          serialNumber: discoveredForm.serialNumber,
+          actualLocationName: discoveredForm.foundLocationName || activeSession.locationName || '',
+          actualUserName: discoveredForm.foundUserName,
+          note: discoveredForm.note || 'Tài sản phát sinh ngoài sổ',
+          imageUrl: discoveredForm.photos?.[0] || ''
+        });
+        toast.success("Đã ghi nhận tài sản ngoài sổ vào phiên kiểm kê");
+        setIsDiscoveredModalOpen(false);
+        setDiscoveredForm({
+          name: '',
+          categoryName: '',
+          serialNumber: '',
+          foundLocationName: '',
+          foundUserName: '',
+          ownershipStatus: 'UNKNOWN',
+          photos: [],
+          note: ''
+        });
+        await fetchDetail();
+      } catch (err: any) {
+        toast.error(err.response?.data?.message || "Lỗi khi báo cáo tài sản ngoài sổ");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
+    }
+
     try {
       await api.post(`/inventory/${id}/discovered`, discoveredForm);
       toast.success("Đã ghi nhận tài sản ngoài sổ thành công");
@@ -580,6 +713,21 @@ export const InventoryDetail: React.FC = () => {
     if (e) e.preventDefault();
     if (!scanCodeInput.trim()) return;
 
+    if (activeSession) {
+      const matchedItem = activeSession.details?.find((item: any) => 
+        (item.assetCode || '').toLowerCase() === scanCodeInput.trim().toLowerCase()
+      );
+      if (matchedItem) {
+        toast.success(`Đã tìm thấy tài sản: ${matchedItem.assetName}`);
+        setIsScannerOpen(false);
+        setScanCodeInput('');
+        openCheckModal(matchedItem);
+      } else {
+        toast.error(`Không tìm thấy tài sản với mã "${scanCodeInput}" trong phiên kiểm kê này`);
+      }
+      return;
+    }
+
     const matchedItem = session?.items.find((item: any) => 
       item.assetCode.toLowerCase() === scanCodeInput.trim().toLowerCase()
     );
@@ -605,7 +753,28 @@ export const InventoryDetail: React.FC = () => {
     if (checkForm.checkCondition === 'MISSING') {
       finalStatus = 'LOST';
       finalQuality = 'LOST';
-      finalLocation = selectedItemForCheck.expectedLocation || selectedItemForCheck.asset.locationName || '';
+      finalLocation = selectedItemForCheck.expectedLocation || selectedItemForCheck.asset?.locationName || '';
+    }
+
+    if (activeSession) {
+      try {
+        await api.post(`/inventory/session-details/${selectedItemForCheck.id}`, {
+          actualUserName: checkForm.actualUserName,
+          actualDepartmentName: checkForm.actualDepartmentName || activeSession.departmentName || '',
+          actualLocationName: checkForm.actualLocation,
+          resultStatus: checkForm.checkCondition === 'MISSING' ? 'MISSING' : checkForm.resultStatus || 'MATCH',
+          note: checkForm.note,
+          imageUrl: checkForm.photos?.[0] || ''
+        });
+        toast.success("Đã ghi nhận kết quả kiểm kê cho phiên");
+        setSelectedItemForCheck(null);
+        fetchDetail();
+      } catch (err: any) {
+        toast.error(err.response?.data?.message || "Lỗi khi ghi nhận kiểm kê phiên");
+      } finally {
+        setSubmitting(false);
+      }
+      return;
     }
 
     const physicalDetailsJson = JSON.stringify({
@@ -616,8 +785,8 @@ export const InventoryDetail: React.FC = () => {
     });
 
     let technicalSpecsJson = undefined;
-    const isComputer = selectedItemForCheck.assetCode.startsWith('03.01') || selectedItemForCheck.asset.assetName.toLowerCase().includes('laptop') || selectedItemForCheck.asset.assetName.toLowerCase().includes('máy tính');
-    const isPrinter = selectedItemForCheck.asset.assetName.toLowerCase().includes('máy in');
+    const isComputer = selectedItemForCheck.assetCode.startsWith('03.01') || (selectedItemForCheck.asset && selectedItemForCheck.asset.assetName.toLowerCase().includes('laptop')) || (selectedItemForCheck.asset && selectedItemForCheck.asset.assetName.toLowerCase().includes('máy tính'));
+    const isPrinter = selectedItemForCheck.asset && selectedItemForCheck.asset.assetName.toLowerCase().includes('máy in');
     if (isComputer) {
       technicalSpecsJson = JSON.stringify({
         cpu: checkForm.cpu,
@@ -660,6 +829,35 @@ export const InventoryDetail: React.FC = () => {
 
   const openCheckModal = (item: any) => {
     setSelectedItemForCheck(item);
+    if (activeSession) {
+      setCheckForm({
+        actualLocation: item.actualLocationName || item.bookLocationName || '',
+        actualStatus: item.asset?.status || 'ASSIGNED',
+        actualDepartmentName: item.actualDepartmentName || item.bookDepartmentName || '',
+        quality: item.resultStatus === 'DAMAGED' ? 'DAMAGED' : 'GOOD',
+        note: item.note || '',
+        photos: item.imageUrl ? [item.imageUrl] : [],
+        checkCondition: item.resultStatus === 'MISSING' ? 'MISSING' : 'FOUND',
+        actualUserName: item.actualUserName || item.bookUserName || '',
+        actualUserId: null,
+        actualSerialNumber: item.serialNumber || item.asset?.serialNumber || '',
+        appearance: 'GOOD',
+        operation: 'NORMAL',
+        wearRate: 0,
+        accessories: '',
+        cpu: '',
+        ram: '',
+        storage: '',
+        os: '',
+        mac: '',
+        printerCounter: '',
+        printerInk: '',
+        resultStatus: item.resultStatus || 'MATCH'
+      });
+      setCustodianQuery(item.actualUserName || item.bookUserName || '');
+      return;
+    }
+
     const initialCondition = (item.actualStatus === 'LOST' || item.quality === 'LOST' || item.checkCondition === 'MISSING') ? 'MISSING' : (item.checkCondition || 'FOUND');
 
     let appearance = 'GOOD';
@@ -683,7 +881,7 @@ export const InventoryDetail: React.FC = () => {
     let mac = '';
     let printerCounter = '';
     let printerInk = '';
-    if (item.asset.technicalSpecsJson) {
+    if (item.asset && item.asset.technicalSpecsJson) {
       try {
         const ts = JSON.parse(item.asset.technicalSpecsJson);
         cpu = ts.cpu || '';
@@ -697,15 +895,15 @@ export const InventoryDetail: React.FC = () => {
     }
 
     setCheckForm({
-      actualLocation: item.actualLocation || item.expectedLocation || item.asset.locationName || '',
+      actualLocation: item.actualLocation || item.expectedLocation || (item.asset && item.asset.locationName) || '',
       actualStatus: item.actualStatus || item.expectedStatus || 'IN_STOCK',
       quality: item.quality || 'GOOD',
       note: item.note || '',
       photos: item.photos || [],
       checkCondition: initialCondition,
-      actualUserName: item.actualUserName || item.asset.currentUserName || '',
+      actualUserName: item.actualUserName || (item.asset && item.asset.currentUserName) || '',
       actualUserId: item.actualUserId || null,
-      actualSerialNumber: item.actualSerialNumber || item.asset.serialNumber || '',
+      actualSerialNumber: item.actualSerialNumber || (item.asset && item.asset.serialNumber) || '',
       appearance,
       operation,
       wearRate,
@@ -718,7 +916,7 @@ export const InventoryDetail: React.FC = () => {
       printerCounter,
       printerInk
     });
-    setCustodianQuery(item.actualUserName || item.asset.currentUserName || '');
+    setCustodianQuery(item.actualUserName || (item.asset && item.asset.currentUserName) || '');
   };
 
   const getPhotosByCategory = (category: string): string[] => {
@@ -816,33 +1014,59 @@ export const InventoryDetail: React.FC = () => {
     );
   }
 
-  const filteredItems = session?.items.filter((item: any) => {
-    const matchesSearch = item.assetCode.toLowerCase().includes(search.toLowerCase()) || 
-                          item.asset.assetName.toLowerCase().includes(search.toLowerCase());
-    const matchesFilter = filter === 'ALL' || (filter === 'PENDING' && item.checkStatus === 'PENDING') || (filter === 'CHECKED' && item.checkStatus === 'CHECKED');
-    return matchesSearch && matchesFilter;
-  });
+  const filteredItems = activeSession
+    ? (activeSession.details || []).filter((item: any) => {
+        const matchesSearch = (item.assetCode || '').toLowerCase().includes(search.toLowerCase()) || 
+                              (item.assetName || '').toLowerCase().includes(search.toLowerCase());
+        const matchesFilter = filter === 'ALL' || 
+                              (filter === 'PENDING' && !item.checkedAt) || 
+                              (filter === 'CHECKED' && !!item.checkedAt);
+        return matchesSearch && matchesFilter;
+      })
+    : (session?.items || []).filter((item: any) => {
+        const matchesSearch = item.assetCode.toLowerCase().includes(search.toLowerCase()) || 
+                              item.asset.assetName.toLowerCase().includes(search.toLowerCase());
+        const matchesFilter = filter === 'ALL' || (filter === 'PENDING' && item.checkStatus === 'PENDING') || (filter === 'CHECKED' && item.checkStatus === 'CHECKED');
+        return matchesSearch && matchesFilter;
+      });
 
-  const stats = {
-    total: session?.items.length || 0,
-    checked: session?.items.filter((i: any) => i.checkStatus === 'CHECKED').length || 0,
-    pending: session?.items.filter((i: any) => i.checkStatus === 'PENDING').length || 0,
-    matched: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'MATCHED').length || 0,
-    wrongLocation: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'WRONG_LOCATION').length || 0,
-    missing: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'MISSING').length || 0,
-    damaged: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'DAMAGED').length || 0,
-    wrongStatus: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'WRONG_STATUS').length || 0,
-  };
+  const stats = activeSession
+    ? {
+        total: activeSession.details?.length || 0,
+        checked: activeSession.details?.filter((i: any) => i.checkedAt).length || 0,
+        pending: activeSession.details?.filter((i: any) => !i.checkedAt).length || 0,
+        matched: activeSession.details?.filter((i: any) => i.checkedAt && i.resultStatus === 'MATCH').length || 0,
+        wrongLocation: activeSession.details?.filter((i: any) => i.checkedAt && i.resultStatus === 'WRONG_LOCATION').length || 0,
+        missing: activeSession.details?.filter((i: any) => i.checkedAt && i.resultStatus === 'MISSING').length || 0,
+        damaged: activeSession.details?.filter((i: any) => i.checkedAt && i.resultStatus === 'DAMAGED').length || 0,
+        wrongStatus: activeSession.details?.filter((i: any) => i.checkedAt && i.resultStatus === 'WRONG_STATUS').length || 0,
+      }
+    : {
+        total: session?.items.length || 0,
+        checked: session?.items.filter((i: any) => i.checkStatus === 'CHECKED').length || 0,
+        pending: session?.items.filter((i: any) => i.checkStatus === 'PENDING').length || 0,
+        matched: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'MATCHED').length || 0,
+        wrongLocation: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'WRONG_LOCATION').length || 0,
+        missing: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'MISSING').length || 0,
+        damaged: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'DAMAGED').length || 0,
+        wrongStatus: session?.items.filter((i: any) => i.checkStatus === 'CHECKED' && i.result === 'WRONG_STATUS').length || 0,
+      };
 
-  const checkers = Array.from(new Set(session?.items.map((i: any) => i.checkedBy).filter(Boolean))) as string[];
-  const lastUpdatedAt = session?.items
-    .map((i: any) => i.checkedAt)
-    .filter(Boolean)
-    .reduce((max: Date | null, current: string) => {
-      const curDate = new Date(current);
-      if (!max || curDate > max) return curDate;
-      return max;
-    }, null) as Date | null;
+  const checkers = activeSession
+    ? [activeSession.checkerName].filter(Boolean)
+    : Array.from(new Set(session?.items.map((i: any) => i.checkedBy).filter(Boolean))) as string[];
+
+  const lastUpdatedAt = activeSession
+    ? activeSession.details?.map((i: any) => i.checkedAt).filter(Boolean).reduce((max: Date | null, current: string) => {
+        const curDate = new Date(current);
+        if (!max || curDate > max) return curDate;
+        return max;
+      }, null)
+    : session?.items.map((i: any) => i.checkedAt).filter(Boolean).reduce((max: Date | null, current: string) => {
+        const curDate = new Date(current);
+        if (!max || curDate > max) return curDate;
+        return max;
+      }, null) as Date | null;
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
@@ -909,14 +1133,30 @@ export const InventoryDetail: React.FC = () => {
             </button>
           )}
 
-          {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
-            <button 
-              onClick={handleCloseSession}
-              disabled={submitting}
-              className="bg-slate-900 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center shadow-xl shadow-slate-200 disabled:opacity-50"
+          {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && !activeSession && (
+            <button
+              onClick={() => setShowSessionModal(true)}
+              className="bg-primary-600 hover:bg-primary-750 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-primary-100"
             >
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />} Chốt đợt kiểm kê
+              <Plus className="mr-2 h-4 w-4" /> Tạo phiên kiểm kê
             </button>
+          )}
+
+          {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
+            <div className="relative group">
+              <button 
+                onClick={handleCloseSession}
+                disabled={submitting || (sessions.length > 0 && !sessions.every((s: any) => s.status === 'COMPLETED'))}
+                className="bg-slate-900 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center shadow-xl shadow-slate-200 disabled:opacity-50"
+              >
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />} Chốt đợt kiểm kê
+              </button>
+              {sessions.length > 0 && !sessions.every((s: any) => s.status === 'COMPLETED') && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-950 text-white text-[10px] p-2 rounded-xl text-center font-bold opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg leading-normal">
+                  Cần hoàn thành tất cả phiên kiểm kê trước
+                </div>
+              )}
+            </div>
           )}
 
           {(session.status === 'DRAFT' || session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
@@ -996,6 +1236,128 @@ export const InventoryDetail: React.FC = () => {
           </span>
         </div>
       </div>
+
+      {/* SESSIONS LIST SECTION */}
+      {!activeSession && sessions.length > 0 && (
+        <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-6 border-b border-slate-100 bg-slate-50/50">
+            <h3 className="text-sm font-black uppercase tracking-widest text-slate-800 flex items-center gap-2">
+              <Calendar className="h-4 w-4 text-primary-500" /> Danh sách phiên kiểm kê
+            </h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-50/20 border-b border-slate-100">
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Phiên kiểm kê</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Phòng ban/Vị trí</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Số TS</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Đã kiểm</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Sai lệch</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Trạng thái</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {sessions.map((item: any) => {
+                  const totalCount = item.assetCountPlan || item._count?.details || 0;
+                  const checkedCount = item.details?.filter((d: any) => d.checkedAt).length || 0;
+                  const deviationCount = item.details?.filter((d: any) => d.checkedAt && d.resultStatus !== 'MATCH').length || 0;
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors">
+                      <td className="p-4 text-sm font-bold text-slate-800">{format(new Date(item.scheduledDate), 'dd/MM/yyyy')}</td>
+                      <td className="p-4">
+                        <p className="text-sm font-black text-slate-800">Kiểm kê {item.departmentName || item.locationName}</p>
+                        <p className="text-[10px] text-slate-400 mt-0.5">Phụ trách: {item.checkerName || '-'}</p>
+                      </td>
+                      <td className="p-4">
+                        <p className="text-sm font-bold text-slate-700">{item.departmentName || 'Tất cả phòng ban'}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">{item.locationName || 'Tất cả vị trí'}</p>
+                      </td>
+                      <td className="p-4 text-center text-sm font-bold text-slate-800">{totalCount}</td>
+                      <td className="p-4 text-center text-sm font-bold text-slate-800">{checkedCount}</td>
+                      <td className="p-4 text-center text-sm font-bold text-rose-600">{deviationCount}</td>
+                      <td className="p-4">
+                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
+                          item.status === 'PENDING' ? 'bg-slate-100 text-slate-650 border-slate-200' :
+                          item.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-600 border-blue-200' :
+                          'bg-purple-50 text-purple-650 border-purple-200'
+                        }`}>
+                          {item.status === 'PENDING' ? 'Chưa kiểm' : item.status === 'IN_PROGRESS' ? 'Đang kiểm' : 'Đã chốt'}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right flex justify-end gap-2 items-center">
+                        <button
+                          onClick={() => handleViewSessionReport(item.id)}
+                          className="px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                        >
+                          <FileText className="h-3.5 w-3.5" /> Biên bản
+                        </button>
+                        {item.status === 'PENDING' && (
+                          <button
+                            onClick={() => handleStartSessionVisit(item)}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1 cursor-pointer"
+                          >
+                            <Play className="h-3.5 w-3.5" /> Bắt đầu
+                          </button>
+                        )}
+                        {item.status === 'IN_PROGRESS' && (
+                          <button
+                            onClick={() => openSession(item)}
+                            className="px-4 py-1.5 bg-primary-600 hover:bg-primary-750 text-white rounded-xl text-xs font-bold transition-all cursor-pointer"
+                          >
+                            Vào kiểm kê
+                          </button>
+                        )}
+                        {item.status === 'COMPLETED' && (
+                          <span className="text-slate-400 text-xs font-bold italic mr-2">Hoàn tất</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {activeSession && (
+        <div className="bg-gradient-to-r from-primary-600 to-primary-750 p-6 rounded-3xl border border-primary-700 shadow-lg text-white flex flex-col md:flex-row md:items-center justify-between gap-6">
+          <div className="space-y-1">
+            <p className="text-[10px] font-black uppercase tracking-widest text-primary-200">Phiên kiểm kê đang hoạt động</p>
+            <h2 className="text-xl font-black tracking-tight">Kiểm kê {activeSession.departmentName || activeSession.locationName}</h2>
+            <p className="text-xs font-bold text-primary-100 flex flex-wrap gap-4 mt-1">
+              <span>Ngày: {format(new Date(activeSession.scheduledDate), 'dd/MM/yyyy')}</span>
+              <span>Người kiểm: {activeSession.checkerName || '-'}</span>
+              <span>Đại diện phòng ban ký: {activeSession.representativeName || '-'}</span>
+            </p>
+          </div>
+          <div className="flex gap-3 shrink-0">
+            <button
+              onClick={() => handleViewSessionReport(activeSession.id)}
+              className="bg-white/10 hover:bg-white/20 border border-white/20 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            >
+              In biên bản
+            </button>
+            {activeSession.status === 'IN_PROGRESS' && (
+              <button
+                onClick={() => handleCompleteSession(activeSession.id)}
+                className="bg-white text-primary-750 hover:bg-slate-50 px-5 py-2.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer"
+              >
+                Chốt phiên kiểm kê
+              </button>
+            )}
+            <button
+              onClick={() => setActiveSession(null)}
+              className="bg-slate-900/40 hover:bg-slate-900/60 border border-white/10 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            >
+              Thoát phiên
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* TABS SWITCHER */}
 
@@ -1083,90 +1445,101 @@ export const InventoryDetail: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-50">
-                {filteredItems.map((item: any) => (
-                  <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
-                    <td className="p-6">
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary-50 group-hover:text-primary-605 transition-colors">
-                          <Package className="h-5 w-5" />
+                {filteredItems.map((item: any) => {
+                  const assetName = activeSession ? item.assetName : (item.asset?.assetName || '');
+                  const assetCode = activeSession ? item.assetCode : item.assetCode;
+                  const currentUserName = activeSession ? (item.bookUserName || 'N/A') : (item.asset?.currentUserName || 'N/A');
+                  const departmentName = activeSession ? (item.bookDepartmentName || 'Không có bộ phận') : (item.asset?.departmentName || 'Không có bộ phận');
+                  const expectedLocation = activeSession ? (item.bookLocationName || 'N/A') : (item.expectedLocation || item.asset?.locationName || 'N/A');
+                  const actualLocation = activeSession ? (item.actualLocationName || 'N/A') : (item.actualLocation || 'N/A');
+                  const isChecked = activeSession ? !!item.checkedAt : (item.checkStatus === 'CHECKED');
+                  const resultStatus = activeSession ? item.resultStatus : item.result;
+
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-50/50 transition-colors group">
+                      <td className="p-6">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-10 h-10 bg-slate-100 rounded-xl flex items-center justify-center text-slate-400 group-hover:bg-primary-50 group-hover:text-primary-605 transition-colors">
+                            <Package className="h-5 w-5" />
+                          </div>
+                          <div>
+                            <p className="text-sm font-bold text-slate-800 leading-tight">{assetName}</p>
+                            <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-tight">{assetCode}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="text-sm font-bold text-slate-800 leading-tight">{item.asset.assetName}</p>
-                          <p className="text-[11px] font-bold text-slate-400 mt-1 uppercase tracking-tight">{item.assetCode}</p>
+                      </td>
+                      <td className="p-6">
+                        <div className="flex items-center space-x-2">
+                          <User className="h-3.5 w-3.5 text-slate-300" />
+                          <span className="text-sm font-bold text-slate-600">{currentUserName}</span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="p-6">
-                      <div className="flex items-center space-x-2">
-                        <User className="h-3.5 w-3.5 text-slate-300" />
-                        <span className="text-sm font-bold text-slate-600">{item.asset.currentUserName || 'N/A'}</span>
-                      </div>
-                      <p className="text-[11px] text-slate-400 font-medium ml-5 mt-0.5">{item.asset.departmentName || 'Không có bộ phận'}</p>
-                    </td>
-                    <td className="p-6">
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="h-3.5 w-3.5 text-slate-300" />
-                        <span className="text-sm font-bold text-slate-600">{item.expectedLocation || item.asset.locationName || 'N/A'}</span>
-                      </div>
-                    </td>
-                    <td className="p-6">
-                      <div className="flex items-center space-x-2">
-                        <MapPin className="h-3.5 w-3.5 text-slate-300" />
-                        <span className="text-sm font-bold text-slate-600">
-                          {item.checkStatus === 'CHECKED' ? (
-                            item.actualLocation || 'N/A'
-                          ) : (
-                            <span className="text-slate-350 font-medium italic">Chưa đối soát</span>
-                          )}
-                        </span>
-                      </div>
-                    </td>
-                    <td className="p-6">
-                      {item.checkStatus === 'PENDING' ? (
-                        <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-400 border border-slate-200/50">
-                          Chưa kiểm
-                        </span>
-                      ) : (
-                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
-                          item.result === 'MATCHED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
-                          item.result === 'WRONG_LOCATION' ? 'bg-amber-50 text-amber-600 border-amber-100' :
-                          item.result === 'MISSING' ? 'bg-rose-50 text-rose-600 border-rose-100' :
-                          item.result === 'DAMAGED' ? 'bg-red-50 text-red-650 border-red-100' :
-                          item.result === 'WRONG_USER' ? 'bg-orange-50 text-orange-655 border-orange-100' :
-                          'bg-indigo-50 text-indigo-600 border-indigo-100'
-                        }`}>
-                          {item.result === 'MATCHED' ? 'Khớp' :
-                           item.result === 'WRONG_LOCATION' ? 'Lệch vị trí' :
-                           item.result === 'MISSING' ? 'Thiếu/Mất' :
-                           item.result === 'DAMAGED' ? 'Báo hỏng' :
-                           item.result === 'WRONG_USER' ? 'Sai người sử dụng' :
-                           item.result === 'WRONG_STATUS' ? 'Lệch trạng thái' : item.result}
-                        </span>
-                      )}
-                    </td>
-                    <td className="p-6">
-                      {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') ? (
-                        item.checkStatus === 'PENDING' ? (
-                          <button 
-                            onClick={() => openCheckModal(item)}
-                            className="px-4 py-2 bg-primary-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-primary-700 transition-all shadow-md shadow-primary-100"
-                          >
-                            Kiểm kê
-                          </button>
+                        <p className="text-[11px] text-slate-400 font-medium ml-5 mt-0.5">{departmentName}</p>
+                      </td>
+                      <td className="p-6">
+                        <div className="flex items-center space-x-2">
+                          <MapPin className="h-3.5 w-3.5 text-slate-300" />
+                          <span className="text-sm font-bold text-slate-600">{expectedLocation}</span>
+                        </div>
+                      </td>
+                      <td className="p-6">
+                        <div className="flex items-center space-x-2">
+                          <MapPin className="h-3.5 w-3.5 text-slate-300" />
+                          <span className="text-sm font-bold text-slate-600">
+                            {isChecked ? (
+                              actualLocation || 'N/A'
+                            ) : (
+                              <span className="text-slate-350 font-medium italic">Chưa đối soát</span>
+                            )}
+                          </span>
+                        </div>
+                      </td>
+                      <td className="p-6">
+                        {!isChecked ? (
+                          <span className="px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-400 border border-slate-200/50">
+                            Chưa kiểm
+                          </span>
                         ) : (
-                          <button 
-                            onClick={() => openCheckModal(item)}
-                            className="px-4 py-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all"
-                          >
-                            Kiểm lại
-                          </button>
-                        )
-                      ) : (
-                        <span className="text-xs text-slate-400 italic">Đã khóa</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
+                          <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
+                            resultStatus === 'MATCH' || resultStatus === 'MATCHED' ? 'bg-emerald-50 text-emerald-600 border-emerald-100' :
+                            resultStatus === 'WRONG_LOCATION' ? 'bg-amber-50 text-amber-600 border-amber-100' :
+                            resultStatus === 'MISSING' ? 'bg-rose-50 text-rose-600 border-rose-100' :
+                            resultStatus === 'DAMAGED' ? 'bg-red-50 text-red-650 border-red-100' :
+                            resultStatus === 'WRONG_USER' ? 'bg-orange-50 text-orange-655 border-orange-100' :
+                            'bg-indigo-50 text-indigo-600 border-indigo-100'
+                          }`}>
+                            {resultStatus === 'MATCH' || resultStatus === 'MATCHED' ? 'Khớp' :
+                             resultStatus === 'WRONG_LOCATION' ? 'Lệch vị trí' :
+                             resultStatus === 'MISSING' ? 'Thiếu/Mất' :
+                             resultStatus === 'DAMAGED' ? 'Báo hỏng' :
+                             resultStatus === 'WRONG_USER' ? 'Sai người sử dụng' :
+                             resultStatus === 'WRONG_STATUS' ? 'Lệch trạng thái' : resultStatus}
+                          </span>
+                        )}
+                      </td>
+                      <td className="p-6">
+                        {(activeSession ? activeSession.status === 'IN_PROGRESS' : (session.status === 'OPEN' || session.status === 'IN_PROGRESS')) ? (
+                          !isChecked ? (
+                            <button 
+                              onClick={() => openCheckModal(item)}
+                              className="px-4 py-2 bg-primary-600 text-white rounded-xl text-[10px] font-black uppercase tracking-wider hover:bg-primary-700 transition-all shadow-md shadow-primary-100 cursor-pointer"
+                            >
+                              Kiểm kê
+                            </button>
+                          ) : (
+                            <button 
+                              onClick={() => openCheckModal(item)}
+                              className="px-4 py-2 bg-slate-100 text-slate-600 hover:bg-slate-200 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer"
+                            >
+                              Kiểm lại
+                            </button>
+                          )
+                        ) : (
+                          <span className="text-xs text-slate-400 italic">Đã khóa</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
                 {filteredItems.length === 0 && (
                   <tr>
                     <td colSpan={6} className="p-20 text-center">
@@ -2548,6 +2921,312 @@ export const InventoryDetail: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </BaseModal>
+      )}
+
+      {/* SESSION CREATION MODAL */}
+      {showSessionModal && (
+        <BaseModal
+          isOpen={showSessionModal}
+          onClose={() => setShowSessionModal(false)}
+          size="form"
+          title={
+            <div>
+              <h2 className="text-md font-black uppercase tracking-widest text-slate-900">Tạo phiên kiểm kê mới</h2>
+              <p className="text-[10px] text-slate-500 font-bold">Tách một đợt kiểm kê thành phiên nhỏ theo phòng ban hoặc địa điểm</p>
+            </div>
+          }
+          footer={
+            <>
+              <button
+                onClick={() => setShowSessionModal(false)}
+                className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleCreateSession}
+                disabled={submitting}
+                className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-black text-xs uppercase flex items-center shadow-lg disabled:opacity-50 cursor-pointer"
+              >
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />} Tạo phiên
+              </button>
+            </>
+          }
+        >
+          <form onSubmit={handleCreateSession} className="space-y-4 text-xs text-slate-655">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-500">Tên phiên kiểm kê (Tự động tạo)</label>
+                <input
+                  type="text"
+                  disabled
+                  className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-700"
+                  value={`Kiểm kê ${sessionForm.departmentName || sessionForm.locationName || 'Phòng ban'} ngày ${format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}`}
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-500">Ngày kiểm kê *</label>
+                <input
+                  type="date"
+                  required
+                  value={sessionForm.scheduledDate}
+                  onChange={e => setSessionForm({ ...sessionForm, scheduledDate: e.target.value })}
+                  className="w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-500">Công ty kiểm kê</label>
+                <select
+                  value={sessionForm.companyName}
+                  onChange={e => setSessionForm({ ...sessionForm, companyName: e.target.value })}
+                  className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
+                >
+                  <option value="">-- Tất cả công ty --</option>
+                  {companies.map((c: any) => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-500">Người phụ trách kiểm kê *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Lê Thanh Hùng..."
+                  value={sessionForm.checkerName}
+                  onChange={e => setSessionForm({ ...sessionForm, checkerName: e.target.value })}
+                  className="w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                />
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-500">Phòng ban kiểm kê</label>
+                <select
+                  value={sessionForm.departmentName}
+                  onChange={e => setSessionForm({ ...sessionForm, departmentName: e.target.value })}
+                  className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
+                >
+                  <option value="">-- Tất cả phòng ban --</option>
+                  {reviewDepartments.map((d: string, i: number) => (
+                    <option key={i} value={d}>{d}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-500">Địa điểm / vị trí kiểm kê</label>
+                <select
+                  value={sessionForm.locationName}
+                  onChange={e => setSessionForm({ ...sessionForm, locationName: e.target.value })}
+                  className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
+                >
+                  <option value="">-- Tất cả địa điểm --</option>
+                  {reviewLocations.map((l: string, i: number) => (
+                    <option key={i} value={l}>{l}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-500">Đại diện phòng ban ký biên bản *</label>
+              <input
+                type="text"
+                required
+                placeholder="Ví dụ: Nguyễn Văn A..."
+                value={sessionForm.representativeName}
+                onChange={e => setSessionForm({ ...sessionForm, representativeName: e.target.value })}
+                className="w-full bg-white border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <label className="font-bold text-slate-500">Ghi chú</label>
+              <textarea
+                placeholder="Kiểm kê trực tiếp tại phòng ban..."
+                value={sessionForm.note}
+                onChange={e => setSessionForm({ ...sessionForm, note: e.target.value })}
+                className="w-full px-3 py-2 bg-white border rounded-xl font-semibold text-slate-800 h-16 resize-none"
+              />
+            </div>
+
+            <div className="bg-primary-50 border border-primary-200 rounded-xl p-3 text-xs text-primary-800 font-bold">
+              ℹ️ Hệ thống chỉ load tài sản thuộc phòng ban [{sessionForm.departmentName || 'Tất cả'}] tại [{sessionForm.locationName || 'Tất cả'}].
+            </div>
+          </form>
+        </BaseModal>
+      )}
+
+      {/* SESSION REPORT MODAL */}
+      {activeSessionReport && (
+        <BaseModal
+          isOpen={!!activeSessionReport}
+          onClose={() => setActiveSessionReport(null)}
+          size="form"
+          title={
+            <div>
+              <h2 className="text-base font-black uppercase tracking-widest text-slate-900">Biên bản kiểm kê theo phiên</h2>
+              <p className="text-[10px] text-slate-500 font-bold">Xem trước biên bản in cho phiên kiểm kê</p>
+            </div>
+          }
+          footer={
+            <>
+              <button
+                onClick={() => setActiveSessionReport(null)}
+                className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase cursor-pointer"
+              >
+                Đóng
+              </button>
+              <button
+                onClick={() => window.print()}
+                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs uppercase flex items-center gap-2 cursor-pointer"
+              >
+                <FileText className="h-4 w-4" /> In biên bản
+              </button>
+            </>
+          }
+        >
+          <div className="space-y-6 text-slate-800 p-4 max-h-[70vh] overflow-y-auto print:overflow-visible print:max-h-none print:p-0">
+            <div className="text-center space-y-2">
+              <h1 className="text-lg font-black uppercase tracking-wider">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</h1>
+              <p className="text-xs font-bold border-b pb-3 w-48 mx-auto border-slate-300">Độc lập - Tự do - Hạnh phúc</p>
+              <h2 className="text-base font-black uppercase tracking-widest pt-4">BIÊN BẢN KIỂM KÊ TÀI SẢN</h2>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 text-xs font-semibold text-slate-650 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+              <p>Đợt kiểm kê: <span className="font-bold text-slate-900">{session.inventoryName}</span></p>
+              <p>Ngày kiểm kê: <span className="font-bold text-slate-900">{format(new Date(activeSessionReport.session.scheduledDate), 'dd/MM/yyyy')}</span></p>
+              <p>Phòng ban sử dụng: <span className="font-bold text-slate-900">{activeSessionReport.session.departmentName || 'Tất cả phòng ban'}</span></p>
+              <p>Địa điểm/Vị trí: <span className="font-bold text-slate-900">{activeSessionReport.session.locationName || 'Tất cả vị trí'}</span></p>
+              <p>Người kiểm kê: <span className="font-bold text-slate-900">{activeSessionReport.session.checkerName || '-'}</span></p>
+              <p>Đại diện đơn vị: <span className="font-bold text-slate-900">{activeSessionReport.session.representativeName || '-'}</span></p>
+            </div>
+
+            <div className="grid grid-cols-4 gap-3 text-center">
+              <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Tổng sổ sách</p>
+                <p className="text-lg font-black text-slate-950 mt-1">{activeSessionReport.summary.bookTotal}</p>
+              </div>
+              <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Tổng thực tế</p>
+                <p className="text-lg font-black text-slate-955 mt-1">{activeSessionReport.summary.actualTotal}</p>
+              </div>
+              <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Trùng khớp</p>
+                <p className="text-lg font-black text-emerald-600 mt-1">{activeSessionReport.summary.matched}</p>
+              </div>
+              <div className="border border-slate-200 rounded-xl p-3 bg-white">
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Chênh lệch</p>
+                <p className="text-lg font-black text-rose-600 mt-1">{activeSessionReport.summary.deviations}</p>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">Danh sách đối soát chi tiết</h3>
+              <div className="border border-slate-200 rounded-2xl overflow-hidden">
+                <table className="w-full text-left text-[11px] border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200">
+                      <th className="p-3 font-bold text-slate-700">Mã TS</th>
+                      <th className="p-3 font-bold text-slate-700">Tên tài sản</th>
+                      <th className="p-3 font-bold text-slate-700 text-center">SL sổ sách</th>
+                      <th className="p-3 font-bold text-slate-700 text-center">SL thực tế</th>
+                      <th className="p-3 font-bold text-slate-700">Kết quả đối soát</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {(activeSessionReport.session.details || []).map((d: any) => {
+                      const isExtra = d.resultStatus === 'EXTRA';
+                      const isMissing = d.resultStatus === 'MISSING';
+                      return (
+                        <tr key={d.id} className="hover:bg-slate-50/50">
+                          <td className="p-3 font-mono font-bold text-slate-605">{d.assetCode || 'Ngoài sổ'}</td>
+                          <td className="p-3 font-semibold text-slate-800">{d.assetName}</td>
+                          <td className="p-3 text-center font-bold text-slate-600">{isExtra ? 0 : 1}</td>
+                          <td className="p-3 text-center font-bold text-slate-600">{isMissing ? 0 : 1}</td>
+                          <td className="p-3 font-bold text-slate-700">
+                            {d.resultStatus === 'MATCH' ? 'Khớp' :
+                             d.resultStatus === 'WRONG_LOCATION' ? 'Sai vị trí' :
+                             d.resultStatus === 'WRONG_USER' ? 'Sai người sử dụng' :
+                             d.resultStatus === 'MISSING' ? 'Thiếu' :
+                             d.resultStatus === 'EXTRA' ? 'Tài sản ngoài sổ' : d.resultStatus}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {activeSessionReport.deviations && activeSessionReport.deviations.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-rose-600">Danh sách sai lệch cần xử lý</h3>
+                <div className="border border-rose-100 rounded-2xl overflow-hidden">
+                  <table className="w-full text-left text-[11px] border-collapse">
+                    <thead>
+                      <tr className="bg-rose-50/50 border-b border-rose-100">
+                        <th className="p-3 font-bold text-rose-700">Tài sản</th>
+                        <th className="p-3 font-bold text-rose-700">Sổ sách</th>
+                        <th className="p-3 font-bold text-rose-700">Thực tế</th>
+                        <th className="p-3 font-bold text-rose-700">Vấn đề / Ghi chú</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-rose-50">
+                      {activeSessionReport.deviations.map((d: any) => (
+                        <tr key={d.id}>
+                          <td className="p-3">
+                            <p className="font-bold text-slate-800">{d.assetName}</p>
+                            <p className="text-[10px] text-slate-400 font-mono">{d.assetCode || 'Ngoài sổ'}</p>
+                          </td>
+                          <td className="p-3 text-slate-500">
+                            <p>Vị trí: {d.bookLocationName || '-'}</p>
+                            <p>Người dùng: {d.bookUserName || '-'}</p>
+                          </td>
+                          <td className="p-3 text-slate-800 font-semibold">
+                            <p>Vị trí: {d.actualLocationName || '-'}</p>
+                            <p>Người dùng: {d.actualUserName || '-'}</p>
+                          </td>
+                          <td className="p-3">
+                            <p className="font-bold text-rose-700">
+                              {d.resultStatus === 'WRONG_LOCATION' ? 'Sai vị trí' :
+                               d.resultStatus === 'WRONG_USER' ? 'Sai người dùng' :
+                               d.resultStatus === 'MISSING' ? 'Thiếu / Mất' :
+                               d.resultStatus === 'EXTRA' ? 'Ngoài sổ' : d.resultStatus}
+                            </p>
+                            {d.note && <p className="text-[10px] text-slate-450 italic mt-0.5">{d.note}</p>}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+
+            <div className="grid grid-cols-3 gap-6 text-center pt-8 border-t border-slate-200">
+              <div className="space-y-16">
+                <p className="font-bold text-xs">Đại diện đơn vị sử dụng</p>
+                <p className="text-slate-350 italic text-[11px]">(Ký, ghi rõ họ tên)</p>
+              </div>
+              <div className="space-y-16">
+                <p className="font-bold text-xs">Người kiểm kê</p>
+                <p className="text-slate-350 italic text-[11px]">(Ký, ghi rõ họ tên)</p>
+              </div>
+              <div className="space-y-16">
+                <p className="font-bold text-xs">Trưởng ban HCNS</p>
+                <p className="text-slate-350 italic text-[11px]">(Ký, ghi rõ họ tên)</p>
+              </div>
+            </div>
           </div>
         </BaseModal>
       )}
