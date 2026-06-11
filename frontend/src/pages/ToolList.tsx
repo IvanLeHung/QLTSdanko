@@ -667,11 +667,16 @@ export const ToolList: React.FC = () => {
   const handleMergeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedIds.length < 2) {
-      toast.error('Can chon toi thieu 2 ma CCDC de gop.');
+      toast.error('Cần chọn tối thiểu 2 mã CCDC để gộp.');
       return;
     }
     if (!mergeForm.targetToolCode.trim()) {
-      toast.error('Vui long nhap ma CCDC cha.');
+      toast.error('Vui lòng chọn mã CCDC cha.');
+      return;
+    }
+    const selectedCodes = tools.filter(t => selectedIds.includes(t.id)).map(t => t.toolCode);
+    if (!selectedCodes.includes(mergeForm.targetToolCode.trim())) {
+      toast.error('Mã CCDC cha phải là một trong các mã đang chọn.');
       return;
     }
 
@@ -683,14 +688,14 @@ export const ToolList: React.FC = () => {
         newToolName: mergeForm.newToolName.trim() || undefined,
         note: mergeForm.note.trim() || undefined
       });
-      toast.success(`Da gop ${selectedIds.length} ma vao ${mergeForm.targetToolCode.trim()}.`);
+      toast.success(`Đã gộp ${selectedIds.length} mã vào ${mergeForm.targetToolCode.trim()}.`);
       setActiveModal('NONE');
       setSelectedIds([]);
       fetchTools();
     } catch (err: any) {
       const status = err.response?.status;
       const backendMessage = err.response?.data?.message;
-      toast.error(backendMessage || (status ? `Loi khi gop ma CCDC (HTTP ${status}).` : 'Loi khi gop ma CCDC.'));
+      toast.error(backendMessage || (status ? `Lỗi khi gộp mã CCDC (HTTP ${status}).` : 'Lỗi khi gộp mã CCDC.'));
     } finally {
       setLoading(false);
     }
@@ -750,6 +755,7 @@ export const ToolList: React.FC = () => {
 
   // Label print configs
   const selectedToolsToPrint = tools.filter(t => selectedIds.includes(t.id));
+  const selectedToolsForMerge = tools.filter(t => selectedIds.includes(t.id));
 
   return (
     <div className="space-y-6 pb-20">
@@ -1016,18 +1022,20 @@ export const ToolList: React.FC = () => {
             {selectedIds.length >= 2 && (
               <button
                 onClick={() => {
-                  const selectedTools = tools.filter(t => selectedIds.includes(t.id));
-                  const requestedParent = selectedTools.find(t => t.toolCode === 'CCDC.DECOR.2026.00001');
+                  const selectedTools = tools
+                    .filter(t => selectedIds.includes(t.id))
+                    .sort((a, b) => String(a.toolCode).localeCompare(String(b.toolCode), undefined, { numeric: true }));
+                  const requestedParent = selectedTools[0];
                   setMergeForm({
-                    targetToolCode: requestedParent?.toolCode || selectedTools[0]?.toolCode || 'CCDC.DECOR.2026.00001',
-                    newToolName: requestedParent?.toolName || selectedTools[0]?.toolName || '',
+                    targetToolCode: requestedParent?.toolCode || '',
+                    newToolName: requestedParent?.toolName || '',
                     note: ''
                   });
                   setActiveModal('MERGE');
                 }}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold rounded-xl transition-colors"
               >
-                <Package className="h-3.5 w-3.5 text-emerald-400" /> Gop ma
+                <Package className="h-3.5 w-3.5 text-emerald-400" /> Gộp mã
               </button>
             )}
             {selectedIds.length === 1 && (
@@ -1996,7 +2004,7 @@ export const ToolList: React.FC = () => {
             <div className="p-6 border-b border-slate-100 flex justify-between items-center">
               <h3 className="text-lg font-black text-slate-850 uppercase tracking-wider flex items-center gap-2">
                 <Package className="h-5 w-5 text-emerald-500" />
-                Gop ma CCDC
+                Gộp mã CCDC
               </h3>
               <button onClick={() => setActiveModal('NONE')} className="p-1 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700">
                 <X className="h-5 w-5" />
@@ -2006,10 +2014,10 @@ export const ToolList: React.FC = () => {
               <div className="p-6 space-y-5">
                 <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
-                    Ma dang chon
+                    Mã đang chọn
                   </div>
                   <div className="flex flex-wrap gap-2">
-                    {tools.filter(t => selectedIds.includes(t.id)).map(tool => (
+                    {selectedToolsForMerge.map(tool => (
                       <span key={tool.id} className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-mono font-bold text-slate-700">
                         {tool.toolCode}
                       </span>
@@ -2018,17 +2026,28 @@ export const ToolList: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ma CCDC cha *</label>
-                    <input
-                      type="text"
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Mã CCDC cha *</label>
+                    <select
                       required
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono font-bold"
                       value={mergeForm.targetToolCode}
-                      onChange={e => setMergeForm({ ...mergeForm, targetToolCode: e.target.value })}
-                    />
+                      onChange={e => {
+                        const target = selectedToolsForMerge.find(tool => tool.toolCode === e.target.value);
+                        setMergeForm({
+                          ...mergeForm,
+                          targetToolCode: e.target.value,
+                          newToolName: target?.toolName || mergeForm.newToolName
+                        });
+                      }}
+                    >
+                      <option value="">-- Chọn mã cha --</option>
+                      {selectedToolsForMerge.map(tool => (
+                        <option key={tool.id} value={tool.toolCode}>{tool.toolCode}</option>
+                      ))}
+                    </select>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ten CCDC cha</label>
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tên CCDC cha</label>
                     <input
                       type="text"
                       className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
@@ -2038,10 +2057,10 @@ export const ToolList: React.FC = () => {
                   </div>
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chu</label>
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chú</label>
                   <textarea
                     className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold min-h-[90px]"
-                    placeholder="VD: Gop lo hoa vang/trang thanh 1 ma quan ly so luong."
+                    placeholder="VD: Gộp các mã cùng loại, chỉ khác màu."
                     value={mergeForm.note}
                     onChange={e => setMergeForm({ ...mergeForm, note: e.target.value })}
                   />
@@ -2049,10 +2068,10 @@ export const ToolList: React.FC = () => {
               </div>
               <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
                 <button type="button" onClick={() => setActiveModal('NONE')} className="px-4 py-2 text-slate-500 hover:bg-slate-200 rounded-xl text-sm font-bold transition-colors">
-                  Huy
+                  Hủy
                 </button>
                 <button type="submit" className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all">
-                  Gop vao ma cha
+                  Gộp vào mã cha
                 </button>
               </div>
             </form>

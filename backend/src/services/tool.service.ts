@@ -2569,7 +2569,7 @@ export class ToolService {
 
       const targetTool = sources.find((tool: any) => tool.toolCode === data.targetToolCode);
       if (!targetTool) {
-        throw new Error(`Khong tim thay ma CCDC dich ${data.targetToolCode}.`);
+        throw new Error(`Không tìm thấy mã CCDC cha ${data.targetToolCode} trong các mã đang chọn. Vui lòng chọn đúng một mã từ danh sách đã chọn.`);
       }
 
       const totalQuantity = sources.reduce((sum: number, tool: any) => sum + Math.max(Number(tool.quantity) || 1, 1), 0);
