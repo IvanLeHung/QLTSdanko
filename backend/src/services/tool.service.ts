@@ -466,6 +466,10 @@ export class ToolService {
    */
   static async updateTool(id: number, updates: any, performedBy: string, reason?: string) {
     return await prisma.$transaction(async (tx) => {
+      const { reason: payloadReason, id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...safeUpdates } = updates || {};
+      updates = safeUpdates;
+      reason = reason || payloadReason;
+
       const oldTool = await tx.toolEquipment.findUnique({ where: { id } });
       if (!oldTool) throw new Error('Không tìm thấy CCDC.');
 

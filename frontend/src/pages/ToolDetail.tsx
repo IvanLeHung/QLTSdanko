@@ -155,7 +155,8 @@ export const ToolDetail: React.FC = () => {
     e.preventDefault();
     try {
       setLoading(true);
-      await api.put(`/tools/${tool.id}`, editForm);
+      const { reason, ...payload } = editForm;
+      await api.put(`/tools/${tool.id}`, { ...payload, reason });
       toast.success('Đã cập nhật thông tin CCDC và lưu log thay đổi.');
       setShowEditModal(false);
       fetchToolDetail();
