@@ -947,6 +947,57 @@ export const ToolDetail: React.FC = () => {
                   </div>
                 )}
 
+                {(operationalSpecs.childDescription || operationalSpecs.identifyingFeature || Array.isArray(operationalSpecs.mergedVariants)) && (
+                  <div className="space-y-3 bg-emerald-50/50 p-5 rounded-2xl border border-emerald-100">
+                    <h4 className="text-xs font-black text-emerald-800 uppercase tracking-wider border-b border-emerald-100 pb-2 flex items-center gap-2">
+                      <ClipboardList className="h-4 w-4 text-emerald-600" />
+                      Chi tiet ma con / bien the
+                    </h4>
+                    {(operationalSpecs.childDescription || operationalSpecs.identifyingFeature) && (
+                      <div className="grid grid-cols-2 gap-4 text-xs font-semibold">
+                        {operationalSpecs.childDescription && (
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Mo ta rieng</p>
+                            <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.childDescription}</p>
+                          </div>
+                        )}
+                        {operationalSpecs.identifyingFeature && (
+                          <div>
+                            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Dac diem nhan dang</p>
+                            <p className="text-slate-800 font-bold text-sm mt-0.5">{operationalSpecs.identifyingFeature}</p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {Array.isArray(operationalSpecs.mergedVariants) && operationalSpecs.mergedVariants.length > 0 && (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-xs border-collapse">
+                          <thead className="text-[10px] text-slate-400 uppercase tracking-widest">
+                            <tr>
+                              <th className="text-left py-2">Ma goc</th>
+                              <th className="text-left py-2">Ten</th>
+                              <th className="text-left py-2">Mau</th>
+                              <th className="text-left py-2">Mo ta</th>
+                              <th className="text-left py-2">Nhan dang</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-emerald-100">
+                            {operationalSpecs.mergedVariants.map((variant: any, idx: number) => (
+                              <tr key={`${variant.sourceToolCode || 'variant'}-${idx}`}>
+                                <td className="py-2 font-mono font-bold text-slate-700">{variant.sourceToolCode}</td>
+                                <td className="py-2 text-slate-700">{variant.sourceToolName}</td>
+                                <td className="py-2 text-slate-700">{variant.color || '---'}</td>
+                                <td className="py-2 text-slate-700">{variant.description || '---'}</td>
+                                <td className="py-2 text-slate-700">{variant.identifyingFeature || '---'}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 {/* WARRANTY INFO SECTION */}
                 {Object.keys(warrantyInfo).length > 0 && (warrantyInfo.warrantyMonths || warrantyInfo.warrantyProvider) && (
                   <div className="space-y-3 bg-slate-50 p-5 rounded-2xl border border-slate-100">

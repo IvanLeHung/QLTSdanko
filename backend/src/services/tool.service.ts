@@ -3,6 +3,34 @@ import { AuditService } from './audit.service';
 import { parseAndNormalizeLocation } from '../utils/location.util';
 import { generateDocumentNo } from '../utils/document';
 
+type ChildVariantInput = {
+  color?: string;
+  description?: string;
+  identifyingFeature?: string;
+};
+
+type ToolSplitInput = {
+  quantity: number;
+  toLocation: string;
+  childDetails?: ChildVariantInput[];
+};
+
+const parseJsonObject = (value?: string | null): Record<string, any> => {
+  if (!value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const compactVariant = (variant: ChildVariantInput = {}) => ({
+  color: variant.color?.trim() || null,
+  description: variant.description?.trim() || null,
+  identifyingFeature: variant.identifyingFeature?.trim() || null
+});
+
 export class ToolService {
   /**
    * Generates CCDC tool codes in format: CCDC.{NHOM}.{NAM}.{STT}
@@ -2107,10 +2135,7 @@ export class ToolService {
   static async splitStock(data: {
     toolId: number;
     fromLocation: string;
-    splits: {
-      quantity: number;
-      toLocation: string;
-    }[];
+    splits: ToolSplitInput[];
     createChildCodes?: boolean;
     note?: string;
   }, performedBy: string) {
@@ -2167,6 +2192,7 @@ export class ToolService {
         for (const splitItem of data.splits) {
           const qty = splitItem.quantity;
           const toLoc = splitItem.toLocation;
+          const childDetails = Array.isArray(splitItem.childDetails) ? splitItem.childDetails : [];
 
           // Create qty number of individual tools
           for (let i = 0; i < qty; i++) {
@@ -2174,6 +2200,21 @@ export class ToolService {
             nextIndex++;
 
             const norm = parseAndNormalizeLocation(toLoc);
+            const parentSpecs = parseJsonObject(parentTool.operationalSpecsJson);
+            const parentCustomFields = parseJsonObject(parentTool.customFieldsJson);
+            const variant = compactVariant(childDetails[i]);
+            const operationalSpecs = {
+              ...parentSpecs,
+              color: variant.color || parentSpecs.color || undefined,
+              childDescription: variant.description || undefined,
+              identifyingFeature: variant.identifyingFeature || undefined,
+              parentToolCode: parentTool.toolCode
+            };
+            const customFields = {
+              ...parentCustomFields,
+              childDescription: variant.description || undefined,
+              identifyingFeature: variant.identifyingFeature || undefined
+            };
 
             const childTool = await tx.toolEquipment.create({
               data: {
@@ -2208,10 +2249,10 @@ export class ToolService {
                 floorName: parentTool.floorName,
                 areaName: parentTool.areaName,
                 specificLocation: parentTool.specificLocation,
-                operationalSpecsJson: parentTool.operationalSpecsJson,
+                operationalSpecsJson: JSON.stringify(operationalSpecs),
                 filesJson: parentTool.filesJson,
                 warrantyInfoJson: parentTool.warrantyInfoJson,
-                customFieldsJson: parentTool.customFieldsJson
+                customFieldsJson: JSON.stringify(customFields)
               }
             });
 
@@ -2232,7 +2273,7 @@ export class ToolService {
               entityType: 'TOOL_EQUIPMENT',
               entityId: childTool.id,
               action: 'CREATE',
-              details: { toolCode: childTool.toolCode, parentCode: parentTool.toolCode },
+              details: { toolCode: childTool.toolCode, parentCode: parentTool.toolCode, variant },
               performedBy,
               tx
             });
@@ -2308,6 +2349,166 @@ export class ToolService {
         performedBy,
         tx
       });
+    });
+  }
+
+  static async mergeToolsIntoQuantity(data: {
+    targetToolCode: string;
+    sourceToolIds?: number[];
+    sourceToolCodes?: string[];
+    newToolName?: string;
+    note?: string;
+  }, performedBy: string) {
+    return await prisma.$transaction(async (tx) => {
+      const sourceIds = (data.sourceToolIds || []).filter(Boolean);
+      const sourceCodes = (data.sourceToolCodes || []).filter(Boolean);
+      const sourceWhere: any[] = [{ toolCode: data.targetToolCode }];
+      if (sourceIds.length) sourceWhere.push({ id: { in: sourceIds } });
+      if (sourceCodes.length) sourceWhere.push({ toolCode: { in: sourceCodes } });
+
+      const sources = await tx.toolEquipment.findMany({
+        where: {
+          isDeleted: false,
+          OR: sourceWhere
+        },
+        include: { stocks: true }
+      });
+
+      if (sources.length < 2) {
+        throw new Error('Can chon toi thieu 2 ma CCDC de gop.');
+      }
+
+      const targetTool = sources.find((tool: any) => tool.toolCode === data.targetToolCode);
+      if (!targetTool) {
+        throw new Error(`Khong tim thay ma CCDC dich ${data.targetToolCode}.`);
+      }
+
+      const totalQuantity = sources.reduce((sum: number, tool: any) => sum + Math.max(Number(tool.quantity) || 1, 1), 0);
+      const parentSpecs = parseJsonObject(targetTool.operationalSpecsJson);
+      const parentCustomFields = parseJsonObject(targetTool.customFieldsJson);
+
+      const variants = sources.map((tool: any) => {
+        const specs = parseJsonObject(tool.operationalSpecsJson);
+        const customFields = parseJsonObject(tool.customFieldsJson);
+        return {
+          sourceToolId: tool.id,
+          sourceToolCode: tool.toolCode,
+          sourceToolName: tool.toolName,
+          quantity: Math.max(Number(tool.quantity) || 1, 1),
+          color: specs.color || customFields.color || null,
+          description: specs.childDescription || customFields.childDescription || tool.note || null,
+          identifyingFeature: specs.identifyingFeature || customFields.identifyingFeature || null
+        };
+      });
+
+      const stockBuckets = new Map<string, any>();
+      for (const tool of sources as any[]) {
+        if (tool.stocks?.length) {
+          for (const stock of tool.stocks) {
+            const key = stock.locationName || tool.locationName || 'KHO CCDC';
+            const bucket = stockBuckets.get(key) || {
+              locationName: key,
+              quantityAvailable: 0,
+              quantityUsing: 0,
+              quantityBroken: 0,
+              quantityRepairing: 0,
+              quantityLost: 0,
+              quantityDestroyed: 0,
+              quantityTransit: 0
+            };
+            bucket.quantityAvailable += stock.quantityAvailable || 0;
+            bucket.quantityUsing += stock.quantityUsing || 0;
+            bucket.quantityBroken += stock.quantityBroken || 0;
+            bucket.quantityRepairing += stock.quantityRepairing || 0;
+            bucket.quantityLost += stock.quantityLost || 0;
+            bucket.quantityDestroyed += stock.quantityDestroyed || 0;
+            bucket.quantityTransit += stock.quantityTransit || 0;
+            stockBuckets.set(key, bucket);
+          }
+        } else {
+          const key = tool.locationName || 'KHO CCDC';
+          const bucket = stockBuckets.get(key) || {
+            locationName: key,
+            quantityAvailable: 0,
+            quantityUsing: 0,
+            quantityBroken: 0,
+            quantityRepairing: 0,
+            quantityLost: 0,
+            quantityDestroyed: 0,
+            quantityTransit: 0
+          };
+          const qty = Math.max(Number(tool.quantity) || 1, 1);
+          if (tool.status === 'USING') bucket.quantityUsing += qty;
+          else if (tool.status === 'DAMAGED') bucket.quantityBroken += qty;
+          else if (tool.status === 'LOST') bucket.quantityLost += qty;
+          else if (tool.status === 'LIQUIDATED') bucket.quantityDestroyed += qty;
+          else bucket.quantityAvailable += qty;
+          stockBuckets.set(key, bucket);
+        }
+      }
+
+      await tx.toolStock.deleteMany({ where: { toolId: targetTool.id } });
+      for (const stock of stockBuckets.values()) {
+        await tx.toolStock.create({ data: { toolId: targetTool.id, ...stock } });
+      }
+
+      const updatedTarget = await tx.toolEquipment.update({
+        where: { id: targetTool.id },
+        data: {
+          toolName: data.newToolName || targetTool.toolName,
+          quantity: totalQuantity,
+          managementType: 'QUANTITY',
+          status: 'IN_STOCK',
+          currentUserName: null,
+          operationalSpecsJson: JSON.stringify({
+            ...parentSpecs,
+            mergedVariants: variants,
+            mergedFromCodes: variants.map((variant: any) => variant.sourceToolCode)
+          }),
+          customFieldsJson: JSON.stringify({
+            ...parentCustomFields,
+            mergedVariantCount: variants.length,
+            mergedFromCodes: variants.map((variant: any) => variant.sourceToolCode).join(', ')
+          }),
+          note: [targetTool.note, data.note || `Gop ${sources.length} ma CCDC thanh ma cha ${targetTool.toolCode}`]
+            .filter(Boolean)
+            .join(' | ')
+        }
+      });
+
+      const sourceIdsToArchive = sources.filter((tool: any) => tool.id !== targetTool.id).map((tool: any) => tool.id);
+      if (sourceIdsToArchive.length) {
+        await tx.toolEquipment.updateMany({
+          where: { id: { in: sourceIdsToArchive } },
+          data: {
+            isDeleted: true,
+            note: `Da gop vao ${targetTool.toolCode}`
+          }
+        });
+      }
+
+      await tx.toolHistory.create({
+        data: {
+          toolId: targetTool.id,
+          toolCode: targetTool.toolCode,
+          eventTime: new Date(),
+          actionType: 'UPDATE',
+          newStatus: updatedTarget.status,
+          newLocationName: updatedTarget.locationName,
+          newNote: `Gop ma CCDC: ${variants.map((variant: any) => variant.sourceToolCode).join(', ')}`
+        }
+      });
+
+      await AuditService.log({
+        entityType: 'TOOL_EQUIPMENT',
+        entityId: targetTool.id,
+        action: 'UPDATE',
+        details: { action: 'MERGE_TO_QUANTITY', targetToolCode: targetTool.toolCode, sourceCodes: variants.map((variant: any) => variant.sourceToolCode) },
+        performedBy,
+        tx
+      });
+
+      return updatedTarget;
     });
   }
 }

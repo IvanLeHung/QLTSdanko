@@ -147,7 +147,7 @@ export const ToolList: React.FC = () => {
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
 
   // Modals States
-  const [activeModal, setActiveModal] = useState<'NONE' | 'HANDOVER' | 'DAMAGE' | 'LOST' | 'LIQUIDATION' | 'PRINT'>('NONE');
+  const [activeModal, setActiveModal] = useState<'NONE' | 'HANDOVER' | 'DAMAGE' | 'LOST' | 'LIQUIDATION' | 'PRINT' | 'MERGE'>('NONE');
   
   // Modal forms state
   const [handoverForm, setHandoverForm] = useState({
@@ -163,6 +163,20 @@ export const ToolList: React.FC = () => {
 
   // Upgraded modal list items state
   const [modalItems, setModalItems] = useState<any[]>([]);
+  const [mergeForm, setMergeForm] = useState({
+    targetToolCode: 'CCDC.DECOR.2026.00001',
+    newToolName: '',
+    note: ''
+  });
+
+  const buildChildDetails = (quantity: number, existing: any[] = []) => {
+    const count = Math.max(Number(quantity) || 0, 0);
+    return Array.from({ length: count }, (_, idx) => existing[idx] || {
+      color: '',
+      description: '',
+      identifyingFeature: ''
+    });
+  };
 
   useEffect(() => {
     if (activeModal === 'HANDOVER') {
@@ -199,7 +213,11 @@ export const ToolList: React.FC = () => {
           qtyGood: maxQty > 0 ? maxQty : 0,
           qtyBroken: 0,
           qtyLost: 0,
-          splits: [{ quantity: maxQty > 0 ? maxQty : 0, toLocation: '' }],
+          splits: [{
+            quantity: maxQty > 0 ? maxQty : 0,
+            toLocation: '',
+            childDetails: buildChildDetails(maxQty > 0 ? maxQty : 0)
+          }],
           createChildCodes: false
         };
       });
@@ -234,7 +252,11 @@ export const ToolList: React.FC = () => {
         updated.qtyGood = updated.maxQty;
         updated.qtyBroken = 0;
         updated.qtyLost = 0;
-        updated.splits = [{ quantity: updated.maxQty, toLocation: '' }];
+        updated.splits = [{
+          quantity: updated.maxQty,
+          toLocation: '',
+          childDetails: buildChildDetails(updated.maxQty)
+        }];
       }
 
       if (field === 'qtyGood' || field === 'qtyBroken' || field === 'qtyLost') {
@@ -256,7 +278,15 @@ export const ToolList: React.FC = () => {
       if (item.toolId !== toolId) return item;
       const newSplits = item.splits.map((split: any, idx: number) => {
         if (idx !== splitIdx) return split;
-        return { ...split, [subField]: subField === 'quantity' ? (Number(value) || 0) : value };
+        if (subField === 'quantity') {
+          const quantity = Number(value) || 0;
+          return {
+            ...split,
+            quantity,
+            childDetails: buildChildDetails(quantity, split.childDetails)
+          };
+        }
+        return { ...split, [subField]: value };
       });
       const totalSplit = newSplits.reduce((sum: number, s: any) => sum + s.quantity, 0);
       return {
@@ -272,8 +302,22 @@ export const ToolList: React.FC = () => {
       if (item.toolId !== toolId) return item;
       return {
         ...item,
-        splits: [...item.splits, { quantity: 0, toLocation: '' }]
+        splits: [...item.splits, { quantity: 0, toLocation: '', childDetails: [] }]
       };
+    }));
+  };
+
+  const handleChildDetailChange = (toolId: number, splitIdx: number, childIdx: number, field: string, value: string) => {
+    setModalItems(prev => prev.map(item => {
+      if (item.toolId !== toolId) return item;
+      const newSplits = item.splits.map((split: any, idx: number) => {
+        if (idx !== splitIdx) return split;
+        const details = buildChildDetails(split.quantity, split.childDetails).map((child: any, cIdx: number) => (
+          cIdx === childIdx ? { ...child, [field]: value } : child
+        ));
+        return { ...split, childDetails: details };
+      });
+      return { ...item, splits: newSplits };
     }));
   };
 
@@ -584,6 +628,37 @@ export const ToolList: React.FC = () => {
       setLoading(false);
     }
   };
+
+  const handleMergeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (selectedIds.length < 2) {
+      toast.error('Can chon toi thieu 2 ma CCDC de gop.');
+      return;
+    }
+    if (!mergeForm.targetToolCode.trim()) {
+      toast.error('Vui long nhap ma CCDC cha.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await api.post('/tools/merge', {
+        sourceToolIds: selectedIds,
+        targetToolCode: mergeForm.targetToolCode.trim(),
+        newToolName: mergeForm.newToolName.trim() || undefined,
+        note: mergeForm.note.trim() || undefined
+      });
+      toast.success(`Da gop ${selectedIds.length} ma vao ${mergeForm.targetToolCode.trim()}.`);
+      setActiveModal('NONE');
+      setSelectedIds([]);
+      fetchTools();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Loi khi gop ma CCDC.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDamageSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (selectedIds.length === 0) return;
@@ -873,6 +948,23 @@ export const ToolList: React.FC = () => {
             >
               <Box className="h-3.5 w-3.5 text-amber-400" /> Thu hồi
             </button>
+            {selectedIds.length >= 2 && (
+              <button
+                onClick={() => {
+                  const selectedTools = tools.filter(t => selectedIds.includes(t.id));
+                  const requestedParent = selectedTools.find(t => t.toolCode === 'CCDC.DECOR.2026.00001');
+                  setMergeForm({
+                    targetToolCode: requestedParent?.toolCode || selectedTools[0]?.toolCode || 'CCDC.DECOR.2026.00001',
+                    newToolName: requestedParent?.toolName || selectedTools[0]?.toolName || '',
+                    note: ''
+                  });
+                  setActiveModal('MERGE');
+                }}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs font-bold rounded-xl transition-colors"
+              >
+                <Package className="h-3.5 w-3.5 text-emerald-400" /> Gop ma
+              </button>
+            )}
             {selectedIds.length === 1 && (
               <>
                 <button 
@@ -1541,7 +1633,8 @@ export const ToolList: React.FC = () => {
                                         </button>
                                       </div>
                                       {item.splits.map((split: any, sIdx: number) => (
-                                        <div key={sIdx} className="flex gap-3 items-center">
+                                        <React.Fragment key={sIdx}>
+                                        <div className="flex gap-3 items-center">
                                           <div className="flex-1">
                                             <input
                                               type="text"
@@ -1573,6 +1666,42 @@ export const ToolList: React.FC = () => {
                                             </button>
                                           )}
                                         </div>
+                                        {item.createChildCodes && split.quantity > 0 && (
+                                          <div className="ml-4 rounded-xl border border-emerald-100 bg-emerald-50/40 p-3 space-y-2">
+                                            <div className="text-[10px] font-bold uppercase tracking-widest text-emerald-700">
+                                              Chi tiet ma con
+                                            </div>
+                                            {buildChildDetails(split.quantity, split.childDetails).map((child: any, childIdx: number) => (
+                                              <div key={childIdx} className="grid grid-cols-12 gap-2 items-center">
+                                                <div className="col-span-1 text-[10px] font-mono font-bold text-slate-500">
+                                                  #{childIdx + 1}
+                                                </div>
+                                                <input
+                                                  type="text"
+                                                  placeholder="Mau"
+                                                  className="col-span-2 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                                                  value={child.color || ''}
+                                                  onChange={e => handleChildDetailChange(item.toolId, sIdx, childIdx, 'color', e.target.value)}
+                                                />
+                                                <input
+                                                  type="text"
+                                                  placeholder="Mo ta rieng"
+                                                  className="col-span-4 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                                                  value={child.description || ''}
+                                                  onChange={e => handleChildDetailChange(item.toolId, sIdx, childIdx, 'description', e.target.value)}
+                                                />
+                                                <input
+                                                  type="text"
+                                                  placeholder="Dac diem nhan dang"
+                                                  className="col-span-5 bg-white border border-slate-200 rounded-lg px-2 py-1.5 text-xs"
+                                                  value={child.identifyingFeature || ''}
+                                                  onChange={e => handleChildDetailChange(item.toolId, sIdx, childIdx, 'identifyingFeature', e.target.value)}
+                                                />
+                                              </div>
+                                            ))}
+                                          </div>
+                                        )}
+                                        </React.Fragment>
                                       ))}
                                     </div>
                                   </td>
@@ -1796,6 +1925,76 @@ export const ToolList: React.FC = () => {
       )}
 
       {/* B. BÁO HỎNG MODAL */}
+      {activeModal === 'MERGE' && (
+        <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl w-full max-w-2xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="p-6 border-b border-slate-100 flex justify-between items-center">
+              <h3 className="text-lg font-black text-slate-850 uppercase tracking-wider flex items-center gap-2">
+                <Package className="h-5 w-5 text-emerald-500" />
+                Gop ma CCDC
+              </h3>
+              <button onClick={() => setActiveModal('NONE')} className="p-1 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-700">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            <form onSubmit={handleMergeSubmit}>
+              <div className="p-6 space-y-5">
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                  <div className="text-[10px] font-bold uppercase tracking-widest text-slate-400 mb-2">
+                    Ma dang chon
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {tools.filter(t => selectedIds.includes(t.id)).map(tool => (
+                      <span key={tool.id} className="px-2.5 py-1 rounded-lg bg-white border border-slate-200 text-[11px] font-mono font-bold text-slate-700">
+                        {tool.toolCode}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ma CCDC cha *</label>
+                    <input
+                      type="text"
+                      required
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono font-bold"
+                      value={mergeForm.targetToolCode}
+                      onChange={e => setMergeForm({ ...mergeForm, targetToolCode: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ten CCDC cha</label>
+                    <input
+                      type="text"
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold"
+                      value={mergeForm.newToolName}
+                      onChange={e => setMergeForm({ ...mergeForm, newToolName: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Ghi chu</label>
+                  <textarea
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-3 text-sm font-semibold min-h-[90px]"
+                    placeholder="VD: Gop lo hoa vang/trang thanh 1 ma quan ly so luong."
+                    value={mergeForm.note}
+                    onChange={e => setMergeForm({ ...mergeForm, note: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="p-6 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
+                <button type="button" onClick={() => setActiveModal('NONE')} className="px-4 py-2 text-slate-500 hover:bg-slate-200 rounded-xl text-sm font-bold transition-colors">
+                  Huy
+                </button>
+                <button type="submit" className="px-6 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-bold shadow-md hover:shadow-lg transition-all">
+                  Gop vao ma cha
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       {activeModal === 'DAMAGE' && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
           <div className="bg-white rounded-3xl w-full max-w-xl border border-slate-200 shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">

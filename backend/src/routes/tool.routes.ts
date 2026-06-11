@@ -711,6 +711,16 @@ router.post('/stock/split', authenticateToken, async (req: any, res) => {
   }
 });
 
+router.post('/merge', authenticateToken, async (req: any, res) => {
+  try {
+    const performedBy = req.user?.fullName || req.user?.username || 'system';
+    const result = await ToolService.mergeToolsIntoQuantity(req.body, performedBy);
+    res.json({ success: true, result });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message });
+  }
+});
+
 // --- ADMIN APPROVALS ROUTING ---
 
 router.get('/approvals/list', authenticateToken, async (req, res) => {
