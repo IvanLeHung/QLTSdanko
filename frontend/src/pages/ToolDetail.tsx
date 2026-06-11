@@ -42,7 +42,7 @@ export const ToolDetail: React.FC = () => {
 
   const [tool, setTool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'inventoryPhotos' | 'history' | 'documents' | 'analytics'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'inventoryPhotos' | 'lifecycle' | 'history' | 'documents' | 'analytics'>('info');
   const [transactionMenuOpen, setTransactionMenuOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
@@ -327,6 +327,106 @@ export const ToolDetail: React.FC = () => {
     else if (tool.status === 'DAMAGED') totalBroken = tool.quantity;
     else if (tool.status === 'LOST') totalLost = tool.quantity;
   }
+
+  const stockTypeLabels: Record<string, string> = {
+    IMPORT: 'Nhập kho',
+    TRANSFER: 'Luân chuyển',
+    USE: 'Cấp phát',
+    ALLOCATE: 'Cấp phát',
+    RECALL: 'Thu hồi',
+    DAMAGE: 'Báo hỏng',
+    REPAIR_COMPLETE: 'Sửa xong',
+    LOST: 'Báo mất',
+    DESTROY: 'Hủy bỏ',
+    ADJUST: 'Điều chỉnh',
+    ADJUST_STOCK: 'Điều chỉnh tồn',
+    RECORD_LOST: 'Ghi nhận mất'
+  };
+
+  const lifecycleEvents = [
+    ...(tool.stockTransactions || []).map((t: any) => ({
+      id: `stock-${t.id}`,
+      date: t.createdAt,
+      type: stockTypeLabels[t.type] || t.type || 'Biến động kho',
+      source: 'Kho số lượng',
+      title: `${stockTypeLabels[t.type] || t.type || 'Biến động'} ${t.quantity ? `${t.quantity} ${tool.unit || 'cái'}` : ''}`.trim(),
+      description: [t.fromLocation ? `Từ: ${t.fromLocation}` : '', t.toLocation ? `Đến: ${t.toLocation}` : '', t.note || ''].filter(Boolean).join(' | '),
+      actor: t.performedBy,
+      tone: t.type === 'LOST' || t.type === 'DESTROY' ? 'red' : t.type === 'DAMAGE' ? 'amber' : t.type === 'IMPORT' || t.type === 'REPAIR_COMPLETE' ? 'emerald' : 'blue'
+    })),
+    ...(tool.assignments || []).map((a: any) => ({
+      id: `assignment-${a.id}`,
+      date: a.effectiveAt || a.createdAt,
+      type: 'Bàn giao',
+      source: 'Người sử dụng',
+      title: `Bàn giao cho ${a.newUserName || '---'}`,
+      description: [a.newDepartmentName ? `Bộ phận: ${a.newDepartmentName}` : '', a.newLocationName ? `Vị trí: ${a.newLocationName}` : '', a.note || ''].filter(Boolean).join(' | '),
+      actor: a.previousUserName ? `Từ ${a.previousUserName}` : undefined,
+      tone: 'indigo'
+    })),
+    ...(tool.repairTickets || []).map((r: any) => ({
+      id: `repair-${r.id}`,
+      date: r.reportedDate || r.createdAt,
+      type: 'Sửa chữa',
+      source: 'Phiếu sửa chữa',
+      title: `${r.repairCode || 'Phiếu sửa chữa'} - ${r.status || 'OPEN'}`,
+      description: [r.damageDescription, r.repairAction ? `Phương án: ${r.repairAction}` : '', r.actualCost ? `Chi phí: ${Number(r.actualCost).toLocaleString()} VNĐ` : ''].filter(Boolean).join(' | '),
+      actor: r.reportedBy,
+      tone: r.status === 'COMPLETED' ? 'emerald' : 'amber'
+    })),
+    ...(tool.lostReports || []).map((l: any) => ({
+      id: `lost-${l.id}`,
+      date: l.reportedDate || l.createdAt,
+      type: 'Báo mất',
+      source: 'Phiếu mất',
+      title: `${l.lostCode || 'Phiếu báo mất'} - ${l.status || 'LOST'}`,
+      description: [l.incidentDescription, l.responsibleUser ? `Người liên quan: ${l.responsibleUser}` : '', l.compensationNote || ''].filter(Boolean).join(' | '),
+      actor: l.reportedBy,
+      tone: 'red'
+    })),
+    ...(tool.inventoryItems || []).map((item: any) => ({
+      id: `inventory-${item.id}`,
+      date: item.checkedAt || item.inventoryCheck?.inventoryDate,
+      type: 'Kiểm kê',
+      source: 'Kiểm kê',
+      title: `${item.inventoryCheck?.inventoryName || 'Đợt kiểm kê'} - ${item.result || item.checkStatus || 'PENDING'}`,
+      description: [item.actualLocation ? `Vị trí thực tế: ${item.actualLocation}` : '', item.note || ''].filter(Boolean).join(' | '),
+      actor: item.checkedBy,
+      tone: item.result === 'MATCHED' ? 'emerald' : 'orange'
+    })),
+    ...(tool.liquidations || []).map((l: any) => ({
+      id: `liquidation-${l.id}`,
+      date: l.liquidationRecord?.liquidationDate,
+      type: 'Thanh lý',
+      source: 'Thanh lý',
+      title: l.liquidationRecord?.liquidationCode || 'Hồ sơ thanh lý',
+      description: [l.liquidationRecord?.reason, l.liquidationRecord?.buyerName ? `Đơn vị mua: ${l.liquidationRecord.buyerName}` : ''].filter(Boolean).join(' | '),
+      actor: undefined,
+      tone: 'slate'
+    })),
+    ...(tool.batches || []).map((b: any) => ({
+      id: `batch-${b.id}`,
+      date: b.purchaseDate || b.createdAt,
+      type: 'Lô nhập',
+      source: 'Mua hàng',
+      title: `${b.batchNumber || 'Lô nhập'} - ${b.quantity || 0} ${tool.unit || 'cái'}`,
+      description: [b.supplierName ? `Nhà cung cấp: ${b.supplierName}` : '', b.purchasePrice ? `Đơn giá: ${Number(b.purchasePrice).toLocaleString()} VNĐ` : ''].filter(Boolean).join(' | '),
+      actor: undefined,
+      tone: 'emerald'
+    })),
+    ...(tool.histories || []).map((h: any) => ({
+      id: `history-${h.id}`,
+      date: h.eventTime,
+      type: h.actionType || 'Nhật ký',
+      source: 'Hệ thống',
+      title: [h.oldStatus, h.newStatus].filter(Boolean).length ? `${h.oldStatus || 'NONE'} → ${h.newStatus || 'NONE'}` : (h.actionType || 'Cập nhật hệ thống'),
+      description: [h.oldLocationName && h.newLocationName ? `${h.oldLocationName} → ${h.newLocationName}` : '', h.newNote || h.oldNote || ''].filter(Boolean).join(' | '),
+      actor: h.source,
+      tone: 'slate'
+    }))
+  ]
+    .filter((event: any) => event.date)
+    .sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const attributeLabels: Record<string, string> = {
     applicableBranch: 'Chi nhánh áp dụng',
@@ -699,6 +799,12 @@ export const ToolDetail: React.FC = () => {
               className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'inventoryPhotos' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
             >
               Ảnh kiểm kê ({tool.inventoryItems?.reduce((acc: number, item: any) => acc + (item.photos?.length || 0), 0) || 0})
+            </button>
+            <button
+              onClick={() => setActiveTab('lifecycle')}
+              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'lifecycle' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+            >
+              Lịch sử CCDC ({lifecycleEvents.length})
             </button>
             <button 
               onClick={() => setActiveTab('history')}
@@ -1645,6 +1751,87 @@ export const ToolDetail: React.FC = () => {
                     </div>
                   );
                 })()}
+              </div>
+            )}
+
+            {/* TAB: CCDC LIFECYCLE HISTORY */}
+            {activeTab === 'lifecycle' && (
+              <div className="space-y-5">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest flex items-center gap-1.5">
+                      <Activity className="h-4 w-4 text-primary-600" />
+                      Lịch sử CCDC
+                    </h3>
+                    <p className="text-xs text-slate-500 font-semibold mt-1">
+                      Tổng hợp các mốc nhập kho, điều chuyển, cấp phát, thu hồi, sửa chữa, kiểm kê và nhật ký hệ thống.
+                    </p>
+                  </div>
+                  <span className="px-3 py-1.5 rounded-xl bg-slate-100 text-slate-600 text-xs font-black shrink-0">
+                    {lifecycleEvents.length} sự kiện
+                  </span>
+                </div>
+
+                {lifecycleEvents.length === 0 ? (
+                  <div className="text-center py-12 text-slate-400 space-y-1 border border-dashed border-slate-200 rounded-2xl bg-slate-50">
+                    <Activity className="h-8 w-8 mx-auto text-slate-300" />
+                    <p className="text-xs font-bold">Chưa có lịch sử nghiệp vụ cho CCDC này.</p>
+                  </div>
+                ) : (
+                  <div className="relative pl-6 space-y-4 before:absolute before:left-2 before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
+                    {lifecycleEvents.map((event: any) => {
+                      const toneClass =
+                        event.tone === 'red' ? 'bg-red-50 border-red-200 text-red-700' :
+                        event.tone === 'amber' || event.tone === 'orange' ? 'bg-amber-50 border-amber-200 text-amber-700' :
+                        event.tone === 'emerald' ? 'bg-emerald-50 border-emerald-200 text-emerald-700' :
+                        event.tone === 'indigo' ? 'bg-indigo-50 border-indigo-200 text-indigo-700' :
+                        event.tone === 'blue' ? 'bg-blue-50 border-blue-200 text-blue-700' :
+                        'bg-slate-50 border-slate-200 text-slate-700';
+
+                      return (
+                        <div key={event.id} className="relative">
+                          <div className={`absolute -left-[22px] top-4 h-4 w-4 rounded-full border-2 border-white shadow-sm ${
+                            event.tone === 'red' ? 'bg-red-500' :
+                            event.tone === 'amber' || event.tone === 'orange' ? 'bg-amber-500' :
+                            event.tone === 'emerald' ? 'bg-emerald-500' :
+                            event.tone === 'indigo' ? 'bg-indigo-500' :
+                            event.tone === 'blue' ? 'bg-blue-500' :
+                            'bg-slate-400'
+                          }`} />
+                          <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm hover:border-slate-300 transition-colors">
+                            <div className="flex flex-wrap items-start justify-between gap-3">
+                              <div className="min-w-0">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className={`px-2 py-0.5 rounded-lg border text-[10px] font-black uppercase tracking-wider ${toneClass}`}>
+                                    {event.type}
+                                  </span>
+                                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                    {event.source}
+                                  </span>
+                                </div>
+                                <h4 className="text-sm font-black text-slate-850 mt-2">{event.title}</h4>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-[11px] font-black text-slate-600">{new Date(event.date).toLocaleDateString('vi-VN')}</p>
+                                <p className="text-[10px] font-bold text-slate-400 mt-0.5">{new Date(event.date).toLocaleTimeString('vi-VN')}</p>
+                              </div>
+                            </div>
+                            {event.description && (
+                              <p className="text-xs text-slate-600 font-semibold mt-3 leading-relaxed bg-slate-50 border border-slate-100 rounded-xl p-3">
+                                {event.description}
+                              </p>
+                            )}
+                            {event.actor && (
+                              <p className="text-[10px] text-slate-400 font-bold mt-2 uppercase tracking-wider">
+                                Người thực hiện / nguồn: {event.actor}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
             )}
 
