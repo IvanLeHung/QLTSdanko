@@ -1072,15 +1072,15 @@ export const InventoryDetail: React.FC = () => {
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
       {/* HEADER */}
-      <div className="flex flex-col md:flex-row md:items-start justify-between gap-6 bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm">
-        <div className="space-y-4 flex-1">
-          <button onClick={() => navigate('/inventory')} className="flex items-center text-slate-500 hover:text-slate-800 font-bold text-xs uppercase tracking-widest transition-colors">
-            <ChevronLeft className="mr-2 h-4 w-4" /> Quay lại danh sách
-          </button>
-          <div className="space-y-3">
+      <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+          <div className="space-y-3 flex-1 min-w-0">
+            <button onClick={() => navigate('/inventory')} className="flex items-center text-slate-500 hover:text-slate-800 font-bold text-xs uppercase tracking-widest transition-colors">
+              <ChevronLeft className="mr-2 h-4 w-4" /> Quay lại danh sách
+            </button>
             <div className="flex flex-wrap items-center gap-3">
-              <h1 className="text-[32px] font-[900] text-[#0F172A] tracking-tighter leading-none">{session.inventoryName}</h1>
-              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+              <h1 className="text-2xl md:text-3xl font-black text-slate-900 tracking-tight leading-none">{session.inventoryName}</h1>
+              <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest border shrink-0 ${
                 session.status === 'DRAFT' ? 'bg-slate-100 text-slate-700 border-slate-200' :
                 session.status === 'OPEN' ? 'bg-emerald-50 text-emerald-600 border-emerald-250' :
                 session.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-600 border-blue-250' :
@@ -1094,116 +1094,116 @@ export const InventoryDetail: React.FC = () => {
                  session.status === 'CANCELLED' ? 'Đã hủy' : session.status}
               </span>
             </div>
-            
-            {/* Metadata Section */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 text-xs font-bold text-slate-500 pt-2 border-t border-slate-100">
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-slate-400" />
-                <span>Bắt đầu: <span className="text-slate-800">{session.inventoryDate ? format(new Date(session.inventoryDate), 'dd/MM/yyyy') : 'N/A'}</span></span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Calendar className="h-4 w-4 text-slate-400" />
-                <span>Dự kiến xong: <span className="text-slate-800">{session.expectedFinishDate ? format(new Date(session.expectedFinishDate), 'dd/MM/yyyy') : 'Không giới hạn'}</span></span>
-              </div>
-              <div className="flex items-center gap-2">
-                <User className="h-4 w-4 text-slate-400" />
-                <span>Người phụ trách: <span className="text-slate-800">{session.responsiblePerson || 'Chưa phân công'}</span></span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Tag className="h-4 w-4 text-slate-400" />
-                <span>Phạm vi: <span className="text-slate-800">{session.scopeType === 'ALL' ? 'Toàn công ty' : session.scopeType === 'COMPANY' ? `Công ty: ${session.scopeValue}` : `Phòng ban: ${session.scopeValue}`}</span></span>
-              </div>
-            </div>
+          </div>
 
-            {session.note && (
-              <p className="text-xs text-slate-400 italic bg-slate-50 p-3 rounded-xl border border-slate-100 mt-2">
-                <strong>Ghi chú:</strong> {session.note}
-              </p>
+          <div className="flex flex-wrap gap-3 lg:justify-end items-center shrink-0">
+            {session.status === 'DRAFT' && (
+              <button 
+                onClick={handleStartSession}
+                disabled={submitting}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-emerald-100 disabled:opacity-50 cursor-pointer"
+              >
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />} Bắt đầu kiểm kê
+              </button>
+            )}
+
+            {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && !activeSession && (
+              <>
+                <button
+                  onClick={() => setShowSessionModal(true)}
+                  className="bg-primary-600 hover:bg-primary-750 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-primary-100 cursor-pointer"
+                >
+                  <Plus className="mr-2 h-4 w-4" /> Tạo phiên kiểm kê
+                </button>
+                <button
+                  onClick={() => document.getElementById('sessions-list-section')?.scrollIntoView({ behavior: 'smooth' })}
+                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-sm cursor-pointer"
+                >
+                  Danh sách phiên
+                </button>
+              </>
+            )}
+
+            {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
+              <div className="relative group">
+                <button 
+                  onClick={handleCloseSession}
+                  disabled={submitting || (sessions.length > 0 && !sessions.every((s: any) => s.status === 'COMPLETED'))}
+                  className="bg-slate-900 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center shadow-xl shadow-slate-250 disabled:opacity-50 cursor-pointer"
+                >
+                  {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />} Chốt đợt kiểm kê
+                </button>
+                {sessions.length > 0 && !sessions.every((s: any) => s.status === 'COMPLETED') && (
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-950 text-white text-[10px] p-2 rounded-xl text-center font-bold opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg leading-normal">
+                    Cần hoàn thành tất cả phiên kiểm kê trước
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(session.status === 'OPEN' || session.status === 'IN_PROGRESS' || session.status === 'COMPLETED') && (
+              <button
+                onClick={async () => {
+                  try {
+                    const response = await api.get('/inventory/export-by-time', {
+                      params: { startDate: '', endDate: '' },
+                      responseType: 'blob'
+                    });
+                    const url = window.URL.createObjectURL(new Blob([response.data]));
+                    const link = document.createElement('a');
+                    link.href = url;
+                    link.setAttribute('download', `bao_cao_tong_hop_kiem_ke_${session.inventoryCode}.xlsx`);
+                    document.body.appendChild(link);
+                    link.click();
+                    link.remove();
+                    toast.success("Tải báo cáo tổng hợp kiểm kê tài sản thành công!");
+                  } catch (err) {
+                    toast.error("Lỗi khi tải báo cáo tổng hợp");
+                  }
+                }}
+                className="bg-blue-600 hover:bg-blue-750 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-blue-100 cursor-pointer"
+              >
+                <FileText className="mr-2 h-4 w-4" /> Xuất báo cáo tổng hợp
+              </button>
+            )}
+
+            {(session.status === 'DRAFT' || session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
+              <button 
+                onClick={handleCancelSession}
+                disabled={submitting}
+                className="bg-white border border-rose-250 text-rose-600 hover:bg-rose-50 px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />} Hủy đợt kiểm kê
+              </button>
             )}
           </div>
         </div>
 
-        <div className="flex flex-wrap gap-3 self-end">
-          {session.status === 'DRAFT' && (
-            <button 
-              onClick={handleStartSession}
-              disabled={submitting}
-              className="bg-emerald-600 hover:bg-emerald-700 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-emerald-100 disabled:opacity-50 cursor-pointer"
-            >
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />} Bắt đầu kiểm kê
-            </button>
-          )}
-
-          {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && !activeSession && (
-            <>
-              <button
-                onClick={() => setShowSessionModal(true)}
-                className="bg-primary-600 hover:bg-primary-750 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-primary-100 cursor-pointer"
-              >
-                <Plus className="mr-2 h-4 w-4" /> Tạo phiên kiểm kê
-              </button>
-              <button
-                onClick={() => document.getElementById('sessions-list-section')?.scrollIntoView({ behavior: 'smooth' })}
-                className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-sm cursor-pointer"
-              >
-                Danh sách phiên
-              </button>
-            </>
-          )}
-
-          {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
-            <div className="relative group">
-              <button 
-                onClick={handleCloseSession}
-                disabled={submitting || (sessions.length > 0 && !sessions.every((s: any) => s.status === 'COMPLETED'))}
-                className="bg-slate-900 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-slate-800 transition-all flex items-center shadow-xl shadow-slate-250 disabled:opacity-50 cursor-pointer"
-              >
-                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Lock className="mr-2 h-4 w-4" />} Chốt đợt kiểm kê
-              </button>
-              {sessions.length > 0 && !sessions.every((s: any) => s.status === 'COMPLETED') && (
-                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 bg-slate-950 text-white text-[10px] p-2 rounded-xl text-center font-bold opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 shadow-lg leading-normal">
-                  Cần hoàn thành tất cả phiên kiểm kê trước
-                </div>
-              )}
-            </div>
-          )}
-
-          {(session.status === 'OPEN' || session.status === 'IN_PROGRESS' || session.status === 'COMPLETED') && (
-            <button
-              onClick={async () => {
-                try {
-                  const response = await api.get('/inventory/export-by-time', {
-                    params: { startDate: '', endDate: '' },
-                    responseType: 'blob'
-                  });
-                  const url = window.URL.createObjectURL(new Blob([response.data]));
-                  const link = document.createElement('a');
-                  link.href = url;
-                  link.setAttribute('download', `bao_cao_tong_hop_kiem_ke_${session.inventoryCode}.xlsx`);
-                  document.body.appendChild(link);
-                  link.click();
-                  link.remove();
-                  toast.success("Tải báo cáo tổng hợp kiểm kê tài sản thành công!");
-                } catch (err) {
-                  toast.error("Lỗi khi tải báo cáo tổng hợp");
-                }
-              }}
-              className="bg-blue-600 hover:bg-blue-750 text-white px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-blue-100 cursor-pointer"
-            >
-              <FileText className="mr-2 h-4 w-4" /> Xuất báo cáo tổng hợp
-            </button>
-          )}
-
-          {(session.status === 'DRAFT' || session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
-            <button 
-              onClick={handleCancelSession}
-              disabled={submitting}
-              className="bg-white border border-rose-250 text-rose-600 hover:bg-rose-50 px-6 py-3.5 rounded-2xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-sm disabled:opacity-50 cursor-pointer"
-            >
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />} Hủy đợt kiểm kê
-            </button>
-          )}
+        {/* Metadata Row */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-bold text-slate-500 pt-4 border-t border-slate-100">
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
+            <span>Bắt đầu: <span className="text-slate-800">{session.inventoryDate ? format(new Date(session.inventoryDate), 'dd/MM/yyyy') : 'N/A'}</span></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Calendar className="h-4 w-4 text-slate-400 shrink-0" />
+            <span>Dự kiến xong: <span className="text-slate-800">{session.expectedFinishDate ? format(new Date(session.expectedFinishDate), 'dd/MM/yyyy') : 'Không giới hạn'}</span></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <User className="h-4 w-4 text-slate-400 shrink-0" />
+            <span>Người phụ trách: <span className="text-slate-800">{session.responsiblePerson || 'Chưa phân công'}</span></span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Tag className="h-4 w-4 text-slate-400 shrink-0" />
+            <span>Phạm vi: <span className="text-slate-800 truncate" title={session.scopeType === 'ALL' ? 'Toàn công ty' : session.scopeType === 'COMPANY' ? `Công ty: ${session.scopeValue}` : `Phòng ban: ${session.scopeValue}`}>{session.scopeType === 'ALL' ? 'Toàn công ty' : session.scopeType === 'COMPANY' ? `Công ty: ${session.scopeValue}` : `Phòng ban: ${session.scopeValue}`}</span></span>
+          </div>
         </div>
+
+        {session.note && (
+          <p className="text-xs text-slate-500 italic bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            <strong>Ghi chú:</strong> {session.note}
+          </p>
+        )}
       </div>
 
       {/* STATS CARDS */}
