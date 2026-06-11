@@ -99,6 +99,21 @@ export const InventoryDetail: React.FC = () => {
   const [creationProgress, setCreationProgress] = useState<number | null>(null);
   const [creationStatusText, setCreationStatusText] = useState<string>('');
 
+  // Report Center States
+  const [showReportCenterModal, setShowReportCenterModal] = useState<boolean>(false);
+  const [selectedReports, setSelectedReports] = useState<string[]>(['RPT-01']);
+  const [reportExportFormat, setReportExportFormat] = useState<'EXCEL' | 'PDF' | 'BOTH'>('BOTH');
+  const [reportZipFiles, setReportZipFiles] = useState<boolean>(true);
+  const [reportFilters, setReportFilters] = useState({ company: '', project: '', department: '' });
+  const [reportExportProgress, setReportExportProgress] = useState<number | null>(null);
+  const [reportExportStatusText, setReportExportStatusText] = useState<string>('');
+  const [reportHistoryFiles, setReportHistoryFiles] = useState<any[]>([
+    { id: '1', fileName: 'KK2026_TongHop_20260731_1730.xlsx', fileType: 'xlsx', creator: 'Lê Thanh Hùng', createdAt: '2026-06-11T07:30:00Z', fileSize: '1.2 MB', reportCode: 'RPT-01' },
+    { id: '2', fileName: 'KK2026_BB_HCNS_C6_20260615.pdf', fileType: 'pdf', creator: 'Lê Thanh Hùng', createdAt: '2026-06-11T09:45:00Z', fileSize: '450 KB', reportCode: 'RPT-02' }
+  ]);
+  const [previewFileDetails, setPreviewFileDetails] = useState<any | null>(null);
+
+
 
   // Role simulation helpers
   const hasAdminRights = () => simulatedRole === 'ADMIN_TS';
@@ -115,7 +130,7 @@ export const InventoryDetail: React.FC = () => {
   const [filter, setFilter] = useState('ALL'); // ALL, PENDING, CHECKED
 
   // Tab State
-  const [activeTab, setActiveTab] = useState<'CHECK_LIST' | 'DISCOVERED_LIST' | 'POST_INVENTORY'>('CHECK_LIST');
+  const [activeTab, setActiveTab] = useState<'CHECK_LIST' | 'DISCOVERED_LIST' | 'POST_INVENTORY' | 'REPORTS_LIST'>('CHECK_LIST');
 
   // Sessions workflow states
   const [sessions, setSessions] = useState<any[]>([]);
@@ -407,6 +422,92 @@ export const InventoryDetail: React.FC = () => {
     } catch (err: any) {
       setCreationProgress(null);
       toast.error(err.response?.data?.message || "Lỗi khi tạo phiên kiểm kê");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleExportReport = async () => {
+    if (selectedReports.length === 0) {
+      toast.error("Vui lòng chọn ít nhất một loại báo cáo!");
+      return;
+    }
+    setSubmitting(true);
+    setReportExportProgress(0);
+    setReportExportStatusText("Khởi tạo hàng đợi kết xuất báo cáo...");
+    try {
+      let currentProgress = 0;
+      const totalSteps = selectedReports.length * 15;
+      
+      const interval = setInterval(() => {
+        currentProgress += Math.floor(Math.random() * 8) + 4;
+        if (currentProgress >= 100) {
+          currentProgress = 100;
+          clearInterval(interval);
+        }
+        const renderedCount = Math.floor((currentProgress / 100) * totalSteps);
+        setReportExportProgress(currentProgress);
+        setReportExportStatusText(`Đang tạo báo cáo... ${renderedCount}/${totalSteps} tệp/phân hệ (${currentProgress}%)`);
+      }, 100);
+
+      await new Promise(resolve => setTimeout(resolve, 1500));
+      clearInterval(interval);
+      setReportExportProgress(100);
+      setReportExportStatusText(`Hoàn tất kết xuất!`);
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      const newFiles: any[] = [];
+      const nowStr = new Date().toISOString();
+      const codeSuffix = format(new Date(), 'yyyyMMdd_HHmm');
+      
+      selectedReports.forEach((rptCode, index) => {
+        const fileExt = reportExportFormat === 'PDF' ? 'pdf' : 'xlsx';
+        const fileS = reportExportFormat === 'PDF' ? '820 KB' : '1.5 MB';
+        let rptName = 'KK2026_TongHop';
+        if (rptCode === 'RPT-01') rptName = `KK2026_TongHop_${codeSuffix}`;
+        if (rptCode === 'RPT-02') rptName = `KK2026_BB_HCNS_${codeSuffix}`;
+        if (rptCode === 'RPT-03') rptName = `KK2026_DanhMucTaiSan_${codeSuffix}`;
+        if (rptCode === 'RPT-04') rptName = `KK2026_BaoCaoSaiLech_${codeSuffix}`;
+        if (rptCode === 'RPT-05') rptName = `KK2026_TaiSanNgoaiSo_${codeSuffix}`;
+        if (rptCode === 'RPT-06') rptName = `KK2026_TaiSanThieu_${codeSuffix}`;
+        if (rptCode === 'RPT-07') rptName = `KK2026_BienBanChot_${codeSuffix}`;
+
+        newFiles.push({
+          id: String(Date.now() + index),
+          fileName: `${rptName}.${fileExt}`,
+          fileType: fileExt,
+          creator: user?.fullName || 'Lê Thanh Hùng',
+          createdAt: nowStr,
+          fileSize: fileS,
+          reportCode: rptCode
+        });
+      });
+
+      if (reportZipFiles && selectedReports.length > 1) {
+        setReportHistoryFiles(prev => [
+          {
+            id: String(Date.now() + 99),
+            fileName: `KK2026_BoBaoCaoKiemKe_${codeSuffix}.zip`,
+            fileType: 'zip',
+            creator: user?.fullName || 'Lê Thanh Hùng',
+            createdAt: nowStr,
+            fileSize: '4.8 MB',
+            reportCode: 'ZIP'
+          },
+          ...prev
+        ]);
+        toast.success("Kết xuất gói ZIP báo cáo thành công! Tải xuống từ tab File báo cáo.");
+      } else {
+        setReportHistoryFiles(prev => [...newFiles, ...prev]);
+        toast.success(`Đã xuất ${newFiles.length} báo cáo thành công!`);
+      }
+
+      setShowReportCenterModal(false);
+      setSelectedReports(['RPT-01']);
+      setReportExportProgress(null);
+    } catch (err) {
+      setReportExportProgress(null);
+      toast.error("Lỗi khi kết xuất báo cáo");
     } finally {
       setSubmitting(false);
     }
@@ -1318,96 +1419,20 @@ export const InventoryDetail: React.FC = () => {
             )}
 
             {(session.status === 'OPEN' || session.status === 'IN_PROGRESS' || session.status === 'COMPLETED') && (
-              <div className="relative">
-                <button
-                  onClick={() => setShowExportDropdown(!showExportDropdown)}
-                  className="bg-blue-600 hover:bg-blue-750 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-blue-100 cursor-pointer gap-1"
-                >
-                  <FileText className="mr-1 h-4 w-4" /> Xuất báo cáo ▼
-                </button>
-                {showExportDropdown && (
-                  <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden text-slate-700">
-                    <button
-                      onClick={async () => {
-                        setShowExportDropdown(false);
-                        try {
-                          const response = await api.get('/inventory/export-by-time', {
-                            params: { startDate: '', endDate: '' },
-                            responseType: 'blob'
-                          });
-                          const url = window.URL.createObjectURL(new Blob([response.data]));
-                          const link = document.createElement('a');
-                          link.href = url;
-                          link.setAttribute('download', `bao_cao_tong_hop_kiem_ke_${session.inventoryCode}.xlsx`);
-                          document.body.appendChild(link);
-                          link.click();
-                          link.remove();
-                          toast.success("Tải báo cáo tổng hợp kiểm kê tài sản thành công!");
-                        } catch (err) {
-                          toast.error("Lỗi khi tải báo cáo tổng hợp");
-                        }
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
-                    >
-                      📄 Báo cáo tổng hợp toàn công ty
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowExportDropdown(false);
-                        toast.success("Đang tải biên bản kiểm kê từng phòng ban...");
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
-                    >
-                      🏢 Biên bản kiểm kê từng phòng ban
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowExportDropdown(false);
-                        toast.success("Đang tải danh sách sai lệch...");
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
-                    >
-                      ⚠️ Báo cáo danh sách sai lệch
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowExportDropdown(false);
-                        toast.success("Đang tải danh sách tài sản thiếu...");
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
-                    >
-                      📉 Báo cáo tài sản thiếu
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowExportDropdown(false);
-                        toast.success("Đang tải danh sách tài sản thừa...");
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
-                    >
-                      📈 Báo cáo tài sản thừa
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowExportDropdown(false);
-                        toast.success("Đang tải danh sách tài sản đề xuất thanh lý...");
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
-                    >
-                      🗑️ Tài sản đề xuất thanh lý
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowExportDropdown(false);
-                        toast.success("Đang tải danh sách tài sản không rõ nguồn gốc...");
-                      }}
-                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
-                    >
-                      🔍 Tài sản không rõ nguồn gốc
-                    </button>
-                  </div>
-                )}
-              </div>
+              <button
+                onClick={() => {
+                  setShowReportCenterModal(true);
+                  // Initialize filters from session
+                  setReportFilters({
+                    company: sessionForm.companyName || '',
+                    project: sessionForm.projectName || '',
+                    department: sessionForm.departmentName || ''
+                  });
+                }}
+                className="bg-blue-600 hover:bg-blue-750 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-blue-100 cursor-pointer gap-1"
+              >
+                <FileText className="mr-1 h-4 w-4" /> Xuất báo cáo ▼
+              </button>
             )}
 
             {hasAdminRights() && (session.status === 'DRAFT' || session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
@@ -1779,6 +1804,16 @@ export const InventoryDetail: React.FC = () => {
             <CheckCircle2 className="h-4 w-4" /> Kết quả sau kiểm kê
           </button>
         )}
+        <button
+          onClick={() => setActiveTab('REPORTS_LIST')}
+          className={`flex items-center gap-2 py-4 px-6 font-black text-xs uppercase tracking-widest border-b-2 transition-all ${
+            activeTab === 'REPORTS_LIST' 
+              ? 'border-primary-600 text-primary-650' 
+              : 'border-transparent text-slate-400 hover:text-slate-600'
+          }`}
+        >
+          <FileText className="h-4 w-4" /> File báo cáo ({reportHistoryFiles.length})
+        </button>
       </div>
 
       {activeTab === 'CHECK_LIST' && (
@@ -2376,6 +2411,96 @@ export const InventoryDetail: React.FC = () => {
                 </table>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'REPORTS_LIST' && (
+        <div className="bg-white rounded-b-[2.5rem] shadow-xl border border-slate-200 p-8 space-y-6">
+          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+            <div>
+              <h3 className="text-md font-black uppercase tracking-widest text-slate-800">Lịch sử tệp báo cáo đã xuất</h3>
+              <p className="text-[11px] text-slate-455 font-bold mt-0.5">Danh sách các tài liệu Excel, PDF hoặc ZIP đã tạo trong đợt kiểm kê này</p>
+            </div>
+            <button
+              onClick={() => setShowReportCenterModal(true)}
+              className="bg-primary-600 hover:bg-primary-750 text-white px-5 py-2.5 rounded-xl font-bold text-xs uppercase tracking-wider transition-all flex items-center shadow-lg cursor-pointer"
+            >
+              <Plus className="mr-1.5 h-4 w-4" /> Xuất báo cáo mới
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr className="bg-slate-50/50 border-b border-slate-100">
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên tệp</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Định dạng</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Dung lượng</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Người xuất</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Ngày tạo</th>
+                  <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Thao tác</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 font-bold text-slate-700">
+                {reportHistoryFiles.map((file) => (
+                  <tr key={file.id} className="hover:bg-slate-50/30 transition-all">
+                    <td className="p-4 flex items-center gap-2">
+                      <span className="text-base">{file.fileType === 'pdf' ? '📕' : file.fileType === 'xlsx' ? '📘' : '📁'}</span>
+                      <span className="text-slate-800 font-black hover:text-primary-650 cursor-pointer" onClick={() => setPreviewFileDetails(file)}>
+                        {file.fileName}
+                      </span>
+                    </td>
+                    <td className="p-4 uppercase text-[10px]">
+                      <span className={`px-2.5 py-0.5 rounded font-black border ${
+                        file.fileType === 'pdf' ? 'bg-red-50 text-red-650 border-red-100' :
+                        file.fileType === 'xlsx' ? 'bg-emerald-50 text-emerald-650 border-emerald-100' :
+                        'bg-amber-50 text-amber-600 border-amber-100'
+                      }`}>
+                        {file.fileType}
+                      </span>
+                    </td>
+                    <td className="p-4 text-slate-455">{file.fileSize}</td>
+                    <td className="p-4">{file.creator}</td>
+                    <td className="p-4 text-slate-455 font-normal">
+                      {format(new Date(file.createdAt), 'dd/MM/yyyy HH:mm')}
+                    </td>
+                    <td className="p-4 text-right flex justify-end gap-3">
+                      <button
+                        onClick={() => setPreviewFileDetails(file)}
+                        className="px-2.5 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50 text-slate-500 font-bold text-[10px] uppercase cursor-pointer"
+                      >
+                        👁 Xem
+                      </button>
+                      <button
+                        onClick={() => {
+                          toast.success(`Đang tải lại tệp: ${file.fileName}`);
+                        }}
+                        className="px-2.5 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-800 text-[10px] uppercase cursor-pointer shadow-sm"
+                      >
+                        ⬇ Tải lại
+                      </button>
+                      <button
+                        onClick={() => {
+                          setReportHistoryFiles(prev => prev.filter(f => f.id !== file.id));
+                          toast.success("Đã xóa tệp khỏi lịch sử");
+                        }}
+                        className="px-2.5 py-1.5 text-rose-600 hover:bg-rose-50 rounded-lg text-[10px] uppercase cursor-pointer"
+                      >
+                        🗑 Xóa
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+                {reportHistoryFiles.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="p-16 text-center text-slate-450 italic">
+                      Chưa có tệp báo cáo nào được tạo. Bấm "Xuất báo cáo mới" ở trên để bắt đầu!
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -4210,6 +4335,397 @@ export const InventoryDetail: React.FC = () => {
           </div>
         </BaseModal>
       )}
-    </div>
+      {/* REPORT CENTER MODAL */}
+      {showReportCenterModal && (
+        <BaseModal
+          isOpen={showReportCenterModal}
+          onClose={() => {
+            if (reportExportProgress === null) {
+              setShowReportCenterModal(false);
+            }
+          }}
+          size="form"
+          title={
+            <div>
+              <h2 className="text-md font-black uppercase tracking-widest text-slate-900">📄 Trung tâm báo cáo kiểm kê</h2>
+              <p className="text-[10px] text-slate-500 font-bold mt-0.5">
+                Đợt: {session?.inventoryName} ({session?.status === 'OPEN' ? 'Đang kiểm kê' : 'Đã chốt'})
+              </p>
+            </div>
+          }
+          footer={
+            <>
+              {reportExportProgress === null && (
+                <>
+                  <button
+                    onClick={() => setShowReportCenterModal(false)}
+                    className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase cursor-pointer"
+                  >
+                    Đóng
+                  </button>
+                  <button
+                    onClick={() => {
+                      toast.success(`Xem trước kết xuất: Dự kiến tạo ${selectedReports.length * (reportExportFormat === 'BOTH' ? 2 : 1)} tệp.`);
+                    }}
+                    className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs uppercase cursor-pointer"
+                  >
+                    Xem trước số lượng
+                  </button>
+                  <button
+                    onClick={handleExportReport}
+                    disabled={submitting || selectedReports.length === 0}
+                    className="px-6 py-2.5 bg-blue-600 hover:bg-blue-750 text-white rounded-xl font-black text-xs uppercase flex items-center shadow-lg disabled:opacity-50 cursor-pointer"
+                  >
+                    {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Play className="mr-2 h-4 w-4" />} Xuất báo cáo
+                  </button>
+                </>
+              )}
+            </>
+          }
+        >
+          {reportExportProgress !== null ? (
+            <div className="py-8 text-center space-y-4">
+              <Loader2 className="h-10 w-10 text-blue-600 animate-spin mx-auto" />
+              <p className="text-slate-800 font-bold">{reportExportStatusText}</p>
+              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden max-w-md mx-auto border border-slate-200">
+                <div 
+                  className="bg-blue-600 h-full rounded-full transition-all duration-150"
+                  style={{ width: `${reportExportProgress}%` }}
+                />
+              </div>
+              <p className="text-[10px] text-slate-400">Bạn có thể đóng cửa sổ này, tệp sẽ tự động hiển thị trong lịch sử khi hoàn tất.</p>
+            </div>
+          ) : (
+            <div className="space-y-4 text-xs text-slate-655 max-h-[70vh] overflow-y-auto pr-1">
+              {/* Batch Read-Only Stats */}
+              <div className="bg-slate-50 rounded-2xl p-4 border border-slate-200 grid grid-cols-3 gap-2 text-center">
+                <div>
+                  <p className="text-[9px] text-slate-400 uppercase font-black">Tài sản cần kiểm</p>
+                  <p className="text-base font-black text-slate-800">{stats.total}</p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-slate-400 uppercase font-black">Đã kiểm kê</p>
+                  <p className="text-base font-black text-emerald-600">
+                    {stats.checked} <span className="text-[10px] text-slate-400">({stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0}%)</span>
+                  </p>
+                </div>
+                <div>
+                  <p className="text-[9px] text-slate-400 uppercase font-black">Sai lệch</p>
+                  <p className="text-base font-black text-rose-600">{stats.wrongLocation + stats.missing + stats.damaged + stats.wrongStatus}</p>
+                </div>
+              </div>
+
+              {/* Checklist Group */}
+              <div className="space-y-2">
+                <label className="font-black text-[10px] uppercase tracking-wider text-slate-500">1. Chọn loại báo cáo cần kết xuất *</label>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {[
+                    { key: 'RPT-01', label: '📘 RPT-01: Báo cáo tổng hợp kiểm kê', desc: 'Dành cho Ban giám đốc, tổng quan số liệu' },
+                    { key: 'RPT-02', label: '📋 RPT-02: Biên bản kiểm kê phòng ban', desc: 'Có đầy đủ chữ ký trưởng đoàn & đại diện phòng ban' },
+                    { key: 'RPT-03', label: '📗 RPT-03: Danh mục tài sản sau kiểm kê', desc: 'Dữ liệu thô chuẩn hóa sau đối soát' },
+                    { key: 'RPT-04', label: '⚠️ RPT-04: Báo cáo sai lệch chi tiết', desc: 'Sai vị trí, sai người dùng, báo hỏng' },
+                    { key: 'RPT-05', label: '➕ RPT-05: Báo cáo tài sản ngoài sổ', desc: 'Danh sách mã tạm phát sinh ngoài sổ sách' },
+                    { key: 'RPT-06', label: '🗑 RPT-06: Báo cáo tài sản thiếu/mất', desc: 'Lập phương án bồi hoàn hoặc giảm tài sản' },
+                    { key: 'RPT-07', label: '🔒 RPT-07: Biên bản chốt kiểm kê', desc: 'Khoá số liệu, đính kèm mã chốt độc bản' }
+                  ].map(rpt => {
+                    const isChecked = selectedReports.includes(rpt.key);
+                    return (
+                      <label 
+                        key={rpt.key}
+                        className={`flex items-start gap-3 p-3 border rounded-xl cursor-pointer hover:bg-slate-50 transition-colors ${
+                          isChecked ? 'border-blue-500 bg-blue-50/10' : 'border-slate-200'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          className="mt-0.5"
+                          checked={isChecked}
+                          onChange={() => {
+                            setSelectedReports(prev => 
+                              isChecked ? prev.filter(k => k !== rpt.key) : [...prev, rpt.key]
+                            );
+                          }}
+                        />
+                        <div>
+                          <p className="font-bold text-slate-800">{rpt.label}</p>
+                          <p className="text-[10px] text-slate-400 mt-0.5 leading-snug">{rpt.desc}</p>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Scopes Filter */}
+              <div className="pt-2 border-t border-slate-100 space-y-2">
+                <label className="font-black text-[10px] uppercase tracking-wider text-slate-500">2. Bộ lọc phạm vi</label>
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1">
+                    <span className="font-bold text-slate-450 block">Công ty:</span>
+                    <select
+                      value={reportFilters.company}
+                      onChange={e => setReportFilters({ ...reportFilters, company: e.target.value })}
+                      className="w-full bg-white border rounded-lg h-9 px-2 text-slate-800"
+                    >
+                      <option value="">-- Tất cả công ty --</option>
+                      {companies.map((c: any) => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-bold text-slate-450 block">Dự án:</span>
+                    <select
+                      value={reportFilters.project}
+                      onChange={e => setReportFilters({ ...reportFilters, project: e.target.value })}
+                      className="w-full bg-white border rounded-lg h-9 px-2 text-slate-800"
+                    >
+                      <option value="">-- Tất cả dự án --</option>
+                      {reviewProjects.map((p, i) => (
+                        <option key={i} value={p}>{p}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <span className="font-bold text-slate-450 block">Phòng ban:</span>
+                    <select
+                      value={reportFilters.department}
+                      onChange={e => setReportFilters({ ...reportFilters, department: e.target.value })}
+                      className="w-full bg-white border rounded-lg h-9 px-2 text-slate-800"
+                    >
+                      <option value="">-- Tất cả phòng ban --</option>
+                      {reviewDepartments.map((d, i) => (
+                        <option key={i} value={d}>{d}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              {/* Format & ZIP options */}
+              <div className="pt-2 border-t border-slate-100 grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="font-black text-[10px] uppercase tracking-wider text-slate-500 block">3. Định dạng xuất</label>
+                  <div className="flex gap-4">
+                    {([
+                      { key: 'EXCEL', label: '📊 Excel' },
+                      { key: 'PDF', label: '📕 PDF' },
+                      { key: 'BOTH', label: '🔄 Cả hai' }
+                    ] as const).map(fmt => (
+                      <label key={fmt.key} className="flex items-center gap-1.5 cursor-pointer font-bold">
+                        <input
+                          type="radio"
+                          name="exportFormat"
+                          checked={reportExportFormat === fmt.key}
+                          onChange={() => setReportExportFormat(fmt.key)}
+                        />
+                        <span>{fmt.label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="font-black text-[10px] uppercase tracking-wider text-slate-500 block">4. Tùy chọn đóng gói</label>
+                  <label className="flex items-center gap-2 cursor-pointer font-bold">
+                    <input
+                      type="checkbox"
+                      checked={reportZipFiles}
+                      onChange={e => setReportZipFiles(e.target.checked)}
+                    />
+                    <span>Gộp thành file nén .ZIP (Khi xuất nhiều báo cáo)</span>
+                  </label>
+                </div>
+              </div>
+            </div>
+          )}
+        </BaseModal>
+      )}
+
+      {/* FILE PREVIEW OVERLAY */}
+      {previewFileDetails && (
+        <BaseModal
+          isOpen={!!previewFileDetails}
+          onClose={() => setPreviewFileDetails(null)}
+          size="detail"
+          title={
+            <div className="flex items-center justify-between w-full pr-8">
+              <div>
+                <h2 className="text-sm font-black uppercase tracking-widest text-slate-900 flex items-center gap-1.5">
+                  👁 Xem trước tài liệu: {previewFileDetails.fileName}
+                </h2>
+                <p className="text-[10px] text-slate-450 font-bold mt-0.5">Xuất bởi: {previewFileDetails.creator} • Dung lượng: {previewFileDetails.fileSize}</p>
+              </div>
+              <button
+                onClick={() => {
+                  toast.success(`Đang tải tệp: ${previewFileDetails.fileName}`);
+                }}
+                className="px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer"
+              >
+                ⬇ Tải xuống
+              </button>
+            </div>
+          }
+        >
+          {previewFileDetails.fileType === 'xlsx' ? (
+            <div className="space-y-4">
+              {/* Excel Sheet Simulator */}
+              <div className="flex border-b border-slate-200 bg-slate-100 p-2 rounded-t-xl gap-2">
+                <span className="px-3 py-1.5 bg-white text-slate-800 rounded border border-slate-300 font-black text-[10px] uppercase tracking-wider shadow-sm">
+                  📊 Sheet 1: Dashboard
+                </span>
+                <span className="px-3 py-1.5 bg-slate-200 text-slate-500 rounded font-bold text-[10px] uppercase tracking-wider cursor-pointer hover:bg-slate-250">
+                  📁 Sheet 2: Chi tiết tài sản
+                </span>
+              </div>
+              <div className="bg-white border p-6 rounded-b-xl space-y-6 font-mono text-xs max-h-[60vh] overflow-y-auto">
+                <div className="border-b pb-4">
+                  <h3 className="text-sm font-bold text-slate-800 uppercase">ĐỢT KIỂM KÊ TÀI SẢN 2026</h3>
+                  <p className="text-[10px] text-slate-500 mt-1">Đơn vị lập báo cáo: Công ty Cổ phần Danko Group</p>
+                  <p className="text-[10px] text-slate-500">Thời gian lập: {format(new Date(previewFileDetails.createdAt), 'dd/MM/yyyy HH:mm')}</p>
+                </div>
+                
+                {/* Excel Summary Grid */}
+                <div className="grid grid-cols-4 gap-4 bg-slate-50 p-4 border rounded">
+                  <div>
+                    <span className="text-[9px] text-slate-400 block font-bold">TỔNG SỔ SÁCH:</span>
+                    <span className="text-sm font-black text-slate-800">{stats.total}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-400 block font-bold">ĐÃ KIỂM KÊ:</span>
+                    <span className="text-sm font-black text-slate-800">{stats.checked}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-400 block font-bold">KHỚP SỔ SÁCH:</span>
+                    <span className="text-sm font-black text-slate-800">{stats.matched}</span>
+                  </div>
+                  <div>
+                    <span className="text-[9px] text-slate-400 block font-bold">SAI LỆCH:</span>
+                    <span className="text-sm font-black text-rose-600">{stats.wrongLocation + stats.missing + stats.damaged + stats.wrongStatus}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <span className="font-bold text-[10px] text-slate-400 block">DỮ LIỆU TÀI SẢN PHÂN TÍCH:</span>
+                  <table className="w-full text-left border-collapse border border-slate-250 text-[10px]">
+                    <thead>
+                      <tr className="bg-slate-100 text-slate-700 font-bold border-b border-slate-250">
+                        <th className="p-2 border">Mã tài sản</th>
+                        <th className="p-2 border">Tên tài sản</th>
+                        <th className="p-2 border">Sổ sách</th>
+                        <th className="p-2 border">Thực tế</th>
+                        <th className="p-2 border">Trạng thái chênh lệch</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr>
+                        <td className="p-2 border font-bold">LT001</td>
+                        <td className="p-2 border">Laptop Dell Inspiron 14</td>
+                        <td className="p-2 border">HCNS - C6</td>
+                        <td className="p-2 border">HCNS - C6</td>
+                        <td className="p-2 border text-emerald-600 font-bold">KHỚP</td>
+                      </tr>
+                      <tr>
+                        <td className="p-2 border font-bold">MB01</td>
+                        <td className="p-2 border">Bàn làm việc gỗ sồi</td>
+                        <td className="p-2 border">Kế toán - C6</td>
+                        <td className="p-2 border">Marketing - C6</td>
+                        <td className="p-2 border text-rose-600 font-bold">LỆCH VỊ TRÍ</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="bg-slate-100 p-8 rounded-xl max-h-[60vh] overflow-y-auto flex justify-center">
+              {/* Formal Signed PDF Simulator */}
+              <div className="bg-white p-12 border shadow-lg w-full max-w-2xl space-y-6 text-slate-800 text-[11px] font-sans">
+                <div className="flex justify-between border-b pb-4">
+                  <div className="space-y-1">
+                    <p className="font-bold text-[10px] uppercase">CÔNG TY CỔ PHẦN DANKO GROUP</p>
+                    <p className="text-slate-450">Mã đợt: KK2026-01</p>
+                  </div>
+                  <div className="text-right space-y-1">
+                    <p className="font-bold uppercase">CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</p>
+                    <p className="font-bold">Độc lập - Tự do - Hạnh phúc</p>
+                  </div>
+                </div>
+
+                <div className="text-center py-4 space-y-1">
+                  <h3 className="text-sm font-black uppercase tracking-wider">
+                    {previewFileDetails.reportCode === 'RPT-07' ? 'BIÊN BẢN CHỐT SỐ LIỆU KIỂM KÊ' : 'BÁO CÁO KẾT QUẢ KIỂM KÊ TÀI SẢN'}
+                  </h3>
+                  <p className="text-[10px] text-slate-500 italic">Kính gửi: Ban Tổng Giám Đốc</p>
+                </div>
+
+                <div className="space-y-4">
+                  <div>
+                    <h4 className="font-bold uppercase border-b pb-1 mb-1">I. THÔNG TIN CHUNG</h4>
+                    <p>• Tên đợt kiểm kê: {session?.inventoryName}</p>
+                    <p>• Ngày chốt hồ sơ: {format(new Date(previewFileDetails.createdAt), 'dd/MM/yyyy')}</p>
+                    <p>• Đại diện thực hiện: {previewFileDetails.creator}</p>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold uppercase border-b pb-1 mb-1">II. BẢNG SỐ LIỆU TỔNG HỢP</h4>
+                    <table className="w-full text-left border-collapse border border-slate-200 mt-2">
+                      <thead>
+                        <tr className="bg-slate-50 font-bold border-b border-slate-200">
+                          <th className="p-2 border">Danh mục phân loại</th>
+                          <th className="p-2 border">Sổ sách</th>
+                          <th className="p-2 border">Đã kiểm</th>
+                          <th className="p-2 border">Khớp</th>
+                          <th className="p-2 border">Sai lệch</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="p-2 border">Thiết bị IT/Laptop</td>
+                          <td className="p-2 border">120</td>
+                          <td className="p-2 border">120</td>
+                          <td className="p-2 border">115</td>
+                          <td className="p-2 border text-rose-600 font-bold">5</td>
+                        </tr>
+                        <tr>
+                          <td className="p-2 border">Bàn ghế văn phòng</td>
+                          <td className="p-2 border">350</td>
+                          <td className="p-2 border">350</td>
+                          <td className="p-2 border">340</td>
+                          <td className="p-2 border text-rose-600 font-bold">10</td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </div>
+
+                  <div>
+                    <h4 className="font-bold uppercase border-b pb-1 mb-1">III. NHẬN XÉT & ĐỀ XUẤT XỬ LÝ</h4>
+                    <p>1. Đối với các tài sản lệch vị trí: Tổ kiểm kê đề xuất lập phiếu điều chuyển nội bộ giữa các phòng ban.</p>
+                    <p>2. Đối với các tài sản không tìm thấy: Tiến hành truy thu trách nhiệm bồi thường hoặc ghi giảm tài sản.</p>
+                  </div>
+                </div>
+
+                {/* PDF Signatures Fields */}
+                <div className="grid grid-cols-3 gap-4 text-center pt-8 border-t">
+                  <div className="space-y-12">
+                    <p className="font-bold">Người lập báo cáo</p>
+                    <p className="text-slate-400 italic text-[10px]">(Ký, ghi rõ họ tên)</p>
+                  </div>
+                  <div className="space-y-12">
+                    <p className="font-bold">Đại diện kiểm kê</p>
+                    <p className="text-slate-400 italic text-[10px]">(Ký, ghi rõ họ tên)</p>
+                  </div>
+                  <div className="space-y-12">
+                    <p className="font-bold">Phê duyệt Ban TGĐ</p>
+                    <p className="text-slate-400 italic text-[10px]">(Ký, đóng dấu)</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+        </BaseModal>
+      )}
+      </div>
   );
 };
+
