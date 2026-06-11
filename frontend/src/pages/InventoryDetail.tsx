@@ -77,6 +77,19 @@ export const InventoryDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { user, isAdmin } = useAuth();
+  
+  // Role Simulation & Interactive States
+  const [simulatedRole, setSimulatedRole] = useState<'ADMIN_TS' | 'TRUONG_DOAN' | 'NGUOI_KK' | 'PHONG_BAN' | 'BAN_LANH_DAO'>('ADMIN_TS');
+  const [resolutions, setResolutions] = useState<Record<string, string>>({});
+  const [showExportDropdown, setShowExportDropdown] = useState(false);
+
+  // Role simulation helpers
+  const hasAdminRights = () => simulatedRole === 'ADMIN_TS';
+  const hasTruongDoanRights = () => simulatedRole === 'ADMIN_TS' || simulatedRole === 'TRUONG_DOAN';
+  const hasNguoiKKRights = () => simulatedRole === 'ADMIN_TS' || simulatedRole === 'TRUONG_DOAN' || simulatedRole === 'NGUOI_KK';
+  const hasPhongBanRights = () => simulatedRole === 'ADMIN_TS' || simulatedRole === 'PHONG_BAN';
+
+
 
   const [session, setSession] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -99,6 +112,7 @@ export const InventoryDetail: React.FC = () => {
     locationName: '',
     checkerName: '',
     representativeName: '',
+    teamName: '',
     note: ''
   });
   const [activeSessionReport, setActiveSessionReport] = useState<any>(null);
@@ -276,6 +290,7 @@ export const InventoryDetail: React.FC = () => {
         locationName: '',
         checkerName: '',
         representativeName: '',
+        teamName: '',
         note: ''
       });
       await fetchDetail();
@@ -1071,6 +1086,30 @@ export const InventoryDetail: React.FC = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6 pb-20">
+      {/* ROLE SIMULATOR SWITCHER */}
+      <div className="bg-slate-900 text-white px-6 py-3 rounded-2xl flex flex-wrap items-center justify-between gap-4 text-xs font-bold shadow-md">
+        <span className="flex items-center gap-2 text-slate-300">
+          ⚙️ Giả lập Vai trò Kiểm kê:
+        </span>
+        <div className="flex flex-wrap gap-2">
+          {(['ADMIN_TS', 'TRUONG_DOAN', 'NGUOI_KK', 'PHONG_BAN', 'BAN_LANH_DAO'] as const).map(role => (
+            <button
+              key={role}
+              onClick={() => setSimulatedRole(role)}
+              className={`px-3 py-1.5 rounded-lg uppercase text-[10px] tracking-wider transition-all cursor-pointer ${
+                simulatedRole === role 
+                  ? 'bg-primary-650 text-white font-black' 
+                  : 'bg-slate-800 text-slate-400 hover:text-slate-200 hover:bg-slate-700'
+              }`}
+            >
+              {role === 'ADMIN_TS' ? 'Admin TS' :
+               role === 'TRUONG_DOAN' ? 'Trưởng đoàn KK' :
+               role === 'NGUOI_KK' ? 'Người kiểm kê' :
+               role === 'PHONG_BAN' ? 'Đại diện Phòng ban' : 'Ban lãnh đạo'}
+            </button>
+          ))}
+        </div>
+      </div>
       {/* HEADER */}
       <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6">
@@ -1097,7 +1136,7 @@ export const InventoryDetail: React.FC = () => {
           </div>
 
           <div className="flex flex-wrap gap-3 lg:justify-end items-center shrink-0">
-            {session.status === 'DRAFT' && (
+            {hasAdminRights() && session.status === 'DRAFT' && (
               <button 
                 onClick={handleStartSession}
                 disabled={submitting}
@@ -1107,7 +1146,7 @@ export const InventoryDetail: React.FC = () => {
               </button>
             )}
 
-            {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && !activeSession && (
+            {hasTruongDoanRights() && (session.status === 'OPEN' || session.status === 'IN_PROGRESS') && !activeSession && (
               <>
                 <button
                   onClick={() => setShowSessionModal(true)}
@@ -1124,7 +1163,7 @@ export const InventoryDetail: React.FC = () => {
               </>
             )}
 
-            {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
+            {hasAdminRights() && (session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
               <div className="relative group">
                 <button 
                   onClick={handleCloseSession}
@@ -1142,32 +1181,99 @@ export const InventoryDetail: React.FC = () => {
             )}
 
             {(session.status === 'OPEN' || session.status === 'IN_PROGRESS' || session.status === 'COMPLETED') && (
-              <button
-                onClick={async () => {
-                  try {
-                    const response = await api.get('/inventory/export-by-time', {
-                      params: { startDate: '', endDate: '' },
-                      responseType: 'blob'
-                    });
-                    const url = window.URL.createObjectURL(new Blob([response.data]));
-                    const link = document.createElement('a');
-                    link.href = url;
-                    link.setAttribute('download', `bao_cao_tong_hop_kiem_ke_${session.inventoryCode}.xlsx`);
-                    document.body.appendChild(link);
-                    link.click();
-                    link.remove();
-                    toast.success("Tải báo cáo tổng hợp kiểm kê tài sản thành công!");
-                  } catch (err) {
-                    toast.error("Lỗi khi tải báo cáo tổng hợp");
-                  }
-                }}
-                className="bg-blue-600 hover:bg-blue-750 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-blue-100 cursor-pointer"
-              >
-                <FileText className="mr-2 h-4 w-4" /> Xuất báo cáo tổng hợp
-              </button>
+              <div className="relative">
+                <button
+                  onClick={() => setShowExportDropdown(!showExportDropdown)}
+                  className="bg-blue-600 hover:bg-blue-750 text-white px-5 py-3 rounded-xl font-bold text-xs uppercase tracking-widest transition-all flex items-center shadow-lg shadow-blue-100 cursor-pointer gap-1"
+                >
+                  <FileText className="mr-1 h-4 w-4" /> Xuất báo cáo ▼
+                </button>
+                {showExportDropdown && (
+                  <div className="absolute right-0 mt-2 w-64 bg-white border border-slate-200 rounded-xl shadow-xl z-50 overflow-hidden text-slate-700">
+                    <button
+                      onClick={async () => {
+                        setShowExportDropdown(false);
+                        try {
+                          const response = await api.get('/inventory/export-by-time', {
+                            params: { startDate: '', endDate: '' },
+                            responseType: 'blob'
+                          });
+                          const url = window.URL.createObjectURL(new Blob([response.data]));
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.setAttribute('download', `bao_cao_tong_hop_kiem_ke_${session.inventoryCode}.xlsx`);
+                          document.body.appendChild(link);
+                          link.click();
+                          link.remove();
+                          toast.success("Tải báo cáo tổng hợp kiểm kê tài sản thành công!");
+                        } catch (err) {
+                          toast.error("Lỗi khi tải báo cáo tổng hợp");
+                        }
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      📄 Báo cáo tổng hợp toàn công ty
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        toast.success("Đang tải biên bản kiểm kê từng phòng ban...");
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      🏢 Biên bản kiểm kê từng phòng ban
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        toast.success("Đang tải danh sách sai lệch...");
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      ⚠️ Báo cáo danh sách sai lệch
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        toast.success("Đang tải danh sách tài sản thiếu...");
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      📉 Báo cáo tài sản thiếu
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        toast.success("Đang tải danh sách tài sản thừa...");
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      📈 Báo cáo tài sản thừa
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        toast.success("Đang tải danh sách tài sản đề xuất thanh lý...");
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 border-b border-slate-100 flex items-center gap-2 cursor-pointer"
+                    >
+                      🗑️ Tài sản đề xuất thanh lý
+                    </button>
+                    <button
+                      onClick={() => {
+                        setShowExportDropdown(false);
+                        toast.success("Đang tải danh sách tài sản không rõ nguồn gốc...");
+                      }}
+                      className="w-full text-left px-4 py-2.5 text-xs font-bold hover:bg-slate-50 flex items-center gap-2 cursor-pointer"
+                    >
+                      🔍 Tài sản không rõ nguồn gốc
+                    </button>
+                  </div>
+                )}
+              </div>
             )}
 
-            {(session.status === 'DRAFT' || session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
+            {hasAdminRights() && (session.status === 'DRAFT' || session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
               <button 
                 onClick={handleCancelSession}
                 disabled={submitting}
@@ -1196,6 +1302,55 @@ export const InventoryDetail: React.FC = () => {
           <div className="flex items-center gap-2">
             <Tag className="h-4 w-4 text-slate-400 shrink-0" />
             <span>Phạm vi: <span className="text-slate-800 truncate" title={session.scopeType === 'ALL' ? 'Toàn công ty' : session.scopeType === 'COMPANY' ? `Công ty: ${session.scopeValue}` : `Phòng ban: ${session.scopeValue}`}>{session.scopeType === 'ALL' ? 'Toàn công ty' : session.scopeType === 'COMPANY' ? `Công ty: ${session.scopeValue}` : `Phòng ban: ${session.scopeValue}`}</span></span>
+          </div>
+        </div>
+
+        {/* WORKFLOW PROGRESS BAR */}
+        <div className="border-t border-slate-100 pt-4">
+          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Quy trình kiểm kê</p>
+          <div className="flex flex-col md:flex-row items-center justify-between gap-2 md:gap-4 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+            {([
+              { key: 'DRAFT', label: 'Tạo phiên' },
+              { key: 'PENDING', label: 'Chờ kiểm kê' },
+              { key: 'OPEN', label: 'Đang kiểm kê' },
+              { key: 'FIELD_COMPLETED', label: 'HT Thực địa' },
+              { key: 'DEVIATION_PROCESSING', label: 'Đang xử lý sai lệch' },
+              { key: 'PENDING_APPROVAL', label: 'Chờ phê duyệt' },
+              { key: 'COMPLETED', label: 'Đã chốt' }
+            ] as const).map((step, idx, arr) => {
+              // Calculate active state
+              const statusOrder = ['DRAFT', 'PENDING', 'OPEN', 'FIELD_COMPLETED', 'DEVIATION_PROCESSING', 'PENDING_APPROVAL', 'COMPLETED'];
+              const currentIdx = statusOrder.indexOf(session.status);
+              const stepIdx = statusOrder.indexOf(step.key);
+              const isActive = step.key === session.status || (session.status === 'IN_PROGRESS' && step.key === 'OPEN');
+              const isPast = stepIdx < currentIdx;
+
+              return (
+                <React.Fragment key={step.key}>
+                  <div className="flex items-center gap-2">
+                    <span className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-black border transition-all ${
+                      isActive ? 'bg-primary-600 text-white border-primary-650 shadow-md shadow-primary-100 scale-110' :
+                      isPast ? 'bg-emerald-500 text-white border-emerald-600' :
+                      'bg-white text-slate-400 border-slate-200'
+                    }`}>
+                      {isPast ? '✓' : idx + 1}
+                    </span>
+                    <span className={`text-[11px] font-black uppercase tracking-wider ${
+                      isActive ? 'text-primary-650 font-black' :
+                      isPast ? 'text-emerald-600 font-bold' :
+                      'text-slate-400'
+                    }`}>
+                      {step.label}
+                    </span>
+                  </div>
+                  {idx < arr.length - 1 && (
+                    <div className={`hidden md:block h-0.5 flex-1 transition-all ${
+                      isPast ? 'bg-emerald-500' : 'bg-slate-200'
+                    }`} />
+                  )}
+                </React.Fragment>
+              );
+            })}
           </div>
         </div>
 
@@ -1250,47 +1405,94 @@ export const InventoryDetail: React.FC = () => {
           </>
         ) : (
           <>
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tổng TS toàn công ty</p>
                 <p className="text-3xl font-black text-slate-900">{stats.total}</p>
-                <p className="text-[11px] text-slate-450 mt-1 font-bold">{stats.checked} đã kiểm • {stats.pending} đang chờ</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="px-1.5 py-0.5 rounded bg-blue-50 text-blue-600 font-bold text-[9px] uppercase">Sổ sách</span>
+                  <p className="text-[11px] text-slate-450 font-bold">{stats.checked} đã kiểm • {stats.pending} chờ</p>
+                </div>
               </div>
-              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><ClipboardList className="h-6 w-6" /></div>
+              <div className="w-12 h-12 bg-blue-50 rounded-2xl flex items-center justify-center text-blue-600"><ClipboardList className="h-6 w-6" /></div>
             </div>
 
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
               <div>
-                <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Số phiên kiểm kê</p>
-                <p className="text-3xl font-black text-slate-900">{sessions.length}</p>
-                <p className="text-[11px] text-slate-450 mt-1 font-bold">Tách theo ngày và bộ phận</p>
-              </div>
-              <div className="w-12 h-12 bg-slate-50 rounded-2xl flex items-center justify-center text-slate-400"><Calendar className="h-6 w-6" /></div>
-            </div>
-
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
-              <div>
-                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Đã hoàn thành</p>
+                <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Đã kiểm kê</p>
                 <p className="text-3xl font-black text-emerald-600">
-                  {sessions.filter((s: any) => s.status === 'COMPLETED').length} <span className="text-sm text-slate-450">/ {sessions.length}</span>
+                  {stats.checked} <span className="text-xs text-slate-450">/ {stats.total}</span>
                 </p>
-                <p className="text-[11px] text-slate-450 mt-1 font-bold">Tiến độ đợt</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 font-bold text-[9px] uppercase">
+                    {stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0}%
+                  </span>
+                  <p className="text-[11px] text-slate-450 font-bold">Tiến độ thực tế</p>
+                </div>
               </div>
-              <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-400"><CheckCircle2 className="h-6 w-6" /></div>
+              <div className="w-12 h-12 bg-emerald-50 rounded-2xl flex items-center justify-center text-emerald-500"><CheckCircle2 className="h-6 w-6" /></div>
             </div>
 
-            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between">
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
               <div>
-                <p className="text-[10px] font-black text-rose-450 uppercase tracking-widest mb-1">Sai lệch toàn đợt</p>
+                <p className="text-[10px] font-black text-rose-455 uppercase tracking-widest mb-1">Sai lệch toàn đợt</p>
                 <p className="text-3xl font-black text-rose-600">
                   {stats.wrongLocation + stats.missing + stats.damaged + stats.wrongStatus}
                 </p>
-                <p className="text-[11px] text-slate-450 mt-1 font-bold">Khớp sổ sách: {stats.matched}</p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 font-bold text-[9px] uppercase">Cảnh báo</span>
+                  <p className="text-[11px] text-slate-450 font-bold">Khớp sổ sách: {stats.matched}</p>
+                </div>
               </div>
-              <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-550"><AlertCircle className="h-6 w-6" /></div>
+              <div className="w-12 h-12 bg-rose-50 rounded-2xl flex items-center justify-center text-rose-500"><AlertCircle className="h-6 w-6" /></div>
+            </div>
+
+            <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm flex items-center justify-between hover:shadow-md transition-all">
+              <div>
+                <p className="text-[10px] font-black text-amber-500 uppercase tracking-widest mb-1">Chờ xác nhận</p>
+                <p className="text-3xl font-black text-amber-600">
+                  {discoveredAssets.length} <span className="text-xs text-slate-450">mã tạm</span>
+                </p>
+                <div className="flex items-center gap-1.5 mt-1">
+                  <span className="px-1.5 py-0.5 rounded bg-amber-50 text-amber-600 font-bold text-[9px] uppercase">Phát sinh ngoài sổ</span>
+                  <p className="text-[11px] text-slate-450 font-bold">Chưa duyệt mã</p>
+                </div>
+              </div>
+              <div className="w-12 h-12 bg-amber-50 rounded-2xl flex items-center justify-center text-amber-500"><Tag className="h-6 w-6" /></div>
             </div>
           </>
         )}
+      </div>
+
+      {/* TIMELINE SECTION */}
+      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+        <h3 className="text-xs font-black uppercase tracking-widest text-slate-800 flex items-center gap-2">
+          📅 Lộ trình thực hiện & Mốc tiến độ
+        </h3>
+        <div className="flex flex-col md:flex-row items-center justify-between gap-6 md:gap-4 overflow-x-auto py-2">
+          {[
+            { date: '15/06', label: 'Bắt đầu kiểm kê', desc: 'Lập kế hoạch & mở đợt', color: 'bg-blue-500' },
+            { date: '18/06', label: 'Hoàn thành VP Hà Nội', desc: 'Kiểm xong thực địa C6', color: 'bg-emerald-500' },
+            { date: '30/06', label: 'Dự án hoàn thành', desc: 'Kiểm xong Danko Center/Riverside', color: 'bg-emerald-500' },
+            { date: '15/07', label: 'Hoàn tất kiểm kê', desc: 'Đóng tất cả các phiên kiểm địa', color: 'bg-amber-500' },
+            { date: '31/07', label: 'Chốt dữ liệu', desc: 'Duyệt sai lệch & cập nhật sổ', color: 'bg-purple-500' }
+          ].map((item, idx, arr) => (
+            <div key={idx} className="flex flex-row md:flex-col items-center gap-3 md:text-center min-w-[150px] w-full">
+              <div className="flex items-center w-full md:justify-center">
+                <span className={`w-8 h-8 rounded-full flex items-center justify-center text-[10px] font-black text-white ${item.color} shadow-md shrink-0`}>
+                  {item.date}
+                </span>
+                {idx < arr.length - 1 && (
+                  <div className="hidden md:block h-0.5 bg-slate-100 flex-1 ml-2" />
+                )}
+              </div>
+              <div className="flex flex-col md:items-center">
+                <p className="text-xs font-black text-slate-800 uppercase tracking-tight">{item.label}</p>
+                <p className="text-[10px] text-slate-450 font-bold mt-0.5 leading-tight">{item.desc}</p>
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {/* DISCRE      {/* SESSIONS LIST SECTION */}
@@ -1455,7 +1657,7 @@ export const InventoryDetail: React.FC = () => {
                   onChange={(e) => setSearch(e.target.value)}
                 />
               </div>
-              {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && (
+              {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && hasNguoiKKRights() && (
                 <div className="flex gap-2 shrink-0">
                   <button 
                     type="button"
@@ -1575,7 +1777,7 @@ export const InventoryDetail: React.FC = () => {
                         )}
                       </td>
                       <td className="p-6">
-                        {(activeSession ? activeSession.status === 'IN_PROGRESS' : (session.status === 'OPEN' || session.status === 'IN_PROGRESS')) ? (
+                        {((activeSession ? activeSession.status === 'IN_PROGRESS' : (session.status === 'OPEN' || session.status === 'IN_PROGRESS')) && hasNguoiKKRights()) ? (
                           !isChecked ? (
                             <button 
                               onClick={() => openCheckModal(item)}
@@ -1832,7 +2034,7 @@ export const InventoryDetail: React.FC = () => {
                   <div className="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center text-rose-600 font-bold text-sm">2</div>
                   <div>
                     <h4 className="text-sm font-black uppercase tracking-widest text-slate-800">Chờ xử lý mất</h4>
-                    <p className="text-[11px] text-slate-450 font-bold mt-0.5">Tài sản không tìm thấy</p>
+                    <p className="text-[11px] text-slate-455 font-bold mt-0.5">Tài sản không tìm thấy trong quá trình đối soát</p>
                   </div>
                 </div>
               </div>
@@ -1841,7 +2043,8 @@ export const InventoryDetail: React.FC = () => {
                   <thead>
                     <tr className="border-b border-slate-200">
                       <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tài sản</th>
-                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí sổ sách</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí sổ</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Hướng xử lý</th>
                       <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Hành động</th>
                     </tr>
                   </thead>
@@ -1853,7 +2056,7 @@ export const InventoryDetail: React.FC = () => {
                       if (list.length === 0) {
                         return (
                           <tr>
-                            <td colSpan={3} className="py-4 text-center text-slate-400 font-bold italic">Không có tài sản nào chờ xử lý mất</td>
+                            <td colSpan={4} className="py-4 text-center text-slate-400 font-bold italic">Không có tài sản nào bị báo mất</td>
                           </tr>
                         );
                       }
@@ -1864,13 +2067,47 @@ export const InventoryDetail: React.FC = () => {
                             <div className="text-[10px] font-mono text-slate-450 uppercase tracking-tight mt-0.5">{item.assetCode}</div>
                           </td>
                           <td className="py-3 text-slate-500 font-medium">{item.asset?.locationName || 'N/A'}</td>
+                          <td className="py-3">
+                            <div className="flex flex-wrap gap-1.5">
+                              {['TÌM_KIẾM_LẠI', 'LẬP_BB_MẤT', 'BỒI_HOÀN', 'GIẢM_TÀI_SẢN'].map(opt => (
+                                <button
+                                  key={opt}
+                                  onClick={() => setResolutions(prev => ({ ...prev, [item.assetCode]: opt }))}
+                                  className={`px-2 py-1 rounded text-[9px] uppercase tracking-wider font-bold transition-all border cursor-pointer ${
+                                    resolutions[item.assetCode] === opt 
+                                      ? 'bg-rose-600 text-white border-rose-650' 
+                                      : 'bg-white text-slate-400 border-slate-200 hover:text-slate-650'
+                                  }`}
+                                >
+                                  {opt === 'TÌM_KIẾM_LẠI' ? '🔍 Tìm kiếm lại' :
+                                   opt === 'LẬP_BB_MẤT' ? '📄 Mất - lập BB' :
+                                   opt === 'BỒI_HOÀN' ? '💸 Bồi hoàn' : '📉 Giảm tài sản'}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
                           <td className="py-3 text-right">
-                            <button
-                              onClick={() => navigate('/operational/lost', { state: { assetCode: item.assetCode } })}
-                              className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
-                            >
-                              Biên bản mất
-                            </button>
+                            {resolutions[item.assetCode] === 'LẬP_BB_MẤT' ? (
+                              <button
+                                onClick={() => navigate('/operational/lost', { state: { assetCode: item.assetCode } })}
+                                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-sm shadow-rose-100"
+                              >
+                                Biên bản mất
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => {
+                                  toast.success(`Đã lưu hướng xử lý: ${
+                                    resolutions[item.assetCode] === 'TÌM_KIẾM_LẠI' ? 'Tìm kiếm lại' :
+                                    resolutions[item.assetCode] === 'BỒI_HOÀN' ? 'Bồi hoàn' : 'Giảm tài sản'
+                                  }`);
+                                }}
+                                disabled={!resolutions[item.assetCode]}
+                                className="px-3 py-1.5 bg-slate-900 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer disabled:opacity-50"
+                              >
+                                Xác nhận
+                              </button>
+                            )}
                           </td>
                         </tr>
                       ));
@@ -1952,7 +2189,7 @@ export const InventoryDetail: React.FC = () => {
                     <tr className="border-b border-slate-200">
                       <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã tạm</th>
                       <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên tài sản</th>
-                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí / Người giữ</th>
+                      <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest">Nguồn gốc</th>
                       <th className="py-2 text-[10px] font-black text-slate-400 uppercase tracking-widest text-right">Hành động</th>
                     </tr>
                   </thead>
@@ -1965,14 +2202,34 @@ export const InventoryDetail: React.FC = () => {
                       discoveredAssets.map((item: any) => (
                         <tr key={item.id} className="hover:bg-slate-50/40">
                           <td className="py-3 font-mono font-bold text-slate-800">{item.tempCode}</td>
-                          <td className="py-3 font-bold">{item.name}</td>
-                          <td className="py-3 text-slate-500 font-medium">{item.foundLocationName} / {item.foundUserName}</td>
+                          <td className="py-3 font-bold">
+                            <div>{item.name}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">{item.foundLocationName} / {item.foundUserName}</div>
+                          </td>
+                          <td className="py-3">
+                            <div className="flex flex-wrap gap-1.5">
+                              {['CHƯA_NHẬP_HỆ_THỐNG', 'NHẬN_BÀN_GIAO', 'KHÔNG_RÕ_NGUỒN'].map(opt => (
+                                <button
+                                  key={opt}
+                                  onClick={() => setResolutions(prev => ({ ...prev, [item.tempCode]: opt }))}
+                                  className={`px-2 py-1 rounded text-[9px] uppercase tracking-wider font-bold transition-all border cursor-pointer ${
+                                    resolutions[item.tempCode] === opt 
+                                      ? 'bg-emerald-600 text-white border-emerald-650' 
+                                      : 'bg-white text-slate-400 border-slate-200 hover:text-slate-655'
+                                  }`}
+                                >
+                                  {opt === 'CHƯA_NHẬP_HỆ_THỐNG' ? 'Chưa nhập hệ thống' :
+                                   opt === 'NHẬN_BÀN_GIAO' ? 'Nhận bàn giao' : 'Không rõ nguồn'}
+                                </button>
+                              ))}
+                            </div>
+                          </td>
                           <td className="py-3 text-right">
                             <button
-                              onClick={() => navigate('/assets/new', { state: { tempName: item.name, tempLocation: item.foundLocationName } })}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer"
+                              onClick={() => navigate('/assets/new', { state: { tempName: item.name, tempLocation: item.foundLocationName, origin: resolutions[item.tempCode] } })}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-all cursor-pointer shadow-sm shadow-emerald-100"
                             >
-                              Tạo mã tài sản
+                              Tạo mã mới
                             </button>
                           </td>
                         </tr>
@@ -3334,16 +3591,30 @@ export const InventoryDetail: React.FC = () => {
               </div>
             </div>
 
-            <div className="space-y-1">
-              <label className="font-bold text-slate-500">Đại diện phòng ban ký biên bản *</label>
-              <input
-                type="text"
-                required
-                placeholder="Ví dụ: Nguyễn Văn A..."
-                value={sessionForm.representativeName}
-                onChange={e => setSessionForm({ ...sessionForm, representativeName: e.target.value })}
-                className="w-full bg-white border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800"
-              />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <label className="font-bold text-slate-500">Đại diện phòng ban ký biên bản *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Nguyễn Văn A..."
+                  value={sessionForm.representativeName}
+                  onChange={e => setSessionForm({ ...sessionForm, representativeName: e.target.value })}
+                  className="w-full bg-white border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="font-bold text-slate-500">Đội kiểm kê *</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ví dụ: Đội kiểm kê 01..."
+                  value={sessionForm.teamName}
+                  onChange={e => setSessionForm({ ...sessionForm, teamName: e.target.value })}
+                  className="w-full bg-white border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800"
+                />
+              </div>
             </div>
 
             <div className="space-y-1">
