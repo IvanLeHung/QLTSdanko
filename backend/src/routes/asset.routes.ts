@@ -1123,6 +1123,115 @@ router.post('/invoices/:id/add-assets', authenticateToken, requirePermission('AS
   }
 });
 
+router.delete('/invoices/:id/assets/:assetId', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  const performedBy = req.user?.username || 'system';
+  try {
+    const invoiceId = parseInt(req.params.id as string);
+    const assetId = parseInt(req.params.assetId as string);
+
+    const invoice = await prisma.assetInvoiceBatch.findUnique({
+      where: { id: invoiceId }
+    });
+    if (!invoice) {
+      return res.status(404).json({ message: 'Hóa đơn không tồn tại.' });
+    }
+
+    const asset = await prisma.asset.findUnique({
+      where: { id: assetId }
+    });
+    if (!asset) {
+      return res.status(404).json({ message: 'Tài sản không tồn tại.' });
+    }
+
+    if (asset.invoiceBatchId !== invoiceId) {
+      return res.status(400).json({ message: 'Tài sản không thuộc hóa đơn này.' });
+    }
+
+    // Protect: only allow deleting assets that are IN_STOCK
+    if (asset.status !== 'IN_STOCK') {
+      return res.status(400).json({ 
+        message: `Không thể xóa tài sản này vì trạng thái hiện tại là "${asset.status}". Chỉ được phép xóa tài sản ở trạng thái "Trong kho".` 
+      });
+    }
+
+    // Execute deletion inside transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Soft delete the asset by setting isDeleted to true and renaming its assetCode to avoid conflicts
+      const deletedAsset = await tx.asset.update({
+        where: { id: assetId },
+        data: {
+          isDeleted: true,
+          assetCode: `${asset.assetCode}-DELETED-${Date.now()}`
+        }
+      });
+
+      // 2. Update corresponding Invoice Line
+      if (asset.invoiceLineId) {
+        const line = await tx.assetInvoiceLine.findUnique({
+          where: { id: asset.invoiceLineId }
+        });
+        if (line) {
+          const newQty = Math.max(0, line.quantity - 1);
+          const newAmount = newQty * line.unitPrice;
+
+          // Remove serial from serialsJson if matches
+          let newSerials = [];
+          if (line.serialsJson) {
+            try {
+              newSerials = JSON.parse(line.serialsJson);
+            } catch (e) {}
+          }
+          if (Array.isArray(newSerials) && asset.serialNumber) {
+            newSerials = newSerials.filter(s => s !== asset.serialNumber);
+          }
+
+          await tx.assetInvoiceLine.update({
+            where: { id: asset.invoiceLineId },
+            data: {
+              quantity: newQty,
+              amount: newAmount,
+              serialsJson: JSON.stringify(newSerials)
+            }
+          });
+        }
+      }
+
+      // 3. Update Invoice Batch totals
+      const price = asset.purchasePriceExVat || 0;
+      const updatedBatch = await tx.assetInvoiceBatch.update({
+        where: { id: invoiceId },
+        data: {
+          totalAssets: { decrement: 1 },
+          totalValue: { decrement: price }
+        }
+      });
+
+      // 4. Audit Log
+      await AuditService.log({
+        entityType: 'CREATION_BATCH',
+        entityId: invoiceId,
+        action: 'UPDATE',
+        details: { 
+          message: `Xóa tài sản ${asset.assetCode} khỏi hóa đơn`,
+          removedAssetCode: asset.assetCode,
+          removedValue: price
+        },
+        performedBy,
+        tx
+      });
+
+      return {
+        updatedBatch,
+        deletedAssetCode: asset.assetCode
+      };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.put('/:id/link-invoice', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
   try {
     const assetId = parseInt(req.params.id as string);

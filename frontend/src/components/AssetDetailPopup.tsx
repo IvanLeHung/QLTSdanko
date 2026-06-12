@@ -21,6 +21,7 @@ import {
   RotateCcw,
   Plus,
   PlusCircle,
+  MinusCircle,
 
   Loader2,
   Trash2,
@@ -1744,6 +1745,25 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
     }
   };
 
+  const handleRemoveAsset = async (ast: any) => {
+    if (ast.status !== 'IN_STOCK') {
+      toast.error(`Không thể xóa tài sản này vì trạng thái hiện tại là "${ast.status}". Chỉ được phép xóa tài sản ở trạng thái "Trong kho".`);
+      return;
+    }
+
+    if (!window.confirm(`Bạn có chắc chắn muốn xóa tài sản ${ast.assetCode} khỏi hóa đơn? Hành động này sẽ xóa tài sản khỏi hệ thống và không thể hoàn tác.`)) {
+      return;
+    }
+
+    try {
+      await api.delete(`/assets/invoices/${invoiceId}/assets/${ast.id}`);
+      toast.success(`Đã xóa tài sản ${ast.assetCode} thành công!`);
+      fetchInvoiceDetails();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi xóa tài sản khỏi hóa đơn");
+    }
+  };
+
   useEffect(() => {
     fetchInvoiceDetails();
   }, [invoiceId]);
@@ -2043,14 +2063,24 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
                                 <Eye className="h-3.5 w-3.5" />
                               </button>
                               {hasPermission('ASSET_UPDATE') && (
-                                <button
-                                  type="button"
-                                  onClick={() => startAddQuantity(ast)}
-                                  className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded-lg cursor-pointer"
-                                  title="Bổ sung số lượng"
-                                >
-                                  <PlusCircle className="h-3.5 w-3.5" />
-                                </button>
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => startAddQuantity(ast)}
+                                    className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded-lg cursor-pointer"
+                                    title="Bổ sung số lượng"
+                                  >
+                                    <PlusCircle className="h-3.5 w-3.5" />
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleRemoveAsset(ast)}
+                                    className={`text-rose-600 hover:text-rose-700 p-1 bg-rose-50 rounded-lg cursor-pointer ${ast.status !== 'IN_STOCK' ? 'opacity-40 cursor-not-allowed' : ''}`}
+                                    title={ast.status !== 'IN_STOCK' ? `Không thể xóa (Trạng thái: ${ast.status})` : "Xóa tài sản khỏi hóa đơn"}
+                                  >
+                                    <MinusCircle className="h-3.5 w-3.5" />
+                                  </button>
+                                </>
                               )}
                             </div>
                           </td>
