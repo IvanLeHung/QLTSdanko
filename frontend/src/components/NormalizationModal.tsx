@@ -23,7 +23,11 @@ const ISSUE_TYPES_META = [
   { id: 'MISSING_USER', label: 'Thiếu người sử dụng', desc: 'Trạng thái là cấp phát nhưng trống tên nhân viên' },
   { id: 'WRONG_STATUS', label: 'Sai trạng thái sử dụng', desc: 'Không khớp giữa người dùng và tình trạng kho' },
   { id: 'MISSING_SERIAL', label: 'Thiếu số Serial', desc: 'Số serial máy bị trống' },
-  { id: 'WRONG_ABBREVIATION', label: 'Viết tắt không thống nhất', desc: 'Bộ phận/vị trí viết tắt (ví dụ: HCNS, KT, IT)' }
+  { id: 'WRONG_ABBREVIATION', label: 'Viết tắt không thống nhất', desc: 'Bộ phận/vị trí viết tắt (ví dụ: HCNS, KT, IT)' },
+  { id: 'WRONG_DEPARTMENT', label: 'Tên phòng ban chưa chuẩn', desc: 'Phòng ban không khớp danh mục hoặc viết thường' },
+  { id: 'WRONG_LOCATION', label: 'Tên vị trí chưa chuẩn', desc: 'Vị trí không khớp danh mục chính thức' },
+  { id: 'WRONG_CITY', label: 'Tên thành phố chưa chuẩn', desc: 'Thành phố không khớp với địa điểm của vị trí' },
+  { id: 'WRONG_PROJECT', label: 'Tên dự án chưa chuẩn', desc: 'Dự án viết thường, sai định dạng khoảng trắng' }
 ];
 
 export const NormalizationModal: React.FC<NormalizationModalProps> = ({
@@ -94,7 +98,6 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
           if (res.data.status === 'COMPLETED') {
             setTotalIssues(res.data.totalIssues);
             setStep('RESULTS');
-            fetchSuggestions(1);
           } else if (res.data.status === 'FAILED') {
             toast.error(`Rà soát thất bại: ${res.data.reason || 'Lỗi không rõ'}`);
             setStep('CONFIG');
@@ -110,6 +113,13 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
       if (timer) clearInterval(timer);
     };
   }, [step, jobId]);
+
+  // Fetch suggestions automatically when page, filterType, filterStatus, step, or jobId changes
+  useEffect(() => {
+    if (jobId && step === 'RESULTS') {
+      fetchSuggestions(page);
+    }
+  }, [page, filterType, filterStatus, jobId, step, searchQuery === '']);
 
   const startScan = async () => {
     if (selectedIssueTypes.length === 0) {
@@ -163,7 +173,7 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
         missingInfo: items.filter(i => ['MISSING_CODE', 'MISSING_NAME', 'MISSING_DEPARTMENT', 'MISSING_LOCATION', 'MISSING_USER', 'MISSING_SERIAL'].includes(i.issueType)).length,
         wrongCategory: items.filter(i => i.issueType === 'WRONG_CATEGORY').length,
         duplicateCode: items.filter(i => i.issueType === 'DUPLICATE_CODE').length,
-        mismatchScope: items.filter(i => i.issueType === 'WRONG_ABBREVIATION').length,
+        mismatchScope: items.filter(i => ['WRONG_ABBREVIATION', 'WRONG_DEPARTMENT', 'WRONG_LOCATION', 'WRONG_CITY', 'WRONG_PROJECT'].includes(i.issueType)).length,
         nameNotStandard: items.filter(i => i.issueType === 'WRONG_NAME').length
       };
       setScanResultStats(stats);
@@ -484,7 +494,7 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
               <p className="text-2xl font-black text-rose-600 mt-1">{scanResultStats.duplicateCode}</p>
             </div>
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150">
-              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Viết tắt không chuẩn</span>
+              <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Sai PB/Vị trí/Dự án/TP</span>
               <p className="text-2xl font-black text-blue-600 mt-1">{scanResultStats.mismatchScope}</p>
             </div>
             <div className="bg-slate-50 p-4 rounded-2xl border border-slate-150">
@@ -693,14 +703,14 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
                 <div className="flex gap-2">
                   <button
                     disabled={page === 1}
-                    onClick={() => fetchSuggestions(page - 1)}
+                    onClick={() => setPage(page - 1)}
                     className="px-3.5 py-1.5 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-40 transition-colors"
                   >
                     Trước
                   </button>
                   <button
                     disabled={page * limit >= totalItems}
-                    onClick={() => fetchSuggestions(page + 1)}
+                    onClick={() => setPage(page + 1)}
                     className="px-3.5 py-1.5 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-40 transition-colors"
                   >
                     Sau

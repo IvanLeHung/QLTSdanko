@@ -147,6 +147,46 @@ export class NormalizationService {
         if (a.currentUserName && a.departmentName) userDepts.set(a.currentUserName, a.departmentName);
       });
 
+      // Helper function to clean string for normalization
+      const cleanStringForCompare = (str: string): string => {
+        return str
+          .toLowerCase()
+          .normalize('NFD')
+          .replace(/[\u0300-\u036f]/g, '') // Remove Vietnamese accents
+          .replace(/[^a-z0-9]/g, ' ')      // Replace special characters with space
+          .replace(/\s+/g, ' ')            // Collapse spaces
+          .trim();
+      };
+
+      const toTitleCaseVietnamese = (str: string): string => {
+        return str
+          .toLowerCase()
+          .replace(/\s+/g, ' ')
+          .split(' ')
+          .map(word => word.length > 0 ? word.charAt(0).toUpperCase() + word.slice(1) : '')
+          .join(' ');
+      };
+
+      // Fetch official departments and locations
+      const officialDepts = await prisma.department.findMany({ where: { status: 'ACTIVE' } });
+      const officialDeptNames = officialDepts.map(d => d.name);
+      const deptMap = new Map<string, string>(); // cleanedName -> officialName
+      officialDepts.forEach(d => {
+        deptMap.set(cleanStringForCompare(d.name), d.name);
+        if (d.code) {
+          deptMap.set(d.code.toUpperCase(), d.name);
+        }
+      });
+
+      const officialLocations = await prisma.location.findMany();
+      const officialLocNames = officialLocations.map(l => l.name);
+      const locMap = new Map<string, string>(); // cleanedName -> officialName
+      const locCityMap = new Map<string, string>(); // officialName -> city
+      officialLocations.forEach(l => {
+        locMap.set(cleanStringForCompare(l.name), l.name);
+        locCityMap.set(l.name, l.city);
+      });
+
       const suggestionsData: any[] = [];
       const totalSteps = assets.length;
       let stepCounter = 0;
@@ -403,6 +443,160 @@ export class NormalizationService {
               suggestedValue: suggestedDept,
               confidenceScore: 0.98,
               source: 'DEPARTMENT_MAPPING',
+              status: 'PENDING'
+            });
+          }
+        }
+
+        // --- Rule 12: Sai/Chưa chuẩn tên phòng ban (WRONG_DEPARTMENT) ---
+        if (issueTypes.includes('WRONG_DEPARTMENT') && asset.departmentName && asset.departmentName.trim() !== '') {
+          const deptVal = asset.departmentName.trim();
+          if (!officialDeptNames.includes(deptVal)) {
+            // Try matching
+            const cleanedVal = cleanStringForCompare(deptVal);
+            let suggestedDept = deptMap.get(cleanedVal) || deptMap.get(deptVal.toUpperCase());
+            let confidence = 0.95;
+
+            if (!suggestedDept) {
+              // Try substring matching
+              const match = officialDepts.find(d => 
+                cleanStringForCompare(d.name).includes(cleanedVal) || 
+                cleanedVal.includes(cleanStringForCompare(d.name))
+              );
+              if (match) {
+                suggestedDept = match.name;
+                confidence = 0.85;
+              }
+            }
+
+            if (!suggestedDept) {
+              // Suggest title case
+              suggestedDept = toTitleCaseVietnamese(deptVal);
+              confidence = 0.70;
+            }
+
+            if (suggestedDept && suggestedDept !== deptVal) {
+              suggestionsData.push({
+                jobId,
+                assetId: asset.id,
+                assetCode: asset.assetCode,
+                assetName: asset.assetName,
+                issueType: 'WRONG_DEPARTMENT',
+                fieldName: 'departmentName',
+                currentValue: deptVal,
+                suggestedValue: suggestedDept,
+                confidenceScore: confidence,
+                source: 'DEPARTMENT_MAPPING',
+                status: 'PENDING'
+              });
+            }
+          }
+        }
+
+        // --- Rule 13: Sai/Chưa chuẩn tên vị trí (WRONG_LOCATION) ---
+        if (issueTypes.includes('WRONG_LOCATION') && asset.locationName && asset.locationName.trim() !== '') {
+          const locVal = asset.locationName.trim();
+          if (!officialLocNames.includes(locVal)) {
+            const cleanedVal = cleanStringForCompare(locVal);
+            let suggestedLoc = locMap.get(cleanedVal);
+            let confidence = 0.95;
+
+            if (!suggestedLoc) {
+              // Try substring matching
+              const match = officialLocations.find(l => 
+                cleanStringForCompare(l.name).includes(cleanedVal) || 
+                cleanedVal.includes(cleanStringForCompare(l.name))
+              );
+              if (match) {
+                suggestedLoc = match.name;
+                confidence = 0.85;
+              }
+            }
+
+            if (!suggestedLoc) {
+              suggestedLoc = toTitleCaseVietnamese(locVal);
+              confidence = 0.70;
+            }
+
+            if (suggestedLoc && suggestedLoc !== locVal) {
+              suggestionsData.push({
+                jobId,
+                assetId: asset.id,
+                assetCode: asset.assetCode,
+                assetName: asset.assetName,
+                issueType: 'WRONG_LOCATION',
+                fieldName: 'locationName',
+                currentValue: locVal,
+                suggestedValue: suggestedLoc,
+                confidenceScore: confidence,
+                source: 'LOCATION_MAPPING',
+                status: 'PENDING'
+              });
+            }
+          }
+        }
+
+        // --- Rule 14: Sai/Chưa chuẩn tên thành phố (WRONG_CITY) ---
+        if (issueTypes.includes('WRONG_CITY') && asset.cityName) {
+          const cityVal = asset.cityName.trim();
+          let expectedCity = null;
+          let confidence = 0.95;
+
+          // 1. Check if location has official city
+          if (asset.locationName) {
+            const officialLoc = officialLocations.find(l => l.name === asset.locationName);
+            if (officialLoc) {
+              expectedCity = officialLoc.city;
+              confidence = 0.98;
+            }
+          }
+
+          // 2. Clean city mapping heuristics
+          if (!expectedCity && cityVal) {
+            const cleanedCity = cleanStringForCompare(cityVal);
+            if (['hn', 'hanoi', 'ha noi', 'ha` no^i`'].includes(cleanedCity)) {
+              expectedCity = 'Hà Nội';
+            } else if (['hcm', 'tphcm', 'ho chi minh', 'saigon', 'sai gon', 'ho` chi\' minh'].includes(cleanedCity)) {
+              expectedCity = 'TP. Hồ Chí Minh';
+            } else if (['dn', 'da nang', 'da` na(`ng'].includes(cleanedCity)) {
+              expectedCity = 'Đà Nẵng';
+            }
+          }
+
+          if (expectedCity && expectedCity !== cityVal) {
+            suggestionsData.push({
+              jobId,
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              assetName: asset.assetName,
+              issueType: 'WRONG_CITY',
+              fieldName: 'cityName',
+              currentValue: cityVal,
+              suggestedValue: expectedCity,
+              confidenceScore: confidence,
+              source: 'CITY_MAPPING',
+              status: 'PENDING'
+            });
+          }
+        }
+
+        // --- Rule 15: Sai/Chưa chuẩn tên dự án (WRONG_PROJECT) ---
+        if (issueTypes.includes('WRONG_PROJECT') && asset.projectName && asset.projectName.trim() !== '') {
+          const projectVal = asset.projectName.trim();
+          const cleanProject = toTitleCaseVietnamese(projectVal);
+
+          if (cleanProject !== projectVal) {
+            suggestionsData.push({
+              jobId,
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              assetName: asset.assetName,
+              issueType: 'WRONG_PROJECT',
+              fieldName: 'projectName',
+              currentValue: projectVal,
+              suggestedValue: cleanProject,
+              confidenceScore: 0.90,
+              source: 'PROJECT_MAPPING',
               status: 'PENDING'
             });
           }
