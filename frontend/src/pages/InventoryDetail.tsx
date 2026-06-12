@@ -720,6 +720,21 @@ export const InventoryDetail: React.FC = () => {
     }
   };
 
+  const handleDeleteSession = async (sessionId: number) => {
+    if (!window.confirm("Bạn có chắc chắn muốn xóa hoàn toàn phiên kiểm kê này và tất cả dữ liệu đối soát đi kèm? Thao tác này không thể hoàn tác.")) return;
+    setSubmitting(true);
+    try {
+      await api.delete(`/inventory/sessions/${sessionId}`);
+      toast.success("Đã xóa phiên kiểm kê thành công");
+      setActiveSession(null);
+      await fetchDetail();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi xóa phiên kiểm kê");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleViewSessionReport = async (sessionId: number) => {
     try {
       const res = await api.get(`/inventory/sessions/${sessionId}/report`);
@@ -1952,6 +1967,12 @@ export const InventoryDetail: React.FC = () => {
                 Hoàn thành phiên kiểm kê
               </button>
             )}
+            <button
+              onClick={() => handleDeleteSession(activeSession.id)}
+              className="bg-rose-600 hover:bg-rose-700 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"
+            >
+              Xóa phiên
+            </button>
             <button
               onClick={() => setActiveSession(null)}
               className="bg-slate-900/40 hover:bg-slate-900/60 border border-white/10 text-white px-5 py-2.5 rounded-xl text-xs font-bold transition-all cursor-pointer"

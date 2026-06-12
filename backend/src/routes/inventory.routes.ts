@@ -125,6 +125,16 @@ router.post('/sessions/:sessionId/complete', authenticateToken, async (req, res)
   }
 });
 
+router.delete('/sessions/:sessionId', authenticateToken, async (req, res) => {
+  try {
+    await InventoryService.deleteInventoryVisit(Number(req.params.sessionId));
+    res.json({ message: 'Deleted session successfully' });
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+
 router.get('/sessions/:sessionId/report', authenticateToken, async (req, res) => {
   try {
     const report = await InventoryService.getInventoryVisitReport(Number(req.params.sessionId));

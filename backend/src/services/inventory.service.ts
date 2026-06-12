@@ -467,6 +467,14 @@ export class InventoryService {
     });
   }
 
+  static async deleteInventoryVisit(sessionId: number) {
+    return await prisma.$transaction(async (tx) => {
+      await tx.inventoryDetail.deleteMany({ where: { sessionId } });
+      await tx.inventorySessionFilter.deleteMany({ where: { sessionId } });
+      return await tx.inventorySession.delete({ where: { id: sessionId } });
+    });
+  }
+
   static async getInventoryVisitReport(sessionId: number) {
     const session = await this.getInventoryVisitDetail(sessionId);
     const details = session.details || [];
