@@ -89,6 +89,8 @@ export const InventoryDetail: React.FC = () => {
   const [scopeSelection, setScopeSelection] = useState<'ALL' | 'COMPANY' | 'PROJECT' | 'LOCATION' | 'DEPARTMENT' | 'USER'>('DEPARTMENT');
   const [sessionMembers, setSessionMembers] = useState<string[]>([]);
   const [newMemberName, setNewMemberName] = useState<string>('');
+  const [showDeptDropdown, setShowDeptDropdown] = useState<boolean>(false);
+  const [deptSearchQuery, setDeptSearchQuery] = useState<string>('');
   
   // Preview assets preview breakdown state
   const [previewAssetsCount, setPreviewAssetsCount] = useState<number | null>(null);
@@ -3913,8 +3915,6 @@ export const InventoryDetail: React.FC = () => {
 
                     {scopeSelection === 'DEPARTMENT' && (() => {
                       const selectedDepts = sessionForm.departmentName ? sessionForm.departmentName.split(',').map(x => x.trim()).filter(Boolean) : [];
-                      const [showDeptDropdown, setShowDeptDropdown] = useState(false);
-                      const [deptSearchQuery, setDeptSearchQuery] = useState('');
                       
                       const filteredDepts = reviewDepartments.filter(d => 
                         !deptSearchQuery || d.toLowerCase().includes(deptSearchQuery.toLowerCase())
