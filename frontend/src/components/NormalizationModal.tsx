@@ -604,15 +604,18 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
                           )}
                         </td>
                         <td className="p-4 font-bold text-slate-700">{item.assetCode}</td>
-                        <td className="p-4 font-black text-slate-800 max-w-[160px] truncate">{item.assetName}</td>
+                        <td className="p-4 font-black text-slate-800 break-words">{item.assetName}</td>
                         <td className="p-4">
                           <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border">
                             {ISSUE_TYPES_META.find(m => m.id === item.issueType)?.label || item.issueType}
                           </span>
                         </td>
-                        <td className="p-4 line-through text-slate-400 max-w-[140px] truncate">{item.currentValue || 'Trống'}</td>
-                        <td className="p-4 font-bold text-emerald-600 bg-emerald-50/20 max-w-[180px] truncate flex items-center gap-1.5">
-                          <ArrowRight className="h-3 w-3 text-emerald-500" /> {item.suggestedValue || 'Trống'}
+                        <td className="p-4 line-through text-slate-400 break-words">{item.currentValue || 'Trống'}</td>
+                        <td className="p-4 font-bold text-emerald-600 bg-emerald-50/20 break-words">
+                          <span className="inline-flex items-start gap-1.5">
+                            <ArrowRight className="h-3 w-3 text-emerald-500 mt-0.5 shrink-0" />
+                            <span>{item.suggestedValue || 'Trống'}</span>
+                          </span>
                         </td>
                         <td className="p-4">
                           <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${scoreColor}`}>
