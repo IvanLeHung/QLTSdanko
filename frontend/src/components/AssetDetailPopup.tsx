@@ -20,6 +20,8 @@ import {
   ArrowRightLeft,
   RotateCcw,
   Plus,
+  PlusCircle,
+
   Loader2,
   Trash2,
   Clock,
@@ -1566,6 +1568,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
           onClose={() => {
             setShowInvoiceDetailsModal(false);
             setSelectedInvoiceId(null);
+            fetchAssetDetail();
           }}
           hasPermission={hasPermission}
           onViewAsset={(assetId) => {
@@ -1693,6 +1696,53 @@ interface InvoiceDetailsModalProps {
 const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, onClose, hasPermission, onViewAsset }) => {
   const [invoice, setInvoice] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState({
+    invoiceNo: '',
+    invoiceDate: '',
+    supplierName: '',
+    supplierTaxCode: '',
+    totalAmount: '',
+    totalAssets: ''
+  });
+  const [saving, setSaving] = useState(false);
+  const [addQuantityAsset, setAddQuantityAsset] = useState<any>(null);
+  const [addQtyForm, setAddQtyForm] = useState({ quantity: 1, serials: '' });
+  const [addingQty, setAddingQty] = useState(false);
+
+  const startAddQuantity = (ast: any) => {
+    setAddQtyForm({ quantity: 1, serials: '' });
+    setAddQuantityAsset(ast);
+  };
+
+  const handleAddQuantitySubmit = async () => {
+    if (addQtyForm.quantity <= 0) {
+      toast.error("Số lượng bổ sung phải lớn hơn 0!");
+      return;
+    }
+    setAddingQty(true);
+    try {
+      const serials = addQtyForm.serials
+        .split(/[\n,]/)
+        .map(s => s.trim())
+        .filter(Boolean);
+
+      await api.post(`/assets/invoices/${invoiceId}/add-assets`, {
+        templateAssetId: addQuantityAsset.id,
+        quantity: addQtyForm.quantity,
+        serials
+      });
+
+      toast.success(`Đã bổ sung ${addQtyForm.quantity} tài sản thành công!`);
+      setAddQuantityAsset(null);
+      setAddQtyForm({ quantity: 1, serials: '' });
+      fetchInvoiceDetails();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi bổ sung số lượng tài sản");
+    } finally {
+      setAddingQty(false);
+    }
+  };
 
   useEffect(() => {
     fetchInvoiceDetails();
@@ -1708,6 +1758,43 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
       toast.error("Không thể tải chi tiết hóa đơn.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const startEditing = () => {
+    setEditForm({
+      invoiceNo: invoice?.invoiceNo || '',
+      invoiceDate: invoice?.invoiceDate ? new Date(invoice.invoiceDate).toISOString().slice(0, 10) : '',
+      supplierName: invoice?.supplierName || '',
+      supplierTaxCode: invoice?.supplierTaxCode || '',
+      totalAmount: invoice?.totalAmount?.toString() || '0',
+      totalAssets: invoice?.totalAssets?.toString() || '0'
+    });
+    setIsEditing(true);
+  };
+
+  const handleSave = async () => {
+    if (!editForm.invoiceNo || !editForm.supplierName) {
+      toast.error("Vui lòng nhập đầy đủ Số hóa đơn và Tên nhà cung cấp!");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api.put(`/assets/invoices/${invoiceId}`, {
+        invoiceNo: editForm.invoiceNo,
+        invoiceDate: editForm.invoiceDate,
+        supplierName: editForm.supplierName,
+        supplierTaxCode: editForm.supplierTaxCode,
+        totalAmount: parseFloat(editForm.totalAmount),
+        totalAssets: parseInt(editForm.totalAssets)
+      });
+      toast.success("Cập nhật thông tin hóa đơn thành công!");
+      setIsEditing(false);
+      fetchInvoiceDetails();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi lưu thông tin hóa đơn");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -1727,13 +1814,24 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
               <h3 className="text-xl font-black text-slate-900 tracking-tight">Số hóa đơn: {invoice?.invoiceNo || 'Đang tải...'}</h3>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="h-10 w-10 rounded-2xl border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center transition-all"
-          >
-            <X className="h-5 w-5" />
-          </button>
+          <div className="flex items-center gap-2">
+            {!loading && invoice && hasPermission('ASSET_UPDATE') && !isEditing && (
+              <button
+                type="button"
+                onClick={startEditing}
+                className="px-4 py-2 text-xs font-black bg-slate-900 hover:bg-slate-800 text-white rounded-xl uppercase tracking-wider transition-all cursor-pointer shadow-sm"
+              >
+                Chỉnh sửa
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onClose}
+              className="h-10 w-10 rounded-2xl border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center transition-all"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
         </div>
 
         {loading ? (
@@ -1745,68 +1843,150 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
           <div className="flex-1 overflow-y-auto p-8 space-y-6 custom-scrollbar">
             
             {/* Meta Card */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-100 text-xs">
-              <div>
-                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ngày mua / Ngày hóa đơn</span>
-                <span className="text-slate-800 font-bold text-sm">
-                  {invoice.invoiceDate ? format(new Date(invoice.invoiceDate), 'dd/MM/yyyy') : 'N/A'}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Mã số thuế NCC</span>
-                <span className="text-slate-800 font-bold text-sm">{invoice.supplierTaxCode || 'N/A'}</span>
-              </div>
-              <div className="col-span-2">
-                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Nhà cung cấp</span>
-                <span className="text-slate-800 font-bold text-sm block truncate" title={invoice.supplierName}>{invoice.supplierName || 'N/A'}</span>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tổng giá trị (trước VAT)</span>
-                <span className="text-slate-800 font-bold text-sm text-primary-600 block">
-                  {hasPermission('ASSET_VIEW_PRICE') && invoice.totalAmount !== null
-                    ? `${invoice.totalAmount.toLocaleString()} ₫`
-                    : '*****'}
-                </span>
-              </div>
-              <div>
-                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tổng số lượng tài sản</span>
-                <span className="text-slate-800 font-bold text-sm block">{invoice.totalAssets || 0} cái</span>
-              </div>
-              <div className="col-span-2">
-                <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tệp hóa đơn gốc</span>
-                {invoice.fileUrl ? (
-                  <div className="flex gap-2 mt-1">
+            {isEditing ? (
+              <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4">
+                <h4 className="font-black text-xs text-slate-800 uppercase tracking-widest text-primary-650 border-b pb-2">
+                  ✏️ Chỉnh sửa thông tin hóa đơn
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs font-bold text-slate-650">
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Số hóa đơn *</label>
+                    <input
+                      type="text"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                      value={editForm.invoiceNo}
+                      onChange={e => setEditForm({ ...editForm, invoiceNo: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Ngày hóa đơn *</label>
+                    <input
+                      type="date"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                      value={editForm.invoiceDate}
+                      onChange={e => setEditForm({ ...editForm, invoiceDate: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-span-2 space-y-1">
+                    <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Nhà cung cấp *</label>
+                    <input
+                      type="text"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                      value={editForm.supplierName}
+                      onChange={e => setEditForm({ ...editForm, supplierName: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Mã số thuế NCC</label>
+                    <input
+                      type="text"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                      value={editForm.supplierTaxCode}
+                      onChange={e => setEditForm({ ...editForm, supplierTaxCode: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Tổng giá trị (ex VAT)</label>
+                    <input
+                      type="number"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                      value={editForm.totalAmount}
+                      onChange={e => setEditForm({ ...editForm, totalAmount: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Tổng số lượng tài sản</label>
+                    <input
+                      type="number"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                      value={editForm.totalAssets}
+                      onChange={e => setEditForm({ ...editForm, totalAssets: e.target.value })}
+                    />
+                  </div>
+                  <div className="flex items-end gap-2 text-xs font-black">
                     <button
                       type="button"
-                      onClick={() => {
-                        const url = invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`;
-                        window.open(url, '_blank');
-                      }}
-                      className="text-primary-600 hover:underline font-black text-[10px] uppercase tracking-wider flex items-center bg-white border border-slate-205 px-2.5 py-1.5 rounded-lg shadow-sm"
+                      disabled={saving}
+                      onClick={handleSave}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl uppercase tracking-wider shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
                     >
-                      <Eye className="h-3 w-3 mr-1" /> Xem file
+                      {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Lưu
                     </button>
                     <button
                       type="button"
-                      onClick={() => {
-                        const url = invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`;
-                        const link = document.createElement('a');
-                        link.href = url;
-                        link.setAttribute('download', invoice.fileUrl.split('/').pop() || 'invoice');
-                        document.body.appendChild(link);
-                        link.click();
-                        document.body.removeChild(link);
-                      }}
-                      className="text-slate-600 hover:text-slate-900 font-black text-[10px] uppercase tracking-wider flex items-center bg-white border border-slate-205 px-2.5 py-1.5 rounded-lg shadow-sm"
+                      disabled={saving}
+                      onClick={() => setIsEditing(false)}
+                      className="px-4 py-2 bg-white border border-slate-200 text-slate-505 hover:bg-slate-50 rounded-xl uppercase tracking-wider cursor-pointer disabled:opacity-50"
                     >
-                      <Download className="h-3 w-3 mr-1" /> Tải về
+                      Hủy
                     </button>
                   </div>
-                ) : (
-                  <span className="text-slate-400 italic font-bold">Chưa đính kèm tệp tin</span>
-                )}
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-5 rounded-2xl bg-slate-50 border border-slate-100 text-xs">
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ngày mua / Ngày hóa đơn</span>
+                  <span className="text-slate-800 font-bold text-sm">
+                    {invoice.invoiceDate ? format(new Date(invoice.invoiceDate), 'dd/MM/yyyy') : 'N/A'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Mã số thuế NCC</span>
+                  <span className="text-slate-800 font-bold text-sm">{invoice.supplierTaxCode || 'N/A'}</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Nhà cung cấp</span>
+                  <span className="text-slate-800 font-bold text-sm block truncate" title={invoice.supplierName}>{invoice.supplierName || 'N/A'}</span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tổng giá trị (trước VAT)</span>
+                  <span className="text-slate-800 font-bold text-sm text-primary-650 block">
+                    {hasPermission('ASSET_VIEW_PRICE') && invoice.totalAmount !== null
+                      ? `${invoice.totalAmount.toLocaleString()} ₫`
+                      : '*****'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tổng số lượng tài sản</span>
+                  <span className="text-slate-800 font-bold text-sm block">{invoice.totalAssets || 0} cái</span>
+                </div>
+                <div className="col-span-2">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tệp hóa đơn gốc</span>
+                  {invoice.fileUrl ? (
+                    <div className="flex gap-2 mt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`;
+                          window.open(url, '_blank');
+                        }}
+                        className="text-primary-600 hover:underline font-black text-[10px] uppercase tracking-wider flex items-center bg-white border border-slate-205 px-2.5 py-1.5 rounded-lg shadow-sm cursor-pointer"
+                      >
+                        <Eye className="h-3 w-3 mr-1" /> Xem file
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const url = invoice.fileUrl.startsWith('http') ? invoice.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${invoice.fileUrl}`;
+                          const link = document.createElement('a');
+                          link.href = url;
+                          link.setAttribute('download', invoice.fileUrl.split('/').pop() || 'invoice');
+                          document.body.appendChild(link);
+                          link.click();
+                          document.body.removeChild(link);
+                        }}
+                        className="text-slate-600 hover:text-slate-900 font-black text-[10px] uppercase tracking-wider flex items-center bg-white border border-slate-205 px-2.5 py-1.5 rounded-lg shadow-sm cursor-pointer"
+                      >
+                        <Download className="h-3 w-3 mr-1" /> Tải về
+                      </button>
+                    </div>
+                  ) : (
+                    <span className="text-slate-400 italic font-bold">Chưa đính kèm tệp tin</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Assets list */}
             <div className="space-y-3">
@@ -1820,7 +2000,7 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
                       <th className="p-3 w-20 text-center">ĐVT</th>
                       <th className="p-3 w-32 text-right">Giá trị (ex VAT)</th>
                       <th className="p-3 w-36 text-center">Trạng thái</th>
-                      <th className="p-3 w-16 text-center">Xem</th>
+                      <th className="p-3 w-28 text-center">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 text-slate-700">
@@ -1853,14 +2033,26 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
                             </span>
                           </td>
                           <td className="p-3 text-center">
-                            <button
-                              type="button"
-                              onClick={() => onViewAsset(ast.id)}
-                              className="text-primary-600 hover:text-primary-755 p-1 bg-primary-50 rounded-lg"
-                              title="Xem chi tiết tài sản này"
-                            >
-                              <Eye className="h-3.5 w-3.5" />
-                            </button>
+                            <div className="flex items-center justify-center gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => onViewAsset(ast.id)}
+                                className="text-primary-600 hover:text-primary-755 p-1 bg-primary-50 rounded-lg cursor-pointer"
+                                title="Xem chi tiết tài sản này"
+                              >
+                                <Eye className="h-3.5 w-3.5" />
+                              </button>
+                              {hasPermission('ASSET_UPDATE') && (
+                                <button
+                                  type="button"
+                                  onClick={() => startAddQuantity(ast)}
+                                  className="text-emerald-600 hover:text-emerald-700 p-1 bg-emerald-50 rounded-lg cursor-pointer"
+                                  title="Bổ sung số lượng"
+                                >
+                                  <PlusCircle className="h-3.5 w-3.5" />
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -1875,6 +2067,73 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
               </div>
             </div>
 
+            {/* ADD QUANTITY SUB-MODAL */}
+            {addQuantityAsset && (
+              <div className="fixed inset-0 z-[160] flex items-center justify-center p-4 animate-in fade-in duration-200">
+                <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setAddQuantityAsset(null)} />
+                <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 animate-in zoom-in-95 duration-200 space-y-6">
+                  <div>
+                    <h3 className="text-lg font-black uppercase tracking-tight text-slate-950 flex items-center gap-2">
+                      <PlusCircle className="h-5 w-5 text-emerald-600" />
+                      Bổ sung số lượng tài sản
+                    </h3>
+                    <p className="text-xs text-slate-400 font-bold uppercase mt-1">Tạo thêm tài sản tương tự từ tài sản mẫu</p>
+                  </div>
+
+                  <div className="space-y-4 text-xs font-bold text-slate-650">
+                    <div>
+                      <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tài sản mẫu</span>
+                      <div className="p-3 bg-slate-50 border border-slate-100 rounded-xl text-slate-800 font-bold">
+                        <span className="font-mono text-primary-650 mr-2">[{addQuantityAsset.assetCode}]</span>
+                        {addQuantityAsset.assetName}
+                      </div>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Số lượng cần bổ sung *</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={addQtyForm.quantity}
+                        onChange={e => setAddQtyForm({ ...addQtyForm, quantity: parseInt(e.target.value) || 1 })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Danh sách số Serial (Tùy chọn)</label>
+                      <textarea
+                        rows={3}
+                        placeholder="Nhập mỗi dòng một số serial hoặc phân tách bằng dấu phẩy"
+                        value={addQtyForm.serials}
+                        onChange={e => setAddQtyForm({ ...addQtyForm, serials: e.target.value })}
+                        className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:border-primary-500 font-mono"
+                      />
+                      <span className="text-[10px] text-slate-400 font-normal">Cung cấp tối đa tương ứng với số lượng cần thêm.</span>
+                    </div>
+
+                    <div className="flex justify-end gap-2 pt-2 text-xs font-black">
+                      <button
+                        type="button"
+                        disabled={addingQty}
+                        onClick={() => setAddQuantityAsset(null)}
+                        className="px-4 py-2 bg-white border border-slate-200 text-slate-505 hover:bg-slate-50 rounded-xl uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="button"
+                        disabled={addingQty}
+                        onClick={handleAddQuantitySubmit}
+                        className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl uppercase tracking-wider shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      >
+                        {addingQty ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />} Xác nhận
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : (
           <div className="h-64 flex items-center justify-center text-slate-400 italic font-bold">Không thể hiển thị thông tin hóa đơn.</div>

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { AssetService } from '../services/asset.service';
+import { AuditService } from '../services/audit.service';
 import { authenticateToken, AuthRequest, requirePermission } from '../middleware/auth.middleware';
 import multer from 'multer';
 import fs from 'fs';
@@ -901,6 +902,222 @@ router.get('/invoices/:id', authenticateToken, async (req: AuthRequest, res) => 
       return res.status(404).json({ message: 'Hóa đơn không tồn tại.' });
     }
     res.json(invoice);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.put('/invoices/:id', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string);
+    const { invoiceNo, invoiceDate, supplierName, supplierTaxCode, totalAmount, totalAssets } = req.body;
+
+    const invoice = await prisma.assetInvoiceBatch.findUnique({ where: { id } });
+    if (!invoice) {
+      return res.status(404).json({ message: 'Hóa đơn không tồn tại.' });
+    }
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const u = await tx.assetInvoiceBatch.update({
+        where: { id },
+        data: {
+          invoiceNo: invoiceNo !== undefined ? invoiceNo : invoice.invoiceNo,
+          invoiceDate: invoiceDate !== undefined ? new Date(invoiceDate) : invoice.invoiceDate,
+          supplierName: supplierName !== undefined ? supplierName : invoice.supplierName,
+          supplierTaxCode: supplierTaxCode !== undefined ? supplierTaxCode : invoice.supplierTaxCode,
+          totalAmount: totalAmount !== undefined ? parseFloat(totalAmount) : invoice.totalAmount,
+          totalAssets: totalAssets !== undefined ? parseInt(totalAssets) : invoice.totalAssets
+        }
+      });
+
+      // Propagate supplier details and purchase date to all linked assets
+      await tx.asset.updateMany({
+        where: { invoiceBatchId: id, isDeleted: false },
+        data: {
+          supplierName: u.supplierName,
+          supplierTaxCode: u.supplierTaxCode,
+          purchaseDate: u.invoiceDate
+        }
+      });
+
+      return u;
+    });
+
+    res.json(updated);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/invoices/:id/add-assets', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  const performedBy = req.user?.username || 'system';
+  try {
+    const id = parseInt(req.params.id as string);
+    const { templateAssetId, quantity, serials } = req.body;
+
+    if (!templateAssetId || !quantity || quantity <= 0) {
+      return res.status(400).json({ message: 'Tham số templateAssetId và quantity (> 0) là bắt buộc.' });
+    }
+
+    const invoice = await prisma.assetInvoiceBatch.findUnique({
+      where: { id },
+      include: { lines: true }
+    });
+    if (!invoice) {
+      return res.status(404).json({ message: 'Hóa đơn không tồn tại.' });
+    }
+
+    const templateAsset = await prisma.asset.findUnique({
+      where: { id: parseInt(templateAssetId) }
+    });
+    if (!templateAsset) {
+      return res.status(404).json({ message: 'Tài sản mẫu không tồn tại.' });
+    }
+
+    if (templateAsset.invoiceBatchId !== id) {
+      return res.status(400).json({ message: 'Tài sản mẫu không thuộc hóa đơn này.' });
+    }
+
+    // Validate serials if provided
+    const serialList: string[] = Array.isArray(serials) ? serials.filter(Boolean).map(s => String(s).trim()) : [];
+    if (serialList.length > quantity) {
+      return res.status(400).json({ message: 'Số lượng serial cung cấp vượt quá số lượng cần tạo.' });
+    }
+
+    // Check duplicate serials in request
+    const dupesInReq = serialList.filter((item, index) => serialList.indexOf(item) !== index);
+    if (dupesInReq.length > 0) {
+      return res.status(400).json({ message: `Có số serial bị trùng lặp trong yêu cầu: ${dupesInReq.join(', ')}` });
+    }
+
+    // Check duplicate serials in active assets in DB
+    if (serialList.length > 0) {
+      const existingAssets = await prisma.asset.findMany({
+        where: {
+          serialNumber: { in: serialList },
+          isDeleted: false
+        },
+        select: { serialNumber: true }
+      });
+      if (existingAssets.length > 0) {
+        const dupes = existingAssets.map(a => a.serialNumber).filter(Boolean);
+        return res.status(400).json({ message: `Số serial đã tồn tại trong hệ thống: ${dupes.join(', ')}` });
+      }
+    }
+
+    // Run the operation in a transaction
+    const result = await prisma.$transaction(async (tx) => {
+      // 1. Generate Asset Codes
+      const codes = await AssetService.generateAssetCodes({
+        companyCode: templateAsset.companyCode,
+        level1Code: templateAsset.level1Code,
+        level2Code: templateAsset.level2Code,
+        level3Code: templateAsset.level3Code,
+        level4Code: templateAsset.level4Code,
+        quantity: quantity
+      }, tx);
+
+      // 2. Prepare Asset Records
+      const assetsData = codes.map((c, i) => {
+        const serial = serialList[i] || null;
+        return {
+          assetCode: c.assetCode,
+          assetName: templateAsset.assetName,
+          assetNameShort: templateAsset.assetNameShort,
+          serialNumber: serial,
+          companyCode: templateAsset.companyCode,
+          companyName: templateAsset.companyName,
+          projectName: templateAsset.projectName,
+          level1Code: templateAsset.level1Code,
+          level1Name: templateAsset.level1Name,
+          level2Code: templateAsset.level2Code,
+          level2Name: templateAsset.level2Name,
+          level3Code: templateAsset.level3Code,
+          level3Name: templateAsset.level3Name,
+          level4Code: templateAsset.level4Code,
+          level4Name: templateAsset.level4Name,
+          runningNo: c.runningNo,
+          runningNoText: c.runningNoText,
+          status: 'IN_STOCK',
+          unit: templateAsset.unit,
+          purchasePriceExVat: templateAsset.purchasePriceExVat,
+          supplierName: templateAsset.supplierName,
+          supplierTaxCode: templateAsset.supplierTaxCode,
+          purchaseDate: templateAsset.purchaseDate,
+          invoiceBatchId: id,
+          invoiceLineId: templateAsset.invoiceLineId,
+          originalInvoiceItemName: templateAsset.originalInvoiceItemName
+        };
+      });
+
+      // Insert Assets
+      await tx.asset.createMany({ data: assetsData });
+
+      // 3. Update Invoice Line (if invoiceLineId is set on the template asset)
+      if (templateAsset.invoiceLineId) {
+        const line = await tx.assetInvoiceLine.findUnique({
+          where: { id: templateAsset.invoiceLineId }
+        });
+        if (line) {
+          const newQty = line.quantity + quantity;
+          const newAmount = newQty * line.unitPrice;
+          
+          let newSerials = [];
+          if (line.serialsJson) {
+            try {
+              newSerials = JSON.parse(line.serialsJson);
+            } catch (e) {}
+          }
+          if (Array.isArray(newSerials)) {
+            newSerials.push(...serialList);
+          } else {
+            newSerials = [...serialList];
+          }
+
+          await tx.assetInvoiceLine.update({
+            where: { id: templateAsset.invoiceLineId },
+            data: {
+              quantity: newQty,
+              amount: newAmount,
+              serialsJson: JSON.stringify(newSerials)
+            }
+          });
+        }
+      }
+
+      // 4. Update Invoice Batch
+      const addedValue = quantity * (templateAsset.purchasePriceExVat || 0);
+      const updatedBatch = await tx.assetInvoiceBatch.update({
+        where: { id },
+        data: {
+          totalAssets: { increment: quantity },
+          totalValue: { increment: addedValue }
+        }
+      });
+
+      // 5. Audit Log
+      await AuditService.log({
+        entityType: 'CREATION_BATCH',
+        entityId: id,
+        action: 'UPDATE',
+        details: { 
+          message: `Bổ sung ${quantity} tài sản từ tài sản mẫu ${templateAsset.assetCode}`,
+          addedQuantity: quantity,
+          addedValue,
+          templateAssetCode: templateAsset.assetCode
+        },
+        performedBy,
+        tx
+      });
+
+      return {
+        updatedBatch,
+        addedAssetsCount: quantity,
+        codes: codes.map(c => c.assetCode)
+      };
+    }, { timeout: 30000 });
+
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
