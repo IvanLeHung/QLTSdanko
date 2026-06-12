@@ -142,23 +142,195 @@ export class InventoryService {
     });
   }
 
-  static async createInventoryVisit(inventoryCheckId: number, data: any) {
-    const where = this.buildAssetInventoryScopeWhere(data.departmentName, data.locationName);
-    const assetCountPlan = await prisma.asset.count({ where });
+  static buildQueryFromFilters(filters: any) {
+    const where: any = { isDeleted: false };
+    if (!filters) return where;
 
-    return await prisma.inventorySession.create({
-      data: {
-        inventoryCheckId,
-        scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : new Date(),
-        companyName: data.companyName || null,
-        projectName: data.projectName || null,
-        departmentName: data.departmentName || null,
-        locationName: data.locationName || null,
-        checkerName: data.checkerName || null,
-        representativeName: data.representativeName || null,
-        assetCountPlan,
-        note: data.note || null
+    // Company
+    if (filters.companyNames && Array.isArray(filters.companyNames) && filters.companyNames.length > 0) {
+      where.companyName = { in: filters.companyNames };
+    }
+
+    // City
+    if (filters.cityNames && Array.isArray(filters.cityNames) && filters.cityNames.length > 0) {
+      where.cityName = { in: filters.cityNames };
+    }
+
+    // Project
+    if (filters.projectNames && Array.isArray(filters.projectNames) && filters.projectNames.length > 0) {
+      where.projectName = { in: filters.projectNames };
+    }
+
+    // Location
+    if (filters.locationNames && Array.isArray(filters.locationNames) && filters.locationNames.length > 0) {
+      where.locationName = { in: filters.locationNames };
+    }
+
+    // Department
+    if (filters.departmentNames && Array.isArray(filters.departmentNames) && filters.departmentNames.length > 0) {
+      where.departmentName = { in: filters.departmentNames };
+    }
+
+    // User
+    if (filters.currentUserNames && Array.isArray(filters.currentUserNames) && filters.currentUserNames.length > 0) {
+      where.currentUserName = { in: filters.currentUserNames };
+    }
+
+    // Asset Categories / Groups (Level 1, 2, 3)
+    if (filters.level1Names && Array.isArray(filters.level1Names) && filters.level1Names.length > 0) {
+      where.level1Name = { in: filters.level1Names };
+    }
+    if (filters.level2Names && Array.isArray(filters.level2Names) && filters.level2Names.length > 0) {
+      where.level2Name = { in: filters.level2Names };
+    }
+    if (filters.level3Names && Array.isArray(filters.level3Names) && filters.level3Names.length > 0) {
+      where.level3Name = { in: filters.level3Names };
+    }
+
+    // Status
+    if (filters.statuses && Array.isArray(filters.statuses) && filters.statuses.length > 0) {
+      where.status = { in: filters.statuses };
+    }
+
+    // Advanced checks:
+    // Serial number
+    if (filters.hasSerial !== undefined && filters.hasSerial !== null) {
+      if (filters.hasSerial === true || filters.hasSerial === 'true') {
+        where.serialNumber = { not: null, notIn: [''] };
+      } else if (filters.hasSerial === false || filters.hasSerial === 'false') {
+        where.OR = [
+          { serialNumber: null },
+          { serialNumber: '' }
+        ];
       }
+    }
+
+    // Invoice
+    if (filters.hasInvoice !== undefined && filters.hasInvoice !== null) {
+      if (filters.hasInvoice === true || filters.hasInvoice === 'true') {
+        where.invoiceBatchId = { not: null };
+      } else if (filters.hasInvoice === false || filters.hasInvoice === 'false') {
+        where.invoiceBatchId = null;
+      }
+    }
+
+    // Code
+    if (filters.hasCode !== undefined && filters.hasCode !== null) {
+      if (filters.hasCode === true || filters.hasCode === 'true') {
+        where.assetCode = { not: null, notIn: [''] };
+      } else if (filters.hasCode === false || filters.hasCode === 'false') {
+        where.OR = [
+          { assetCode: null },
+          { assetCode: '' }
+        ];
+      }
+    }
+
+    return where;
+  }
+
+  static async previewInventoryVisitAssets(filters: any) {
+    const where = this.buildQueryFromFilters(filters);
+    const assets = await prisma.asset.findMany({
+      where,
+      select: {
+        id: true,
+        assetCode: true,
+        assetName: true,
+        departmentName: true,
+        projectName: true,
+        locationName: true,
+        level1Name: true
+      }
+    });
+
+    const total = assets.length;
+
+    // Breakdown by Department
+    const departmentBreakdown: Record<string, number> = {};
+    // Breakdown by Project
+    const projectBreakdown: Record<string, number> = {};
+    // Breakdown by Location
+    const locationBreakdown: Record<string, number> = {};
+    // Breakdown by Category (level1Name)
+    const categoryBreakdown: Record<string, number> = {};
+
+    assets.forEach(asset => {
+      const dept = asset.departmentName || 'Chưa phân phòng ban';
+      departmentBreakdown[dept] = (departmentBreakdown[dept] || 0) + 1;
+
+      const proj = asset.projectName || 'Không thuộc dự án';
+      projectBreakdown[proj] = (projectBreakdown[proj] || 0) + 1;
+
+      const loc = asset.locationName || 'Trong kho / Chưa rõ vị trí';
+      locationBreakdown[loc] = (locationBreakdown[loc] || 0) + 1;
+
+      const cat = asset.level1Name || 'Khác';
+      categoryBreakdown[cat] = (categoryBreakdown[cat] || 0) + 1;
+    });
+
+    return {
+      total,
+      departmentBreakdown,
+      projectBreakdown,
+      locationBreakdown,
+      categoryBreakdown
+    };
+  }
+
+  static async createInventoryVisit(inventoryCheckId: number, data: any) {
+    const where = this.buildQueryFromFilters(data.filters);
+    const assets = await prisma.asset.findMany({ where, orderBy: { assetCode: 'asc' } });
+    const assetCountPlan = assets.length;
+
+    return await prisma.$transaction(async (tx) => {
+      const session = await tx.inventorySession.create({
+        data: {
+          inventoryCheckId,
+          scheduledDate: data.scheduledDate ? new Date(data.scheduledDate) : new Date(),
+          companyName: data.companyName || null,
+          projectName: data.projectName || null,
+          departmentName: data.departmentName || null,
+          locationName: data.locationName || null,
+          checkerName: data.checkerName || null,
+          representativeName: data.representativeName || null,
+          assetCountPlan,
+          note: data.note || null,
+          status: 'PENDING'
+        }
+      });
+
+      // Save filter info
+      if (data.filters) {
+        await tx.inventorySessionFilter.create({
+          data: {
+            sessionId: session.id,
+            filterJson: JSON.stringify(data.filters)
+          }
+        });
+      }
+
+      // Generate the session inventory details list immediately (SessionAssets)
+      if (assets.length > 0) {
+        await tx.inventoryDetail.createMany({
+          data: assets.map((asset) => ({
+            sessionId: session.id,
+            assetId: asset.id,
+            assetCode: asset.assetCode,
+            assetName: asset.assetName,
+            serialNumber: asset.serialNumber || null,
+            bookUserName: asset.currentUserName || null,
+            actualUserName: asset.currentUserName || null,
+            bookDepartmentName: asset.departmentName || null,
+            actualDepartmentName: asset.departmentName || null,
+            bookLocationName: asset.locationName || null,
+            actualLocationName: asset.locationName || null,
+            resultStatus: 'MATCH'
+          }))
+        });
+      }
+
+      return session;
     });
   }
 

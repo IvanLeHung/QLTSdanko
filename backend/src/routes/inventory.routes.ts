@@ -70,6 +70,15 @@ router.post('/:id/sessions', authenticateToken, async (req, res) => {
   }
 });
 
+router.post('/:id/sessions/preview', authenticateToken, async (req, res) => {
+  try {
+    const breakdown = await InventoryService.previewInventoryVisitAssets(req.body);
+    res.json(breakdown);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
 router.get('/sessions/:sessionId', authenticateToken, async (req, res) => {
   try {
     const session = await InventoryService.getInventoryVisitDetail(Number(req.params.sessionId));

@@ -340,7 +340,7 @@ model InventoryItem {
 }
 
 model InventorySession {
-  id                 Int               @id @default(autoincrement())
+  id                 Int                     @id @default(autoincrement())
   inventoryCheckId   Int
   scheduledDate      DateTime
   companyName        String?
@@ -349,13 +349,22 @@ model InventorySession {
   locationName       String?
   checkerName        String?
   representativeName String?
-  assetCountPlan     Int               @default(0)
-  status             String            @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
+  assetCountPlan     Int                     @default(0)
+  status             String                  @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
   completedAt        DateTime?
   note               String?
-  createdAt          DateTime          @default(now())
-  inventoryCheck     InventoryCheck    @relation(fields: [inventoryCheckId], references: [id])
+  createdAt          DateTime                @default(now())
+  inventoryCheck     InventoryCheck          @relation(fields: [inventoryCheckId], references: [id])
   details            InventoryDetail[]
+  filter             InventorySessionFilter?
+}
+
+model InventorySessionFilter {
+  id         Int              @id @default(autoincrement())
+  sessionId  Int              @unique
+  session    InventorySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  filterJson String           // JSON text representation of the selected filter criteria
+  createdAt  DateTime         @default(now())
 }
 
 model InventoryDetail {

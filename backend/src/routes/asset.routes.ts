@@ -229,7 +229,7 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
 
 // Autocomplete / Filter Options Endpoints
 router.get('/filter-options/users', authenticateToken, async (req, res) => {
-  const { q = '' } = req.query;
+  const { q = '', limit = '1000' } = req.query;
   const users = await prisma.asset.findMany({
     where: { 
       currentUserName: { contains: String(q), mode: 'insensitive' },
@@ -237,7 +237,7 @@ router.get('/filter-options/users', authenticateToken, async (req, res) => {
     },
     select: { currentUserName: true },
     distinct: ['currentUserName'],
-    take: 10
+    take: Number(limit)
   });
   res.json(users.map(u => u.currentUserName).filter(Boolean));
 });
@@ -322,6 +322,81 @@ router.get('/filter-options/companies', authenticateToken, async (req, res) => {
     orderBy: { code: 'asc' }
   });
   res.json(companies.map(c => ({ id: c.id, value: c.code, label: c.name })));
+});
+
+router.post('/filter-options/cascaded', authenticateToken, async (req, res) => {
+  try {
+    const filters = req.body;
+    
+    const buildPartialWhere = (excludeField?: string) => {
+      const partialWhere: any = { isDeleted: false };
+      
+      if (excludeField !== 'company' && filters.companyNames && filters.companyNames.length > 0) {
+        partialWhere.companyName = { in: filters.companyNames };
+      }
+      if (excludeField !== 'city' && filters.cityNames && filters.cityNames.length > 0) {
+        partialWhere.cityName = { in: filters.cityNames };
+      }
+      if (excludeField !== 'project' && filters.projectNames && filters.projectNames.length > 0) {
+        partialWhere.projectName = { in: filters.projectNames };
+      }
+      if (excludeField !== 'location' && filters.locationNames && filters.locationNames.length > 0) {
+        partialWhere.locationName = { in: filters.locationNames };
+      }
+      if (excludeField !== 'department' && filters.departmentNames && filters.departmentNames.length > 0) {
+        partialWhere.departmentName = { in: filters.departmentNames };
+      }
+      if (excludeField !== 'user' && filters.currentUserNames && filters.currentUserNames.length > 0) {
+        partialWhere.currentUserName = { in: filters.currentUserNames };
+      }
+      
+      return partialWhere;
+    };
+
+    const [companies, cities, projects, locations, departments, users] = await Promise.all([
+      prisma.asset.findMany({
+        where: buildPartialWhere('company'),
+        select: { companyName: true },
+        distinct: ['companyName']
+      }),
+      prisma.asset.findMany({
+        where: buildPartialWhere('city'),
+        select: { cityName: true },
+        distinct: ['cityName']
+      }),
+      prisma.asset.findMany({
+        where: buildPartialWhere('project'),
+        select: { projectName: true },
+        distinct: ['projectName']
+      }),
+      prisma.asset.findMany({
+        where: buildPartialWhere('location'),
+        select: { locationName: true },
+        distinct: ['locationName']
+      }),
+      prisma.asset.findMany({
+        where: buildPartialWhere('department'),
+        select: { departmentName: true },
+        distinct: ['departmentName']
+      }),
+      prisma.asset.findMany({
+        where: buildPartialWhere('user'),
+        select: { currentUserName: true },
+        distinct: ['currentUserName']
+      })
+    ]);
+
+    res.json({
+      companies: companies.map(c => c.companyName).filter(Boolean),
+      cities: cities.map(c => c.cityName).filter(Boolean),
+      projects: projects.map(p => p.projectName).filter(Boolean),
+      locations: locations.map(l => l.locationName).filter(Boolean),
+      departments: departments.map(d => d.departmentName).filter(Boolean),
+      users: users.map(u => u.currentUserName).filter(Boolean)
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
 });
 
 router.get('/filter-options/suppliers', authenticateToken, async (req, res) => {

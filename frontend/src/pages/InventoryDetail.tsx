@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { 
@@ -73,6 +73,143 @@ const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   }
 };
 
+interface MultiSelectDropdownProps {
+  label: string;
+  placeholder?: string;
+  options: string[];
+  selectedValues: string[];
+  onChange: (values: string[]) => void;
+  required?: boolean;
+}
+
+const MultiSelectDropdown: React.FC<MultiSelectDropdownProps> = ({
+  label,
+  placeholder = 'Chọn...',
+  options,
+  selectedValues,
+  onChange,
+  required = false
+}) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  
+  const filteredOptions = options.filter(opt => 
+    !searchQuery || opt.toLowerCase().includes(searchQuery.toLowerCase())
+  );
+  
+  const allSelected = filteredOptions.length > 0 && filteredOptions.every(opt => selectedValues.includes(opt));
+  
+  let displayText = placeholder;
+  if (selectedValues.length > 0) {
+    if (selectedValues.length <= 3) {
+      displayText = selectedValues.join(', ');
+    } else {
+      displayText = `Đã chọn ${selectedValues.length} ${label.toLowerCase()}`;
+    }
+  }
+
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  return (
+    <div className="space-y-1.5 relative" ref={dropdownRef}>
+      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">
+        {label} {required && '*'}
+      </label>
+      <div 
+        onClick={() => setIsOpen(!isOpen)}
+        className="w-full min-h-[48px] px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm flex items-center justify-between cursor-pointer shadow-sm hover:border-slate-300"
+      >
+        <span className="truncate pr-4">{displayText}</span>
+        <span className="text-slate-400">▼</span>
+      </div>
+
+      {isOpen && (
+        <div className="absolute z-50 w-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 space-y-3 min-w-[280px]">
+          <input 
+            type="text"
+            placeholder="Tìm kiếm..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            onClick={e => e.stopPropagation()}
+            className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:border-primary-500"
+          />
+
+          <div className="flex items-center justify-between border-b border-slate-100 pb-2 gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                const newSelection = Array.from(new Set([...selectedValues, ...filteredOptions]));
+                onChange(newSelection);
+              }}
+              className="text-[10px] font-black text-primary-650 hover:underline cursor-pointer uppercase"
+            >
+              Chọn tất cả
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                const newSelection = selectedValues.filter(v => !filteredOptions.includes(v));
+                onChange(newSelection);
+              }}
+              className="text-[10px] font-black text-rose-600 hover:underline cursor-pointer uppercase"
+            >
+              Bỏ chọn tất cả
+            </button>
+          </div>
+
+          <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar">
+            {filteredOptions.map(opt => {
+              const checked = selectedValues.includes(opt);
+              return (
+                <label key={opt} className="flex items-center space-x-2.5 px-1.5 py-2 hover:bg-slate-50 rounded-lg cursor-pointer select-none">
+                  <input 
+                    type="checkbox"
+                    checked={checked}
+                    onChange={() => {
+                      if (checked) {
+                        onChange(selectedValues.filter(v => v !== opt));
+                      } else {
+                        onChange([...selectedValues, opt]);
+                      }
+                    }}
+                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-4 w-4 cursor-pointer"
+                  />
+                  <span className={`text-xs ${checked ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>{opt}</span>
+                </label>
+              );
+            })}
+            {filteredOptions.length === 0 && (
+              <div className="text-center py-4 text-xs text-slate-400 italic">Không tìm thấy dữ liệu</div>
+            )}
+          </div>
+          
+          <div className="flex justify-end pt-2 border-t border-slate-100 gap-2">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setIsOpen(false);
+              }}
+              className="px-4 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider cursor-pointer"
+            >
+              Áp dụng
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 export const InventoryDetail: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -91,9 +228,11 @@ export const InventoryDetail: React.FC = () => {
   const [newMemberName, setNewMemberName] = useState<string>('');
   const [showDeptDropdown, setShowDeptDropdown] = useState<boolean>(false);
   const [deptSearchQuery, setDeptSearchQuery] = useState<string>('');
+
+
   
-  // Preview assets preview breakdown state
   const [previewAssetsCount, setPreviewAssetsCount] = useState<number | null>(null);
+  const [previewBreakdowns, setPreviewBreakdowns] = useState<any>({ department: {}, project: {}, location: {}, category: {} });
   const [previewBreakdown, setPreviewBreakdown] = useState<Record<string, number>>({});
   const [previewLoading, setPreviewLoading] = useState<boolean>(false);
   
@@ -192,6 +331,75 @@ export const InventoryDetail: React.FC = () => {
   const [companies, setCompanies] = useState<any[]>([]);
   const [allCategories, setAllCategories] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
+
+  // Multi-conditional Filter states
+  const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
+  const [sessionFilters, setSessionFilters] = useState<any>({
+    companyNames: [] as string[],
+    cityNames: [] as string[],
+    projectNames: [] as string[],
+    locationNames: [] as string[],
+    departmentNames: [] as string[],
+    currentUserNames: [] as string[],
+    level1Names: [] as string[],
+    level2Names: [] as string[],
+    level3Names: [] as string[],
+    statuses: [] as string[],
+    hasSerial: null as boolean | null,
+    hasInvoice: null as boolean | null,
+    hasCode: null as boolean | null
+  });
+
+  // Dynamic dropdown dependency states
+  const [availableCompanies, setAvailableCompanies] = useState<string[]>([]);
+  const [availableCities, setAvailableCities] = useState<string[]>([]);
+  const [availableProjects, setAvailableProjects] = useState<string[]>([]);
+  const [availableLocations, setAvailableLocations] = useState<string[]>([]);
+  const [availableDepartments, setAvailableDepartments] = useState<string[]>([]);
+  const [availableUsers, setAvailableUsers] = useState<string[]>([]);
+
+  // Categories (cấp 1, 2, 3) from metadata
+  const level1Cats = useMemo(() => {
+    return allCategories.filter((c: any) => c.level === 1).map((c: any) => c.name);
+  }, [allCategories]);
+
+  const level2Cats = useMemo(() => {
+    return allCategories.filter((c: any) => c.level === 2).map((c: any) => c.name);
+  }, [allCategories]);
+
+  const level3Cats = useMemo(() => {
+    return allCategories.filter((c: any) => c.level === 3).map((c: any) => c.name);
+  }, [allCategories]);
+
+  const assetStatuses = [
+    'IN_STOCK',
+    'ASSIGNED',
+    'UNDER_REPAIR',
+    'DAMAGED',
+    'LOST',
+    'LIQUIDATED'
+  ];
+
+  // Cascading dependency effect
+  useEffect(() => {
+    if (!showSessionModal) return;
+
+    const fetchCascadedOptions = async () => {
+      try {
+        const res = await api.post('/assets/filter-options/cascaded', sessionFilters);
+        setAvailableCompanies(res.data.companies || []);
+        setAvailableCities(res.data.cities || []);
+        setAvailableProjects(res.data.projects || []);
+        setAvailableLocations(res.data.locations || []);
+        setAvailableDepartments(res.data.departments || []);
+        setAvailableUsers(res.data.users || []);
+      } catch (err) {
+        console.error("Lỗi khi tải danh mục phụ thuộc", err);
+      }
+    };
+
+    fetchCascadedOptions();
+  }, [sessionFilters, showSessionModal]);
 
   // Cascading category state
   const [reviewCat1, setReviewCat1] = useState('');
@@ -310,35 +518,20 @@ export const InventoryDetail: React.FC = () => {
     setPreviewLoading(true);
     setPreviewAssetsCount(null);
     try {
-      await new Promise(resolve => setTimeout(resolve, 600));
-      
-      let total = 156;
-      let breakdown: Record<string, number> = {
-        'Laptop & Máy tính': 45,
-        'Thiết bị ngoại vi': 60,
-        'Công cụ dụng cụ (CCDC)': 51
-      };
-
-      let searchParams: any = {};
-      if (scopeSelection === 'COMPANY' && sessionForm.companyName) {
-        searchParams.companyCode = companies.find(c => c.name === sessionForm.companyName)?.code || '';
-      } else if (scopeSelection === 'LOCATION' && sessionForm.locationName) {
-        searchParams.locationQuery = sessionForm.locationName;
-      } else if (scopeSelection === 'DEPARTMENT' && sessionForm.departmentName) {
-        searchParams.departmentName = sessionForm.departmentName;
-      } else if (scopeSelection === 'PROJECT' && sessionForm.projectName) {
-        searchParams.projectName = sessionForm.projectName;
-      }
-
-      const res = await api.get('/assets/stats', { params: searchParams });
+      const res = await api.post(`/inventory/${id}/sessions/preview`, sessionFilters);
       
       setPreviewAssetsCount(res.data.total);
-      setPreviewBreakdown({
-        'Đang sử dụng (Assigned)': res.data.assigned,
-        'Trong kho (In Stock)': res.data.inStock,
-        'Báo hỏng (Damaged)': res.data.damaged,
-        'Mất/Thất thoát (Lost)': res.data.lost
+      setPreviewBreakdown(res.data.categoryBreakdown || {});
+      setPreviewBreakdowns({
+        department: res.data.departmentBreakdown || {},
+        project: res.data.projectBreakdown || {},
+        location: res.data.locationBreakdown || {},
+        category: res.data.categoryBreakdown || {}
       });
+
+      if (res.data.total > 10000) {
+        toast.warning("Bạn đang tạo phiên kiểm kê với hơn 10.000 tài sản. Hệ thống sẽ tạo phiên ở chế độ nền.");
+      }
     } catch (err) {
       toast.error("Không thể xem trước tài sản");
     } finally {
@@ -356,7 +549,8 @@ export const InventoryDetail: React.FC = () => {
         ...sessionForm,
         members: sessionMembers,
         scopeType: scopeSelection,
-        expectedAssetCount: previewAssetsCount || 0
+        expectedAssetCount: previewAssetsCount || 0,
+        filters: sessionFilters
       };
 
       const totalAssets = previewAssetsCount || 156;
@@ -389,6 +583,23 @@ export const InventoryDetail: React.FC = () => {
       setSessionMembers([]);
       setCreationProgress(null);
       
+      // Reset filters
+      setSessionFilters({
+        companyNames: [],
+        cityNames: [],
+        projectNames: [],
+        locationNames: [],
+        departmentNames: [],
+        currentUserNames: [],
+        level1Names: [],
+        level2Names: [],
+        level3Names: [],
+        statuses: [],
+        hasSerial: null,
+        hasInvoice: null,
+        hasCode: null
+      });
+
       setSessionForm({
         scheduledDate: new Date().toISOString().slice(0, 10),
         companyName: '',
@@ -3834,6 +4045,7 @@ export const InventoryDetail: React.FC = () => {
             <div className="space-y-6 text-sm text-slate-700">
               {wizardStep === 1 && (
                 <div className="space-y-6">
+                  {/* Top line: Scheduled date & scope shortcuts */}
                   <div className="grid grid-cols-2 gap-6">
                     <div className="space-y-1.5">
                       <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Ngày kiểm kê *</label>
@@ -3846,203 +4058,233 @@ export const InventoryDetail: React.FC = () => {
                       />
                     </div>
                     <div className="space-y-1.5">
-                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Phạm vi kiểm kê theo:</label>
-                      <div className="grid grid-cols-3 gap-2.5">
-                        {([
-                          { key: 'ALL', label: 'Toàn Công ty' },
-                          { key: 'COMPANY', label: 'Công ty con' },
-                          { key: 'PROJECT', label: 'Dự án / Địa điểm' },
-                          { key: 'DEPARTMENT', label: 'Phòng ban' },
-                          { key: 'LOCATION', label: 'Kho / Vị trí' },
-                          { key: 'USER', label: 'Cá nhân' }
-                        ] as const).map(opt => (
+                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Thiết lập nhanh theo:</label>
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: 'Chọn tất cả', filterPreset: () => setSessionFilters({
+                            companyNames: [], cityNames: [], projectNames: [], locationNames: [], departmentNames: [], currentUserNames: [],
+                            level1Names: [], level2Names: [], level3Names: [], statuses: [], hasSerial: null, hasInvoice: null, hasCode: null
+                          })},
+                          { label: 'Xóa bộ lọc', filterPreset: () => setSessionFilters({
+                            companyNames: [], cityNames: [], projectNames: [], locationNames: [], departmentNames: [], currentUserNames: [],
+                            level1Names: [], level2Names: [], level3Names: [], statuses: [], hasSerial: null, hasInvoice: null, hasCode: null
+                          })},
+                          { label: 'Chỉ tài sản có mã', filterPreset: () => setSessionFilters((prev: any) => ({ ...prev, hasCode: true })) }
+                        ].map((btn, idx) => (
                           <button
-                            key={opt.key}
+                            key={idx}
                             type="button"
-                            onClick={() => {
-                              setScopeSelection(opt.key);
-                              setPreviewAssetsCount(null);
-                            }}
-                            className={`py-2 px-1 border rounded-xl text-center font-bold text-[11px] tracking-tight transition-all cursor-pointer ${
-                              scopeSelection === opt.key 
-                                ? 'bg-primary-50 text-primary-650 border-primary-300 ring-2 ring-primary-50' 
-                                : 'bg-white border-slate-200 text-slate-500 hover:border-slate-350'
-                            }`}
+                            onClick={btn.filterPreset}
+                            className="py-2.5 px-2 bg-slate-50 border border-slate-200 hover:border-slate-350 hover:bg-slate-100 rounded-xl text-center font-bold text-[11px] text-slate-600 cursor-pointer"
                           >
-                            {opt.label}
+                            {btn.label}
                           </button>
                         ))}
                       </div>
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-6 pt-4 border-t border-slate-100">
-                    <div className="space-y-1.5">
-                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Công ty</label>
-                      <select
-                        value={sessionForm.companyName}
-                        onChange={e => {
-                          setSessionForm({ ...sessionForm, companyName: e.target.value, departmentName: '', locationName: '', projectName: '' });
+                  {/* Main Multi-Conditional Scope Filter Grid */}
+                  <div className="border-t border-slate-100 pt-4 space-y-4">
+                    <h4 className="font-black text-xs text-slate-800 uppercase tracking-widest text-primary-650">
+                      🎯 Bộ lọc phạm vi kiểm kê đa điều kiện
+                    </h4>
+                    
+                    {/* Row 1: Company & City */}
+                    <div className="grid grid-cols-2 gap-6">
+                      <MultiSelectDropdown
+                        label="Công ty"
+                        placeholder="Tất cả công ty"
+                        options={availableCompanies}
+                        selectedValues={sessionFilters.companyNames}
+                        onChange={val => {
+                          setSessionFilters((prev: any) => ({ ...prev, companyNames: val }));
                           setPreviewAssetsCount(null);
                         }}
-                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:border-primary-500"
-                      >
-                        <option value="">-- Chọn công ty --</option>
-                        {companies.map((c: any) => (
-                          <option key={c.id} value={c.name}>{c.name}</option>
-                        ))}
-                      </select>
+                      />
+                      <MultiSelectDropdown
+                        label="Thành phố"
+                        placeholder="Tất cả thành phố"
+                        options={availableCities}
+                        selectedValues={sessionFilters.cityNames}
+                        onChange={val => {
+                          setSessionFilters((prev: any) => ({ ...prev, cityNames: val }));
+                          setPreviewAssetsCount(null);
+                        }}
+                      />
                     </div>
 
-                    {scopeSelection === 'PROJECT' && (
-                      <div className="space-y-1.5">
-                        <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Dự án</label>
-                        <select
-                          value={sessionForm.projectName}
-                          onChange={e => {
-                            setSessionForm({ ...sessionForm, projectName: e.target.value });
-                            setPreviewAssetsCount(null);
-                          }}
-                          className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-855 text-sm focus:outline-none focus:border-primary-500"
-                        >
-                          <option value="">-- Chọn dự án --</option>
-                          {reviewProjects.map((p, i) => (
-                            <option key={i} value={p}>{p}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    {/* Row 2: Project & Location */}
+                    <div className="grid grid-cols-2 gap-6">
+                      <MultiSelectDropdown
+                        label="Dự án / Địa điểm"
+                        placeholder="Tất cả dự án"
+                        options={availableProjects}
+                        selectedValues={sessionFilters.projectNames}
+                        onChange={val => {
+                          setSessionFilters((prev: any) => ({ ...prev, projectNames: val }));
+                          setPreviewAssetsCount(null);
+                        }}
+                      />
+                      <MultiSelectDropdown
+                        label="Vị trí / Kho / Phòng"
+                        placeholder="Tất cả vị trí"
+                        options={availableLocations}
+                        selectedValues={sessionFilters.locationNames}
+                        onChange={val => {
+                          setSessionFilters((prev: any) => ({ ...prev, locationNames: val }));
+                          setPreviewAssetsCount(null);
+                        }}
+                      />
+                    </div>
 
-                    {scopeSelection === 'DEPARTMENT' && (() => {
-                      const selectedDepts = sessionForm.departmentName ? sessionForm.departmentName.split(',').map(x => x.trim()).filter(Boolean) : [];
-                      
-                      const filteredDepts = reviewDepartments.filter(d => 
-                        !deptSearchQuery || d.toLowerCase().includes(deptSearchQuery.toLowerCase())
-                      );
-                      
-                      const allSelected = filteredDepts.length > 0 && filteredDepts.every(d => selectedDepts.includes(d));
+                    {/* Row 3: Department & User */}
+                    <div className="grid grid-cols-2 gap-6">
+                      <MultiSelectDropdown
+                        label="Phòng ban kiểm kê"
+                        placeholder="Tất cả phòng ban"
+                        options={availableDepartments}
+                        selectedValues={sessionFilters.departmentNames}
+                        onChange={val => {
+                          setSessionFilters((prev: any) => ({ ...prev, departmentNames: val }));
+                          setPreviewAssetsCount(null);
+                        }}
+                      />
+                      <MultiSelectDropdown
+                        label="Người sử dụng tài sản"
+                        placeholder="Tất cả người dùng"
+                        options={availableUsers}
+                        selectedValues={sessionFilters.currentUserNames}
+                        onChange={val => {
+                          setSessionFilters((prev: any) => ({ ...prev, currentUserNames: val }));
+                          setPreviewAssetsCount(null);
+                        }}
+                      />
+                    </div>
 
-                      let displayText = 'Chọn phòng ban...';
-                      if (selectedDepts.length > 0) {
-                        if (selectedDepts.length <= 3) {
-                          displayText = selectedDepts.join(', ');
-                        } else {
-                          displayText = `Đã chọn ${selectedDepts.length} phòng ban`;
-                        }
-                      }
+                    {/* Row 4: Asset Category Level 1 & Status */}
+                    <div className="grid grid-cols-2 gap-6">
+                      <MultiSelectDropdown
+                        label="Loại tài sản (Cấp 1)"
+                        placeholder="Tất cả loại tài sản"
+                        options={level1Cats}
+                        selectedValues={sessionFilters.level1Names}
+                        onChange={val => {
+                          setSessionFilters((prev: any) => ({ ...prev, level1Names: val }));
+                          setPreviewAssetsCount(null);
+                        }}
+                      />
+                      <MultiSelectDropdown
+                        label="Trạng thái tài sản"
+                        placeholder="Tất cả trạng thái"
+                        options={assetStatuses}
+                        selectedValues={sessionFilters.statuses}
+                        onChange={val => {
+                          setSessionFilters((prev: any) => ({ ...prev, statuses: val }));
+                          setPreviewAssetsCount(null);
+                        }}
+                      />
+                    </div>
+                  </div>
 
-                      return (
-                        <div className="space-y-1.5 relative">
-                          <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Phòng ban kiểm kê *</label>
-                          <div 
-                            onClick={() => setShowDeptDropdown(!showDeptDropdown)}
-                            className="w-full min-h-[48px] px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm flex items-center justify-between cursor-pointer shadow-sm hover:border-slate-300"
-                          >
-                            <span className="truncate pr-4">{displayText}</span>
-                            <span className="text-slate-400">▼</span>
+                  {/* Advanced Filters Button and Form */}
+                  <div className="pt-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdvancedFilters(!showAdvancedFilters)}
+                      className="px-4 py-2 border border-slate-200 hover:border-slate-350 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider text-slate-700 rounded-xl cursor-pointer shadow-sm transition-colors"
+                    >
+                      🛠️ {showAdvancedFilters ? 'Ẩn bộ lọc nâng cao' : 'Bộ lọc nâng cao'}
+                    </button>
+
+                    {showAdvancedFilters && (
+                      <div className="mt-4 p-5 bg-slate-50 border border-slate-200 rounded-2xl space-y-4 animate-in slide-in-from-top-2 duration-200">
+                        <div className="grid grid-cols-2 gap-6">
+                          <MultiSelectDropdown
+                            label="Nhóm tài sản cấp 2"
+                            placeholder="Tất cả nhóm cấp 2"
+                            options={level2Cats}
+                            selectedValues={sessionFilters.level2Names}
+                            onChange={val => {
+                              setSessionFilters((prev: any) => ({ ...prev, level2Names: val }));
+                              setPreviewAssetsCount(null);
+                            }}
+                          />
+                          <MultiSelectDropdown
+                            label="Nhóm tài sản cấp 3"
+                            placeholder="Tất cả nhóm cấp 3"
+                            options={level3Cats}
+                            selectedValues={sessionFilters.level3Names}
+                            onChange={val => {
+                              setSessionFilters((prev: any) => ({ ...prev, level3Names: val }));
+                              setPreviewAssetsCount(null);
+                            }}
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-3 gap-6">
+                          <div className="space-y-1.5">
+                            <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Có số Serial / Không</label>
+                            <select
+                              value={sessionFilters.hasSerial === null ? 'ALL' : sessionFilters.hasSerial ? 'YES' : 'NO'}
+                              onChange={e => {
+                                setSessionFilters((prev: any) => ({
+                                  ...prev,
+                                  hasSerial: e.target.value === 'YES' ? true : e.target.value === 'NO' ? false : null
+                                }));
+                                setPreviewAssetsCount(null);
+                              }}
+                              className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:border-primary-500"
+                            >
+                              <option value="ALL">Tất cả tài sản</option>
+                              <option value="YES">Có số Serial</option>
+                              <option value="NO">Không có số Serial</option>
+                            </select>
                           </div>
 
-                          {showDeptDropdown && (
-                            <div className="absolute z-50 w-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 space-y-3">
-                              <input 
-                                type="text"
-                                placeholder="Tìm phòng ban..."
-                                value={deptSearchQuery}
-                                onChange={e => setDeptSearchQuery(e.target.value)}
-                                onClick={e => e.stopPropagation()}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:border-primary-500"
-                              />
+                          <div className="space-y-1.5">
+                            <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Có hóa đơn / Không</label>
+                            <select
+                              value={sessionFilters.hasInvoice === null ? 'ALL' : sessionFilters.hasInvoice ? 'YES' : 'NO'}
+                              onChange={e => {
+                                setSessionFilters((prev: any) => ({
+                                  ...prev,
+                                  hasInvoice: e.target.value === 'YES' ? true : e.target.value === 'NO' ? false : null
+                                }));
+                                setPreviewAssetsCount(null);
+                              }}
+                              className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:border-primary-500"
+                            >
+                              <option value="ALL">Tất cả tài sản</option>
+                              <option value="YES">Có hóa đơn</option>
+                              <option value="NO">Không có hóa đơn</option>
+                            </select>
+                          </div>
 
-                              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                <label className="flex items-center space-x-2.5 cursor-pointer select-none">
-                                  <input 
-                                    type="checkbox"
-                                    checked={allSelected}
-                                    onChange={() => {
-                                      let nextSelected = [...selectedDepts];
-                                      if (allSelected) {
-                                        nextSelected = nextSelected.filter(d => !filteredDepts.includes(d));
-                                      } else {
-                                        filteredDepts.forEach(d => {
-                                          if (!nextSelected.includes(d)) nextSelected.push(d);
-                                        });
-                                      }
-                                      setSessionForm({ ...sessionForm, departmentName: nextSelected.join(',') });
-                                      setPreviewAssetsCount(null);
-                                    }}
-                                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
-                                  />
-                                  <span className="text-xs font-black text-slate-700">Chọn tất cả phòng ban</span>
-                                </label>
-                              </div>
-
-                              <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar">
-                                {filteredDepts.map(dept => {
-                                  const checked = selectedDepts.includes(dept);
-                                  return (
-                                    <label key={dept} className="flex items-center space-x-2.5 px-1.5 py-2 hover:bg-slate-50 rounded-lg cursor-pointer select-none">
-                                      <input 
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={() => {
-                                          let nextSelected;
-                                          if (checked) {
-                                            nextSelected = selectedDepts.filter(d => d !== dept);
-                                          } else {
-                                            nextSelected = [...selectedDepts, dept];
-                                          }
-                                          setSessionForm({ ...sessionForm, departmentName: nextSelected.join(',') });
-                                          setPreviewAssetsCount(null);
-                                        }}
-                                        className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
-                                      />
-                                      <span className={`text-xs ${checked ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>{dept}</span>
-                                    </label>
-                                  );
-                                })}
-                                {filteredDepts.length === 0 && (
-                                  <div className="text-center py-4 text-xs text-slate-400 italic">Không tìm thấy phòng ban</div>
-                                )}
-                              </div>
-                              
-                              <div className="flex justify-end pt-2 border-t border-slate-100">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setShowDeptDropdown(false);
-                                  }}
-                                  className="px-4 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider"
-                                >
-                                  Đóng
-                                </button>
-                              </div>
-                            </div>
-                          )}
+                          <div className="space-y-1.5">
+                            <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Có mã / Không mã</label>
+                            <select
+                              value={sessionFilters.hasCode === null ? 'ALL' : sessionFilters.hasCode ? 'YES' : 'NO'}
+                              onChange={e => {
+                                setSessionFilters((prev: any) => ({
+                                  ...prev,
+                                  hasCode: e.target.value === 'YES' ? true : e.target.value === 'NO' ? false : null
+                                }));
+                                setPreviewAssetsCount(null);
+                              }}
+                              className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:border-primary-500"
+                            >
+                              <option value="ALL">Tất cả tài sản</option>
+                              <option value="YES">Có mã tài sản</option>
+                              <option value="NO">Chưa có mã tài sản</option>
+                            </select>
+                          </div>
                         </div>
-                      );
-                    })()}
-
-                    {scopeSelection === 'LOCATION' && (
-                      <div className="space-y-1.5">
-                        <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Kho / Vị trí chi tiết</label>
-                        <select
-                          value={sessionForm.locationName}
-                          onChange={e => {
-                            setSessionForm({ ...sessionForm, locationName: e.target.value });
-                            setPreviewAssetsCount(null);
-                          }}
-                          className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-855 text-sm focus:outline-none focus:border-primary-500"
-                        >
-                          <option value="">-- Chọn vị trí --</option>
-                          {reviewLocations.map((l, i) => (
-                            <option key={i} value={l}>{l}</option>
-                          ))}
-                        </select>
                       </div>
                     )}
                   </div>
 
+                  {/* Asset Preview Section */}
                   <div className="pt-6 border-t border-slate-100 space-y-4">
                     <div className="flex items-center justify-between">
                       <span className="font-bold text-slate-400 text-xs uppercase tracking-wider">Xem trước danh sách tài sản trong phạm vi:</span>
@@ -4050,7 +4292,7 @@ export const InventoryDetail: React.FC = () => {
                         type="button"
                         onClick={handlePreviewAssets}
                         disabled={previewLoading}
-                        className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-850 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-855 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         {previewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'} Xem trước tài sản
                       </button>
@@ -4058,18 +4300,82 @@ export const InventoryDetail: React.FC = () => {
 
                     {previewAssetsCount !== null && (
                       <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
-                        <div className="flex items-center justify-between font-black text-sm text-slate-800">
+                        <div className="flex items-center justify-between font-black text-sm text-slate-800 border-b pb-2">
                           <span>Tổng số tài sản tìm thấy:</span>
                           <span className="text-base text-primary-650 font-black">{previewAssetsCount} tài sản</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-3 text-xs font-bold text-slate-500">
-                          {Object.entries(previewBreakdown).map(([cat, count]) => (
-                            <div key={cat} className="flex justify-between border-b border-slate-100 pb-1.5">
-                              <span>{cat}:</span>
-                              <span className="text-slate-800">{count}</span>
+                        
+                        <div className="grid grid-cols-2 gap-6 text-xs">
+                          <div className="space-y-3">
+                            <div>
+                              <span className="font-black text-slate-500 uppercase tracking-wider block mb-1">Theo loại tài sản:</span>
+                              <div className="bg-white border border-slate-150 rounded-xl p-3 space-y-1">
+                                {Object.entries(previewBreakdowns.category || {}).length > 0 ? (
+                                  Object.entries(previewBreakdowns.category).map(([name, val]: any) => (
+                                    <div key={name} className="flex justify-between font-semibold">
+                                      <span className="text-slate-600 truncate max-w-[180px]">{name}</span>
+                                      <span className="text-slate-900 font-bold">{val}</span>
+                                    </div>
+                                  ))
+                                ) : <p className="text-slate-400 italic text-[11px]">Không có dữ liệu</p>}
+                              </div>
                             </div>
-                          ))}
+                            
+                            <div>
+                              <span className="font-black text-slate-500 uppercase tracking-wider block mb-1">Theo phòng ban:</span>
+                              <div className="bg-white border border-slate-150 rounded-xl p-3 space-y-1 max-h-36 overflow-y-auto custom-scrollbar">
+                                {Object.entries(previewBreakdowns.department || {}).length > 0 ? (
+                                  Object.entries(previewBreakdowns.department).map(([name, val]: any) => (
+                                    <div key={name} className="flex justify-between font-semibold">
+                                      <span className="text-slate-600 truncate max-w-[180px]">{name}</span>
+                                      <span className="text-slate-900 font-bold">{val}</span>
+                                    </div>
+                                  ))
+                                ) : <p className="text-slate-400 italic text-[11px]">Không có dữ liệu</p>}
+                              </div>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-3">
+                            <div>
+                              <span className="font-black text-slate-500 uppercase tracking-wider block mb-1">Theo dự án:</span>
+                              <div className="bg-white border border-slate-150 rounded-xl p-3 space-y-1 max-h-32 overflow-y-auto custom-scrollbar">
+                                {Object.entries(previewBreakdowns.project || {}).length > 0 ? (
+                                  Object.entries(previewBreakdowns.project).map(([name, val]: any) => (
+                                    <div key={name} className="flex justify-between font-semibold">
+                                      <span className="text-slate-600 truncate max-w-[180px]">{name}</span>
+                                      <span className="text-slate-900 font-bold">{val}</span>
+                                    </div>
+                                  ))
+                                ) : <p className="text-slate-400 italic text-[11px]">Không có dữ liệu</p>}
+                              </div>
+                            </div>
+                            
+                            <div>
+                              <span className="font-black text-slate-500 uppercase tracking-wider block mb-1">Theo vị trí:</span>
+                              <div className="bg-white border border-slate-150 rounded-xl p-3 space-y-1 max-h-36 overflow-y-auto custom-scrollbar">
+                                {Object.entries(previewBreakdowns.location || {}).length > 0 ? (
+                                  Object.entries(previewBreakdowns.location).map(([name, val]: any) => (
+                                    <div key={name} className="flex justify-between font-semibold">
+                                      <span className="text-slate-600 truncate max-w-[180px]">{name}</span>
+                                      <span className="text-slate-900 font-bold">{val}</span>
+                                    </div>
+                                  ))
+                                ) : <p className="text-slate-400 italic text-[11px]">Không có dữ liệu</p>}
+                              </div>
+                            </div>
+                          </div>
                         </div>
+                        
+                        {previewAssetsCount > 10000 && (
+                          <div className="bg-rose-50 border border-rose-200 text-rose-800 rounded-xl p-3 text-xs font-semibold flex items-start gap-2 animate-pulse">
+                            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
+                            <div>
+                              <p className="font-black">Cảnh báo phạm vi quá lớn!</p>
+                              <p className="text-[11px] font-medium leading-relaxed">Bạn đang tạo phiên kiểm kê với {previewAssetsCount} tài sản. Hệ thống sẽ xử lý và tạo phiên ở chế độ nền để tránh nghẽn dòng hoạt động.</p>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
