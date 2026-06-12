@@ -1326,7 +1326,20 @@ model AssetNormalizationHistory {
   approvedBy     String
   approvedAt     DateTime @default(now())
   reason         String?
+  batchId        String?
 }
+
+model AssetNormalizationRule {
+  id        Int      @id @default(autoincrement())
+  fieldName String   // departmentName, locationName, assetName, projectName, cityName
+  oldValue  String
+  newValue  String
+  createdBy String
+  createdAt DateTime @default(now())
+
+  @@unique([fieldName, oldValue])
+}
+
 
 
 

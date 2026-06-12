@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
+import ExcelJS from 'exceljs';
 
 export class NormalizationService {
   static async createNormalizationJob(criteria: any, username: string) {
@@ -187,6 +188,14 @@ export class NormalizationService {
         locCityMap.set(l.name, l.city);
       });
 
+      // Load user-defined mapping rules
+      const rules = await prisma.assetNormalizationRule.findMany();
+      const checkRule = (fieldName: string, value: string | null) => {
+        if (!value) return null;
+        const trimmed = value.trim();
+        return rules.find(r => r.fieldName === fieldName && r.oldValue.trim() === trimmed);
+      };
+
       const suggestionsData: any[] = [];
       const totalSteps = assets.length;
       let stepCounter = 0;
@@ -198,6 +207,109 @@ export class NormalizationService {
           await prisma.assetNormalizationJob.update({
             where: { id: jobId },
             data: { progress }
+          });
+        }
+
+        // Rule-match flags to bypass standard heuristics
+        let hasDeptSuggestion = false;
+        let hasLocSuggestion = false;
+        let hasCitySuggestion = false;
+        let hasProjectSuggestion = false;
+        let hasNameSuggestion = false;
+
+        // Apply custom mapping rules first
+        const deptRule = checkRule('departmentName', asset.departmentName);
+        if (deptRule) {
+          hasDeptSuggestion = true;
+          suggestionsData.push({
+            jobId,
+            assetId: asset.id,
+            assetCode: asset.assetCode,
+            assetName: asset.assetName,
+            issueType: 'WRONG_DEPARTMENT',
+            fieldName: 'departmentName',
+            currentValue: asset.departmentName,
+            suggestedValue: deptRule.newValue,
+            confidenceScore: 1.0,
+            source: 'USER_RULE',
+            status: 'PENDING',
+            reason: 'Khớp quy tắc chuẩn hóa của người dùng'
+          });
+        }
+
+        const locRule = checkRule('locationName', asset.locationName);
+        if (locRule) {
+          hasLocSuggestion = true;
+          suggestionsData.push({
+            jobId,
+            assetId: asset.id,
+            assetCode: asset.assetCode,
+            assetName: asset.assetName,
+            issueType: 'WRONG_LOCATION',
+            fieldName: 'locationName',
+            currentValue: asset.locationName,
+            suggestedValue: locRule.newValue,
+            confidenceScore: 1.0,
+            source: 'USER_RULE',
+            status: 'PENDING',
+            reason: 'Khớp quy tắc chuẩn hóa của người dùng'
+          });
+        }
+
+        const cityRule = checkRule('cityName', asset.cityName);
+        if (cityRule) {
+          hasCitySuggestion = true;
+          suggestionsData.push({
+            jobId,
+            assetId: asset.id,
+            assetCode: asset.assetCode,
+            assetName: asset.assetName,
+            issueType: 'WRONG_CITY',
+            fieldName: 'cityName',
+            currentValue: asset.cityName,
+            suggestedValue: cityRule.newValue,
+            confidenceScore: 1.0,
+            source: 'USER_RULE',
+            status: 'PENDING',
+            reason: 'Khớp quy tắc chuẩn hóa của người dùng'
+          });
+        }
+
+        const projectRule = checkRule('projectName', asset.projectName);
+        if (projectRule) {
+          hasProjectSuggestion = true;
+          suggestionsData.push({
+            jobId,
+            assetId: asset.id,
+            assetCode: asset.assetCode,
+            assetName: asset.assetName,
+            issueType: 'WRONG_PROJECT',
+            fieldName: 'projectName',
+            currentValue: asset.projectName,
+            suggestedValue: projectRule.newValue,
+            confidenceScore: 1.0,
+            source: 'USER_RULE',
+            status: 'PENDING',
+            reason: 'Khớp quy tắc chuẩn hóa của người dùng'
+          });
+        }
+
+        const nameRule = checkRule('assetName', asset.assetName);
+        if (nameRule) {
+          hasNameSuggestion = true;
+          suggestionsData.push({
+            jobId,
+            assetId: asset.id,
+            assetCode: asset.assetCode,
+            assetName: asset.assetName,
+            issueType: 'WRONG_NAME',
+            fieldName: 'assetName',
+            currentValue: asset.assetName,
+            suggestedValue: nameRule.newValue,
+            confidenceScore: 1.0,
+            source: 'USER_RULE',
+            status: 'PENDING',
+            reason: 'Khớp quy tắc chuẩn hóa của người dùng'
           });
         }
 
@@ -214,7 +326,8 @@ export class NormalizationService {
             suggestedValue: `TS-TEMP-${asset.id}`,
             confidenceScore: 0.99,
             source: 'SYSTEM_RULE',
-            status: 'PENDING'
+            status: 'PENDING',
+            reason: 'Thiếu mã tài sản'
           });
         }
 
@@ -232,7 +345,8 @@ export class NormalizationService {
             suggestedValue: `${asset.assetCode}-DUP${count}`,
             confidenceScore: 0.80,
             source: 'SYSTEM_RULE',
-            status: 'PENDING'
+            status: 'PENDING',
+            reason: 'Trùng mã tài sản với tài sản khác'
           });
         }
 
@@ -249,12 +363,13 @@ export class NormalizationService {
             suggestedValue: 'Tài sản chưa đặt tên',
             confidenceScore: 0.50,
             source: 'SYSTEM_RULE',
-            status: 'PENDING'
+            status: 'PENDING',
+            reason: 'Tên tài sản bị trống'
           });
         }
 
         // --- Rule 4: Tên tài sản chưa chuẩn (WRONG_NAME) ---
-        if (issueTypes.includes('WRONG_NAME') && asset.assetName) {
+        if (issueTypes.includes('WRONG_NAME') && asset.assetName && !hasNameSuggestion) {
           const original = asset.assetName;
           let suggested = original
             .replace(/\s+/g, ' ') // Remove double spaces
@@ -292,7 +407,8 @@ export class NormalizationService {
               suggestedValue: suggested,
               confidenceScore: 0.95,
               source: 'SYSTEM_RULE',
-              status: 'PENDING'
+              status: 'PENDING',
+              reason: 'Tên tài sản chưa viết hoa thương hiệu hoặc sai khoảng trắng'
             });
           }
         }
@@ -302,8 +418,20 @@ export class NormalizationService {
           const lowerName = asset.assetName.toLowerCase();
           const currentCat = asset.level2Name || '';
           
-          if ((lowerName.includes('laptop') || lowerName.includes('dell') || lowerName.includes('macbook') || lowerName.includes('thinkpad')) && 
-              currentCat !== 'Thiết bị CNTT' && currentCat !== 'Máy tính và Thiết bị mạng') {
+          let suggestedCat = null;
+          if (lowerName.includes('laptop') || lowerName.includes('dell') || lowerName.includes('macbook') || lowerName.includes('thinkpad') || lowerName.includes('hp') || lowerName.includes('lenovo')) {
+            suggestedCat = 'Thiết bị CNTT';
+          } else if (lowerName.includes('canon') || lowerName.includes('brother') || lowerName.includes('máy in') || lowerName.includes('laserjet')) {
+            suggestedCat = 'Thiết bị văn phòng';
+          } else if (lowerName.includes('lg') || lowerName.includes('samsung') || lowerName.includes('màn hình') || lowerName.includes('monitor')) {
+            suggestedCat = 'Thiết bị CNTT';
+          } else if (lowerName.includes('bàn') || lowerName.includes('ghế') || lowerName.includes('tủ') || lowerName.includes('kệ') || lowerName.includes('ghe') || lowerName.includes('ban') || lowerName.includes('tu')) {
+            suggestedCat = 'Nội thất văn phòng';
+          } else if (lowerName.includes('camera') || lowerName.includes('đầu ghi') || lowerName.includes('router') || lowerName.includes('switch')) {
+            suggestedCat = 'Thiết bị CNTT';
+          }
+
+          if (suggestedCat && currentCat !== suggestedCat) {
             suggestionsData.push({
               jobId,
               assetId: asset.id,
@@ -312,16 +440,17 @@ export class NormalizationService {
               issueType: 'WRONG_CATEGORY',
               fieldName: 'level2Name',
               currentValue: currentCat,
-              suggestedValue: 'Thiết bị CNTT',
+              suggestedValue: suggestedCat,
               confidenceScore: 0.90,
               source: 'CATEGORY_MAPPING',
-              status: 'PENDING'
+              status: 'PENDING',
+              reason: 'Từ khóa tên tài sản không khớp nhóm tài sản hiện tại'
             });
           }
         }
 
         // --- Rule 6: Thiếu phòng ban (MISSING_DEPARTMENT) ---
-        if (issueTypes.includes('MISSING_DEPARTMENT') && (!asset.departmentName || asset.departmentName.trim() === '')) {
+        if (issueTypes.includes('MISSING_DEPARTMENT') && (!asset.departmentName || asset.departmentName.trim() === '') && !hasDeptSuggestion) {
           const userDept = asset.currentUserName ? userDepts.get(asset.currentUserName) : null;
           suggestionsData.push({
             jobId,
@@ -334,12 +463,13 @@ export class NormalizationService {
             suggestedValue: userDept || 'Ban Hành chính Nhân sự',
             confidenceScore: userDept ? 0.75 : 0.40,
             source: userDept ? 'CUSTODIAN_HEURISTICS' : 'SYSTEM_RULE',
-            status: 'PENDING'
+            status: 'PENDING',
+            reason: 'Tài sản thiếu phòng ban sử dụng'
           });
         }
 
         // --- Rule 7: Thiếu vị trí (MISSING_LOCATION) ---
-        if (issueTypes.includes('MISSING_LOCATION') && (!asset.locationName || asset.locationName.trim() === '')) {
+        if (issueTypes.includes('MISSING_LOCATION') && (!asset.locationName || asset.locationName.trim() === '') && !hasLocSuggestion) {
           const primaryLocation = asset.departmentName ? deptLocations.get(asset.departmentName) : null;
           suggestionsData.push({
             jobId,
@@ -352,7 +482,8 @@ export class NormalizationService {
             suggestedValue: primaryLocation || 'Hà Nội - Văn phòng C6',
             confidenceScore: primaryLocation ? 0.70 : 0.35,
             source: primaryLocation ? 'DEPARTMENT_MAPPING' : 'SYSTEM_RULE',
-            status: 'PENDING'
+            status: 'PENDING',
+            reason: 'Tài sản thiếu vị trí chi tiết'
           });
         }
 
@@ -369,7 +500,8 @@ export class NormalizationService {
             suggestedValue: 'Chưa xác định người dùng',
             confidenceScore: 0.50,
             source: 'SYSTEM_RULE',
-            status: 'PENDING'
+            status: 'PENDING',
+            reason: 'Trạng thái Đang sử dụng nhưng trống tên người dùng'
           });
         }
 
@@ -387,7 +519,8 @@ export class NormalizationService {
               suggestedValue: 'ASSIGNED',
               confidenceScore: 0.85,
               source: 'SYSTEM_RULE',
-              status: 'PENDING'
+              status: 'PENDING',
+              reason: 'Có người sử dụng nhưng trạng thái là Trong kho'
             });
           } else if (asset.status === 'ASSIGNED' && (!asset.currentUserName || asset.currentUserName.trim() === '') && (!asset.departmentName || asset.departmentName.trim() === '')) {
             suggestionsData.push({
@@ -401,7 +534,23 @@ export class NormalizationService {
               suggestedValue: 'IN_STOCK',
               confidenceScore: 0.85,
               source: 'SYSTEM_RULE',
-              status: 'PENDING'
+              status: 'PENDING',
+              reason: 'Trống phòng ban và người dùng nhưng trạng thái là Đang sử dụng'
+            });
+          } else if (asset.locationName && asset.locationName.toLowerCase().includes('kho') && asset.status === 'ASSIGNED') {
+            suggestionsData.push({
+              jobId,
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              assetName: asset.assetName,
+              issueType: 'WRONG_STATUS',
+              fieldName: 'status',
+              currentValue: 'ASSIGNED',
+              suggestedValue: 'IN_STOCK',
+              confidenceScore: 0.90,
+              source: 'SYSTEM_RULE',
+              status: 'PENDING',
+              reason: 'Vị trí ở Kho nhưng trạng thái là Đang sử dụng'
             });
           }
         }
@@ -419,12 +568,13 @@ export class NormalizationService {
             suggestedValue: 'Cần bổ sung serial',
             confidenceScore: 0.95,
             source: 'SYSTEM_RULE',
-            status: 'PENDING'
+            status: 'PENDING',
+            reason: 'Thiếu số serial thiết bị'
           });
         }
 
         // --- Rule 11: Tên viết tắt không thống nhất (WRONG_ABBREVIATION) ---
-        if (issueTypes.includes('WRONG_ABBREVIATION') && asset.departmentName) {
+        if (issueTypes.includes('WRONG_ABBREVIATION') && asset.departmentName && !hasDeptSuggestion) {
           const dept = asset.departmentName.trim().toUpperCase();
           let suggestedDept = null;
           if (dept === 'HCNS') suggestedDept = 'Ban Hành chính Nhân sự';
@@ -443,13 +593,14 @@ export class NormalizationService {
               suggestedValue: suggestedDept,
               confidenceScore: 0.98,
               source: 'DEPARTMENT_MAPPING',
-              status: 'PENDING'
+              status: 'PENDING',
+              reason: 'Viết tắt phòng ban chưa chuẩn hóa'
             });
           }
         }
 
         // --- Rule 12: Sai/Chưa chuẩn tên phòng ban (WRONG_DEPARTMENT) ---
-        if (issueTypes.includes('WRONG_DEPARTMENT') && asset.departmentName && asset.departmentName.trim() !== '') {
+        if (issueTypes.includes('WRONG_DEPARTMENT') && asset.departmentName && asset.departmentName.trim() !== '' && !hasDeptSuggestion) {
           const deptVal = asset.departmentName.trim();
           if (!officialDeptNames.includes(deptVal)) {
             // Try matching
@@ -487,14 +638,15 @@ export class NormalizationService {
                 suggestedValue: suggestedDept,
                 confidenceScore: confidence,
                 source: 'DEPARTMENT_MAPPING',
-                status: 'PENDING'
+                status: 'PENDING',
+                reason: 'Tên phòng ban viết thường hoặc không khớp danh mục chuẩn'
               });
             }
           }
         }
 
         // --- Rule 13: Sai/Chưa chuẩn tên vị trí (WRONG_LOCATION) ---
-        if (issueTypes.includes('WRONG_LOCATION') && asset.locationName && asset.locationName.trim() !== '') {
+        if (issueTypes.includes('WRONG_LOCATION') && asset.locationName && asset.locationName.trim() !== '' && !hasLocSuggestion) {
           const locVal = asset.locationName.trim();
           if (!officialLocNames.includes(locVal)) {
             const cleanedVal = cleanStringForCompare(locVal);
@@ -530,14 +682,15 @@ export class NormalizationService {
                 suggestedValue: suggestedLoc,
                 confidenceScore: confidence,
                 source: 'LOCATION_MAPPING',
-                status: 'PENDING'
+                status: 'PENDING',
+                reason: 'Tên vị trí viết thường hoặc không khớp danh mục chuẩn'
               });
             }
           }
         }
 
         // --- Rule 14: Sai/Chưa chuẩn tên thành phố (WRONG_CITY) ---
-        if (issueTypes.includes('WRONG_CITY') && asset.cityName) {
+        if (issueTypes.includes('WRONG_CITY') && asset.cityName && !hasCitySuggestion) {
           const cityVal = asset.cityName.trim();
           let expectedCity = null;
           let confidence = 0.95;
@@ -575,13 +728,14 @@ export class NormalizationService {
               suggestedValue: expectedCity,
               confidenceScore: confidence,
               source: 'CITY_MAPPING',
-              status: 'PENDING'
+              status: 'PENDING',
+              reason: 'Tên thành phố viết thường hoặc không khớp vị trí'
             });
           }
         }
 
         // --- Rule 15: Sai/Chưa chuẩn tên dự án (WRONG_PROJECT) ---
-        if (issueTypes.includes('WRONG_PROJECT') && asset.projectName && asset.projectName.trim() !== '') {
+        if (issueTypes.includes('WRONG_PROJECT') && asset.projectName && asset.projectName.trim() !== '' && !hasProjectSuggestion) {
           const projectVal = asset.projectName.trim();
           const cleanProject = toTitleCaseVietnamese(projectVal);
 
@@ -597,7 +751,8 @@ export class NormalizationService {
               suggestedValue: cleanProject,
               confidenceScore: 0.90,
               source: 'PROJECT_MAPPING',
-              status: 'PENDING'
+              status: 'PENDING',
+              reason: 'Tên dự án viết thường hoặc sai khoảng trắng'
             });
           }
         }
@@ -627,18 +782,58 @@ export class NormalizationService {
     }
   }
 
-  static async updateSuggestionValue(id: number, suggestedValue: string, reason?: string) {
+  static async updateSuggestionValue(id: number, suggestedValue: string, reason?: string, applyToAllSimilar?: boolean, createdBy?: string) {
+    const suggestion = await prisma.assetNormalizationSuggestion.findUnique({
+      where: { id }
+    });
+    if (!suggestion) throw new Error("Suggestion not found");
+
+    if (applyToAllSimilar) {
+      await prisma.assetNormalizationRule.upsert({
+        where: {
+          fieldName_oldValue: {
+            fieldName: suggestion.fieldName,
+            oldValue: suggestion.currentValue || ''
+          }
+        },
+        update: {
+          newValue: suggestedValue,
+          createdBy: createdBy || 'system'
+        },
+        create: {
+          fieldName: suggestion.fieldName,
+          oldValue: suggestion.currentValue || '',
+          newValue: suggestedValue,
+          createdBy: createdBy || 'system'
+        }
+      });
+
+      await prisma.assetNormalizationSuggestion.updateMany({
+        where: {
+          jobId: suggestion.jobId,
+          fieldName: suggestion.fieldName,
+          currentValue: suggestion.currentValue,
+          status: 'PENDING'
+        },
+        data: {
+          suggestedValue,
+          status: 'EDITED',
+          reason: `Áp dụng từ luật tương tự: ${reason || ''}`
+        }
+      });
+    }
+
     return await prisma.assetNormalizationSuggestion.update({
       where: { id },
       data: {
         suggestedValue,
         status: 'EDITED',
-        reason
+        reason: reason || 'Điều chỉnh đề xuất thủ công'
       }
     });
   }
 
-  static async approveSuggestions(suggestionIds: number[], approvedBy: string) {
+  static async approveSuggestions(suggestionIds: number[], approvedBy: string, batchId?: string) {
     return await prisma.$transaction(async (tx) => {
       const suggestions = await tx.assetNormalizationSuggestion.findMany({
         where: {
@@ -647,32 +842,29 @@ export class NormalizationService {
         }
       });
 
+      const activeBatchId = batchId || `batch-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
       const historyRecords = [];
 
       for (const sug of suggestions) {
         const valToApply = sug.suggestedValue;
+        if (valToApply === null) continue;
         
-        // 1. Fetch current asset
         const asset = await tx.asset.findUnique({ where: { id: sug.assetId } });
         if (!asset) continue;
 
-        // 2. Prepare field update
         const updateData: any = {};
         updateData[sug.fieldName] = valToApply;
 
-        // Apply update to Asset
         await tx.asset.update({
           where: { id: sug.assetId },
           data: updateData
         });
 
-        // 3. Mark Suggestion as Approved
         await tx.assetNormalizationSuggestion.update({
           where: { id: sug.id },
           data: { status: 'APPROVED' }
         });
 
-        // 4. Collect for normalization history logs
         historyRecords.push({
           assetId: sug.assetId,
           fieldName: sug.fieldName,
@@ -681,7 +873,8 @@ export class NormalizationService {
           finalValue: valToApply,
           confidenceScore: sug.confidenceScore,
           approvedBy,
-          reason: sug.reason || 'Duyệt chuẩn hóa dữ liệu'
+          reason: sug.reason || 'Duyệt chuẩn hóa dữ liệu',
+          batchId: activeBatchId
         });
       }
 
@@ -691,17 +884,16 @@ export class NormalizationService {
         });
       }
 
-      // Log action using audit service
       await AuditService.log({
         entityType: 'NORMALIZATION',
         entityId: suggestions[0]?.jobId || 0,
         action: 'UPDATE',
-        details: { approvedCount: suggestions.length },
+        details: { approvedCount: suggestions.length, batchId: activeBatchId },
         performedBy: approvedBy,
         tx
       });
 
-      return { approvedCount: suggestions.length };
+      return { approvedCount: suggestions.length, batchId: activeBatchId };
     }, { timeout: 30000 });
   }
 
@@ -728,5 +920,186 @@ export class NormalizationService {
     ]);
 
     return { total, page, limit, items };
+  }
+
+  static async getGroupedSuggestions(jobId: number, params: {
+    issueType?: string;
+    status?: string;
+    search?: string;
+  }) {
+    const where: any = { jobId };
+    if (params.issueType) where.issueType = params.issueType;
+    if (params.status) where.status = params.status;
+    if (params.search) {
+      where.OR = [
+        { assetCode: { contains: params.search, mode: 'insensitive' } },
+        { assetName: { contains: params.search, mode: 'insensitive' } },
+        { currentValue: { contains: params.search, mode: 'insensitive' } },
+        { suggestedValue: { contains: params.search, mode: 'insensitive' } }
+      ];
+    }
+
+    const suggestions = await prisma.assetNormalizationSuggestion.findMany({
+      where,
+      orderBy: { confidenceScore: 'desc' }
+    });
+
+    const groupMap = new Map<string, {
+      id: string;
+      issueType: string;
+      fieldName: string;
+      currentValue: string | null;
+      suggestedValue: string | null;
+      confidenceScore: number;
+      ids: number[];
+      assetIds: number[];
+      count: number;
+    }>();
+
+    suggestions.forEach(sug => {
+      const key = `${sug.issueType}-${sug.fieldName}-${sug.currentValue || ''}-${sug.suggestedValue || ''}`;
+      const existing = groupMap.get(key);
+      if (existing) {
+        existing.ids.push(sug.id);
+        existing.assetIds.push(sug.assetId);
+        existing.count++;
+      } else {
+        groupMap.set(key, {
+          id: key,
+          issueType: sug.issueType,
+          fieldName: sug.fieldName,
+          currentValue: sug.currentValue,
+          suggestedValue: sug.suggestedValue,
+          confidenceScore: sug.confidenceScore,
+          ids: [sug.id],
+          assetIds: [sug.assetId],
+          count: 1
+        });
+      }
+    });
+
+    const items = Array.from(groupMap.values());
+    return {
+      total: items.length,
+      items
+    };
+  }
+
+  static async rollbackBatch(batchId: string) {
+    return await prisma.$transaction(async (tx) => {
+      const historyRecords = await tx.assetNormalizationHistory.findMany({
+        where: { batchId }
+      });
+      if (historyRecords.length === 0) {
+        throw new Error("Không tìm thấy lô chuẩn hóa để hoàn tác");
+      }
+
+      for (const record of historyRecords) {
+        const updateData: any = {};
+        updateData[record.fieldName] = record.oldValue;
+
+        await tx.asset.update({
+          where: { id: record.assetId },
+          data: updateData
+        });
+      }
+
+      await tx.assetNormalizationHistory.deleteMany({
+        where: { batchId }
+      });
+
+      return { rolledBackCount: historyRecords.length };
+    });
+  }
+
+  static async getLatestBatches() {
+    const records = await prisma.assetNormalizationHistory.groupBy({
+      by: ['batchId', 'approvedBy', 'approvedAt', 'reason'],
+      _count: {
+        assetId: true
+      },
+      orderBy: {
+        approvedAt: 'desc'
+      },
+      take: 10
+    });
+
+    return records.map(r => ({
+      batchId: r.batchId,
+      approvedBy: r.approvedBy,
+      approvedAt: r.approvedAt,
+      reason: r.reason,
+      affectedCount: r._count.assetId
+    })).filter(b => b.batchId !== null);
+  }
+
+  static async getRules() {
+    return await prisma.assetNormalizationRule.findMany({
+      orderBy: { createdAt: 'desc' }
+    });
+  }
+
+  static async deleteRule(id: number) {
+    return await prisma.assetNormalizationRule.delete({
+      where: { id }
+    });
+  }
+
+  static async importRulesFromExcel(buffer: any, username: string) {
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(buffer);
+    const worksheet = workbook.getWorksheet(1);
+    if (!worksheet) throw new Error("Không tìm thấy worksheet");
+
+    let createdCount = 0;
+    const typeToFieldMap: Record<string, string> = {
+      'phòng ban': 'departmentName',
+      'bo phan': 'departmentName',
+      'bộ phận': 'departmentName',
+      'vị trí': 'locationName',
+      'vi tri': 'locationName',
+      'tên tài sản': 'assetName',
+      'ten tai san': 'assetName',
+      'tên ts': 'assetName',
+      'ten ts': 'assetName',
+      'dự án': 'projectName',
+      'du an': 'projectName',
+      'thành phố': 'cityName',
+      'thanh pho': 'cityName'
+    };
+
+    for (let i = 2; i <= worksheet.rowCount; i++) {
+      const row = worksheet.getRow(i);
+      const typeVal = row.getCell(1).text.trim().toLowerCase();
+      const oldValue = row.getCell(2).text.trim();
+      const newValue = row.getCell(3).text.trim();
+
+      if (!typeVal || !oldValue || !newValue) continue;
+
+      const fieldName = typeToFieldMap[typeVal];
+      if (!fieldName) continue;
+
+      await prisma.assetNormalizationRule.upsert({
+        where: {
+          fieldName_oldValue: {
+            fieldName,
+            oldValue
+          }
+        },
+        update: {
+          newValue,
+          createdBy: username
+        },
+        create: {
+          fieldName,
+          oldValue,
+          newValue,
+          createdBy: username
+        }
+      });
+      createdCount++;
+    }
+
+    return { importedCount: createdCount };
   }
 }

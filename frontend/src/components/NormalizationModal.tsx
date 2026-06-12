@@ -69,11 +69,24 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
   const [editedValue, setEditedValue] = useState<string>('');
   const [editReason, setEditReason] = useState<string>('Điều chỉnh đề xuất thủ công');
 
-  // History Log State
   const [showHistory, setShowHistory] = useState<boolean>(false);
   const [historyLogs, setHistoryLogs] = useState<any[]>([]);
   const [historyPage, setHistoryPage] = useState<number>(1);
   const [totalHistory, setTotalHistory] = useState<number>(0);
+
+  // Smart Normalize Upgrade States
+  const [viewMode, setViewMode] = useState<'INDIVIDUAL' | 'GROUPED'>('INDIVIDUAL');
+  const [groupedSuggestions, setGroupedSuggestions] = useState<any[]>([]);
+  const [applyToAllSimilar, setApplyToAllSimilar] = useState<boolean>(false);
+  const [confirmGroupData, setConfirmGroupData] = useState<{
+    ids: number[];
+    count: number;
+    fieldName: string;
+    oldValue: string;
+    newValue: string;
+  } | null>(null);
+  const [rollbackBatches, setRollbackBatches] = useState<any[]>([]);
+  const [showRollbackModal, setShowRollbackModal] = useState<boolean>(false);
 
   // Initialize scope selection based on active session
   useEffect(() => {
@@ -114,12 +127,16 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
     };
   }, [step, jobId]);
 
-  // Fetch suggestions automatically when page, filterType, filterStatus, step, or jobId changes
+  // Fetch suggestions automatically when page, filterType, filterStatus, step, jobId, or viewMode changes
   useEffect(() => {
     if (jobId && step === 'RESULTS') {
-      fetchSuggestions(page);
+      if (viewMode === 'GROUPED') {
+        fetchGroupedSuggestions();
+      } else {
+        fetchSuggestions(page);
+      }
     }
-  }, [page, filterType, filterStatus, jobId, step, searchQuery === '']);
+  }, [page, filterType, filterStatus, jobId, step, searchQuery === '', viewMode]);
 
   const startScan = async () => {
     if (selectedIssueTypes.length === 0) {
@@ -183,27 +200,127 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
     }
   };
 
+  const fetchGroupedSuggestions = async () => {
+    if (!jobId) return;
+    try {
+      const res = await api.get(`/normalization/jobs/${jobId}/grouped-suggestions`, {
+        params: {
+          issueType: filterType || undefined,
+          status: filterStatus || undefined,
+          search: searchQuery || undefined
+        }
+      });
+      setGroupedSuggestions(res.data.items);
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể tải danh sách nhóm đề xuất");
+    }
+  };
+
+  const fetchLatestBatches = async () => {
+    try {
+      const res = await api.get('/normalization/history/batches');
+      setRollbackBatches(res.data);
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể tải lịch sử các lô chuẩn hóa");
+    }
+  };
+
+  const handleRollbackBatch = async (batchId: string) => {
+    if (!window.confirm("Bạn có chắc chắn muốn hoàn tác lô chuẩn hóa này? Toàn bộ tài sản bị ảnh hưởng sẽ khôi phục giá trị cũ.")) return;
+    try {
+      const res = await api.post('/normalization/rollback', { batchId });
+      toast.success(`Đã hoàn tác thành công ${res.data.rolledBackCount} tài sản!`);
+      fetchLatestBatches();
+      if (viewMode === 'GROUPED') {
+        fetchGroupedSuggestions();
+      } else {
+        fetchSuggestions(page);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi hoàn tác lô");
+    }
+  };
+
+  const handleImportRulesExcel = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const res = await api.post('/normalization/rules/import', formData, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      toast.success(`Đã nhập thành công ${res.data.importedCount} luật chuẩn hóa! Hãy chạy rà soát lại để áp dụng.`);
+      setStep('CONFIG');
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || "Lỗi khi nhập file Excel");
+    } finally {
+      e.target.value = '';
+    }
+  };
+
+  const handleQuickFix = async () => {
+    if (!jobId) return;
+    try {
+      const pendingRes = await api.get(`/normalization/jobs/${jobId}/suggestions`, {
+        params: { limit: 1000, status: 'PENDING' }
+      });
+      const items: any[] = pendingRes.data.items || [];
+      const safeItems = items.filter(i => {
+        if (['currentUserName', 'status'].includes(i.fieldName)) return false;
+        return i.confidenceScore >= 0.90 || i.source === 'USER_RULE';
+      });
+
+      if (safeItems.length === 0) {
+        toast.info("Không có đề xuất an toàn nào cần xử lý nhanh.");
+        return;
+      }
+
+      if (!window.confirm(`Bạn sắp tự động duyệt và áp dụng vào Sổ tài sản ${safeItems.length} đề xuất chuẩn hóa an toàn (Chỉ tự động duyệt viết hoa/thường, xóa khoảng trắng thừa, chuẩn hóa phòng ban cũ và khớp luật tùy chỉnh; Không tự động duyệt Người sử dụng hoặc Trạng thái). Bạn có chắc chắn muốn áp dụng?`)) return;
+
+      const ids = safeItems.map(i => i.id);
+      await approveItems(ids);
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi xử lý nhanh");
+    }
+  };
+
   const handleUpdateSuggestion = async () => {
     if (!editingItem) return;
     try {
       await api.put(`/normalization/suggestions/${editingItem.id}`, {
         suggestedValue: editedValue,
-        reason: editReason
+        reason: editReason,
+        applyToAllSimilar
       });
       toast.success("Cập nhật giá trị đề xuất thành công");
       setEditingItem(null);
-      fetchSuggestions(page);
+      setApplyToAllSimilar(false);
+      if (viewMode === 'GROUPED') {
+        fetchGroupedSuggestions();
+      } else {
+        fetchSuggestions(page);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi sửa đổi đề xuất");
     }
   };
 
-  const approveItems = async (ids: number[]) => {
+  const approveItems = async (ids: number[], batchId?: string) => {
     if (ids.length === 0) return;
     try {
-      const res = await api.post('/normalization/suggestions/approve-bulk', { ids });
+      const res = await api.post('/normalization/suggestions/approve-bulk', { ids, batchId });
       toast.success(`Đã duyệt thành công ${res.data.approvedCount} đề xuất chuẩn hóa!`);
-      fetchSuggestions(page);
+      if (viewMode === 'GROUPED') {
+        fetchGroupedSuggestions();
+      } else {
+        fetchSuggestions(page);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi phê duyệt chuẩn hóa");
     }
@@ -215,7 +332,11 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
     try {
       await api.post('/normalization/suggestions/reject-bulk', { ids });
       toast.success("Đã từ chối các đề xuất thành công");
-      fetchSuggestions(page);
+      if (viewMode === 'GROUPED') {
+        fetchGroupedSuggestions();
+      } else {
+        fetchSuggestions(page);
+      }
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi từ chối đề xuất");
     }
@@ -503,8 +624,35 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
             </div>
           </div>
 
+          {/* View Mode Tabs */}
+          <div className="flex border-b border-slate-200 gap-6 shrink-0 mt-2">
+            <button
+              onClick={() => setViewMode('INDIVIDUAL')}
+              className={`pb-3 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                viewMode === 'INDIVIDUAL'
+                  ? 'border-b-2 border-primary-600 text-primary-650'
+                  : 'text-slate-400 hover:text-slate-650'
+              }`}
+            >
+              Danh sách lỗi ({totalItems})
+            </button>
+            <button
+              onClick={() => {
+                setViewMode('GROUPED');
+                fetchGroupedSuggestions();
+              }}
+              className={`pb-3 text-xs font-black uppercase tracking-wider transition-all cursor-pointer ${
+                viewMode === 'GROUPED'
+                  ? 'border-b-2 border-primary-600 text-primary-650'
+                  : 'text-slate-400 hover:text-slate-650'
+              }`}
+            >
+              Nhóm lỗi thông minh ({groupedSuggestions.length})
+            </button>
+          </div>
+
           {/* Action and Filter Controls Bar */}
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
+          <div className="flex flex-col xl:flex-row xl:items-center justify-between gap-4 shrink-0">
             <div className="flex flex-wrap items-center gap-3">
               <div className="relative w-64">
                 <Search className="absolute left-3 top-2.5 h-3.5 w-3.5 text-slate-400" />
@@ -517,12 +665,12 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
                     setSearchQuery(e.target.value);
                     setPage(1);
                   }}
-                  onKeyDown={e => e.key === 'Enter' && fetchSuggestions(1)}
+                  onKeyDown={e => e.key === 'Enter' && (viewMode === 'GROUPED' ? fetchGroupedSuggestions() : fetchSuggestions(1))}
                 />
               </div>
 
               <select
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600"
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 outline-none"
                 value={filterType}
                 onChange={e => {
                   setFilterType(e.target.value);
@@ -536,7 +684,7 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
               </select>
 
               <select
-                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600"
+                className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-600 outline-none"
                 value={filterStatus}
                 onChange={e => {
                   setFilterStatus(e.target.value);
@@ -551,19 +699,55 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
               </select>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Quick Fix Button */}
               <button
-                onClick={approveSafeIssues}
-                className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-650 px-4 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer"
+                onClick={handleQuickFix}
+                className="bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+                title="Tự động phê duyệt các đề xuất chuẩn hóa định dạng an toàn (không tự động duyệt Người sử dụng hoặc Trạng thái)"
               >
-                <ShieldCheck className="h-3.5 w-3.5" /> Duyệt các lỗi chắc chắn (độ tin cậy ≥ 95%)
+                <span>⚡ Xử lý nhanh</span>
               </button>
 
+              {/* Rollback Button */}
+              <button
+                onClick={() => {
+                  setShowRollbackModal(true);
+                  fetchLatestBatches();
+                }}
+                className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <span>Hoàn tác lô</span>
+              </button>
+
+              {/* Excel Rules Import Button */}
+              <label className="bg-blue-50 hover:bg-blue-100 border border-blue-200 text-blue-700 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm">
+                <Download className="h-3.5 w-3.5" />
+                <span>Import Quy tắc</span>
+                <input
+                  type="file"
+                  accept=".xlsx, .xls"
+                  onChange={handleImportRulesExcel}
+                  className="hidden"
+                />
+              </label>
+
+              {/* Approve Safe button */}
+              <button
+                onClick={approveSafeIssues}
+                className="bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
+              >
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Duyệt độ tin cậy ≥ 95%</span>
+              </button>
+
+              {/* Export CSV Button */}
               <button
                 onClick={handleExportCSV}
-                className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-650 px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer"
+                className="bg-slate-50 hover:bg-slate-100 border border-slate-200 text-slate-650 px-3 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-sm"
               >
-                <Download className="h-3.5 w-3.5" /> Xuất Excel
+                <Download className="h-3.5 w-3.5" />
+                <span>Xuất CSV</span>
               </button>
             </div>
           </div>
@@ -571,202 +755,339 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
           {/* Suggestions List Table */}
           <div className="flex-1 min-h-0 border border-slate-150 rounded-3xl overflow-hidden shadow-sm flex flex-col bg-white">
             <div className="flex-1 overflow-y-auto">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-50/50 sticky top-0 z-10 border-b border-slate-150">
-                    <th className="p-4 w-10 text-center">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.length > 0 && selectedIds.length === suggestions.filter(s => s.status === 'PENDING' || s.status === 'EDITED').length}
-                        onChange={toggleSelectAll}
-                        className="rounded border-slate-300 text-primary-650"
-                      />
-                    </th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã tài sản</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên tài sản</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Loại lỗi</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Hiện tại</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Đề xuất chỉnh sửa</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Độ tin cậy</th>
-                    <th className="p-4 text-[10px] font-black text-slate-400 tracking-widest uppercase text-right">Thao tác</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-600">
-                  {suggestions.map((item) => {
-                    const isSelectable = item.status === 'PENDING' || item.status === 'EDITED';
-                    const score = Math.floor(item.confidenceScore * 100);
-                    let scoreColor = 'bg-rose-50 text-rose-600 border border-rose-100';
-                    if (score >= 95) scoreColor = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
-                    else if (score >= 80) scoreColor = 'bg-amber-50 text-amber-600 border border-amber-100';
-
-                    const renderCurrentDiff = (current: string | null, suggested: string | null) => {
-                      if (!current) return <span className="text-slate-400 italic">Trống</span>;
-                      if (!suggested) return <span className="text-slate-500">{current}</span>;
-
-                      const curWords = current.replace(/\s+/g, ' ').split(' ');
-                      const sugWords = suggested.replace(/\s+/g, ' ').split(' ');
-
-                      return (
-                        <span className="inline-flex flex-wrap gap-x-1">
-                          {curWords.map((word, idx) => {
-                            const sugWord = sugWords[idx];
-                            const hasChanged = sugWord !== word;
-                            if (hasChanged) {
-                              return (
-                                <span key={idx} className="text-rose-600 bg-rose-50/50 px-1 rounded line-through border border-rose-100/50">
-                                  {word}
-                                </span>
-                              );
-                            }
-                            return <span key={idx} className="text-slate-400 line-through">{word}</span>;
-                          })}
-                        </span>
-                      );
-                    };
-
-                    const renderSuggestedDiff = (current: string | null, suggested: string | null) => {
-                      if (!suggested) return <span className="text-slate-400 italic">Trống</span>;
-                      if (!current) return <span className="text-emerald-600 font-extrabold">{suggested}</span>;
-
-                      const curWords = current.replace(/\s+/g, ' ').split(' ');
-                      const sugWords = suggested.replace(/\s+/g, ' ').split(' ');
-
-                      return (
-                        <span className="inline-flex flex-wrap gap-x-1">
-                          {sugWords.map((word, idx) => {
-                            const curWord = curWords[idx];
-                            const hasChanged = curWord !== word;
-                            if (hasChanged) {
-                              return (
-                                <span key={idx} className="text-emerald-700 bg-emerald-100/80 px-1 rounded font-black border border-emerald-250">
-                                  {word}
-                                </span>
-                              );
-                            }
-                            return <span key={idx} className="text-emerald-600">{word}</span>;
-                          })}
-                        </span>
-                      );
-                    };
-
-                    return (
-                      <tr key={item.id} className={`hover:bg-slate-50/30 ${selectedIds.includes(item.id) ? 'bg-primary-50/5' : ''}`}>
-                        <td className="p-4 text-center">
-                          {isSelectable ? (
-                            <input
-                              type="checkbox"
-                              checked={selectedIds.includes(item.id)}
-                              onChange={() => toggleSelect(item.id)}
-                              className="rounded border-slate-300 text-primary-650"
-                            />
-                          ) : (
-                            <span className="text-slate-300">-</span>
-                          )}
-                        </td>
-                        <td className="p-4 font-bold text-slate-700">{item.assetCode}</td>
-                        <td className="p-4 font-black text-slate-800 break-words">{item.assetName}</td>
-                        <td className="p-4">
-                          <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border">
-                            {ISSUE_TYPES_META.find(m => m.id === item.issueType)?.label || item.issueType}
-                          </span>
-                        </td>
-                        <td className="p-4 break-words">{renderCurrentDiff(item.currentValue, item.suggestedValue)}</td>
-                        <td className="p-4 bg-emerald-50/20 break-words">
-                          <span className="inline-flex items-start gap-1.5">
-                            <ArrowRight className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
-                            {renderSuggestedDiff(item.currentValue, item.suggestedValue)}
-                          </span>
-                        </td>
-                        <td className="p-4">
-                          <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${scoreColor}`}>
-                            {score}%
-                          </span>
-                        </td>
-                        <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
-                          {isSelectable ? (
-                            <>
-                              <button
-                                onClick={() => {
-                                  setEditingItem(item);
-                                  setEditedValue(item.suggestedValue || '');
-                                  setEditReason('Điều chỉnh đề xuất thủ công');
-                                }}
-                                className="p-1 hover:bg-slate-100 border text-slate-500 rounded-lg transition-colors cursor-pointer"
-                                title="Chỉnh sửa đề xuất"
-                              >
-                                <Edit2 className="h-3.5 w-3.5" />
-                              </button>
-                              <button
-                                onClick={() => approveItems([item.id])}
-                                className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wide transition-colors cursor-pointer"
-                              >
-                                Duyệt
-                              </button>
-                              <button
-                                onClick={() => rejectItems([item.id])}
-                                className="p-1 hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-lg transition-colors cursor-pointer"
-                                title="Từ chối đề xuất"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </button>
-                            </>
-                          ) : (
-                            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${item.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
-                              {item.status === 'APPROVED' ? 'Đã duyệt' : 'Từ chối'}
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                  {suggestions.length === 0 && (
-                    <tr>
-                      <td colSpan={8} className="p-8 text-center text-slate-400 italic">Không tìm thấy lỗi rà soát dữ liệu tài sản nào phù hợp bộ lọc</td>
+              {viewMode === 'GROUPED' ? (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50 sticky top-0 z-10 border-b border-slate-150">
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Loại lỗi</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Trường lỗi</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Giá trị hiện tại</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Đề xuất chỉnh sửa</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest text-center">Số lượng tài sản</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Độ tin cậy</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 tracking-widest uppercase text-right">Thao tác</th>
                     </tr>
-                  )}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-600">
+                    {groupedSuggestions.map((group) => {
+                      const score = Math.floor(group.confidenceScore * 100);
+                      let scoreColor = 'bg-rose-50 text-rose-600 border border-rose-100';
+                      if (score >= 95) scoreColor = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+                      else if (score >= 80) scoreColor = 'bg-amber-50 text-amber-600 border border-amber-100';
+
+                      const renderCurrentDiff = (current: string | null, suggested: string | null) => {
+                        if (!current) return <span className="text-slate-400 italic">Trống</span>;
+                        if (!suggested) return <span className="text-slate-500">{current}</span>;
+
+                        const curWords = current.replace(/\s+/g, ' ').split(' ');
+                        const sugWords = suggested.replace(/\s+/g, ' ').split(' ');
+
+                        return (
+                          <span className="inline-flex flex-wrap gap-x-1">
+                            {curWords.map((word, idx) => {
+                              const sugWord = sugWords[idx];
+                              const hasChanged = sugWord !== word;
+                              if (hasChanged) {
+                                return (
+                                  <span key={idx} className="text-rose-600 bg-rose-50/50 px-1 rounded line-through border border-rose-100/50">
+                                    {word}
+                                  </span>
+                                );
+                              }
+                              return <span key={idx} className="text-slate-400 line-through">{word}</span>;
+                            })}
+                          </span>
+                        );
+                      };
+
+                      const renderSuggestedDiff = (current: string | null, suggested: string | null) => {
+                        if (!suggested) return <span className="text-slate-400 italic">Trống</span>;
+                        if (!current) return <span className="text-emerald-600 font-extrabold">{suggested}</span>;
+
+                        const curWords = current.replace(/\s+/g, ' ').split(' ');
+                        const sugWords = suggested.replace(/\s+/g, ' ').split(' ');
+
+                        return (
+                          <span className="inline-flex flex-wrap gap-x-1">
+                            {sugWords.map((word, idx) => {
+                              const curWord = curWords[idx];
+                              const hasChanged = curWord !== word;
+                              if (hasChanged) {
+                                return (
+                                  <span key={idx} className="text-emerald-700 bg-emerald-100/80 px-1 rounded font-black border border-emerald-250">
+                                    {word}
+                                  </span>
+                                );
+                              }
+                              return <span key={idx} className="text-emerald-600">{word}</span>;
+                            })}
+                          </span>
+                        );
+                      };
+
+                      return (
+                        <tr key={group.id} className="hover:bg-slate-50/30">
+                          <td className="p-4">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border">
+                              {ISSUE_TYPES_META.find(m => m.id === group.issueType)?.label || group.issueType}
+                            </span>
+                          </td>
+                          <td className="p-4 font-mono text-primary-650 font-bold">{group.fieldName}</td>
+                          <td className="p-4 break-words">{renderCurrentDiff(group.currentValue, group.suggestedValue)}</td>
+                          <td className="p-4 bg-emerald-50/20 break-words">
+                            <span className="inline-flex items-start gap-1.5">
+                              <ArrowRight className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                              {renderSuggestedDiff(group.currentValue, group.suggestedValue)}
+                            </span>
+                          </td>
+                          <td className="p-4 text-center">
+                            <span className="bg-primary-50 text-primary-700 px-2.5 py-1 rounded-full text-xs font-black">
+                              {group.count} tài sản
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${scoreColor}`}>
+                              {score}%
+                            </span>
+                          </td>
+                          <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                            <button
+                              onClick={() => setConfirmGroupData({
+                                ids: group.ids,
+                                count: group.count,
+                                fieldName: group.fieldName,
+                                oldValue: group.currentValue || '',
+                                newValue: group.suggestedValue || ''
+                              })}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wider transition-colors cursor-pointer"
+                            >
+                              Duyệt nhóm
+                            </button>
+                            <button
+                              onClick={() => rejectItems(group.ids)}
+                              className="p-1.5 hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-lg transition-colors cursor-pointer inline-flex items-center"
+                              title="Từ chối cả nhóm"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {groupedSuggestions.length === 0 && (
+                      <tr>
+                        <td colSpan={7} className="p-8 text-center text-slate-400 italic">Không tìm thấy nhóm lỗi nào phù hợp</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              ) : (
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50/50 sticky top-0 z-10 border-b border-slate-150">
+                      <th className="p-4 w-10 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.length > 0 && selectedIds.length === suggestions.filter(s => s.status === 'PENDING' || s.status === 'EDITED').length}
+                          onChange={toggleSelectAll}
+                          className="rounded border-slate-300 text-primary-650"
+                        />
+                      </th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã tài sản</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Tên tài sản</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Loại lỗi</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Hiện tại</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Đề xuất chỉnh sửa</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Độ tin cậy</th>
+                      <th className="p-4 text-[10px] font-black text-slate-400 tracking-widest uppercase text-right">Thao tác</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-600">
+                    {suggestions.map((item) => {
+                      const isSelectable = item.status === 'PENDING' || item.status === 'EDITED';
+                      const score = Math.floor(item.confidenceScore * 100);
+                      let scoreColor = 'bg-rose-50 text-rose-600 border border-rose-100';
+                      if (score >= 95) scoreColor = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
+                      else if (score >= 80) scoreColor = 'bg-amber-50 text-amber-600 border border-amber-100';
+
+                      const renderCurrentDiff = (current: string | null, suggested: string | null) => {
+                        if (!current) return <span className="text-slate-400 italic">Trống</span>;
+                        if (!suggested) return <span className="text-slate-500">{current}</span>;
+
+                        const curWords = current.replace(/\s+/g, ' ').split(' ');
+                        const sugWords = suggested.replace(/\s+/g, ' ').split(' ');
+
+                        return (
+                          <span className="inline-flex flex-wrap gap-x-1">
+                            {curWords.map((word, idx) => {
+                              const sugWord = sugWords[idx];
+                              const hasChanged = sugWord !== word;
+                              if (hasChanged) {
+                                return (
+                                  <span key={idx} className="text-rose-600 bg-rose-50/50 px-1 rounded line-through border border-rose-100/50">
+                                    {word}
+                                  </span>
+                                );
+                              }
+                              return <span key={idx} className="text-slate-400 line-through">{word}</span>;
+                            })}
+                          </span>
+                        );
+                      };
+
+                      const renderSuggestedDiff = (current: string | null, suggested: string | null) => {
+                        if (!suggested) return <span className="text-slate-400 italic">Trống</span>;
+                        if (!current) return <span className="text-emerald-600 font-extrabold">{suggested}</span>;
+
+                        const curWords = current.replace(/\s+/g, ' ').split(' ');
+                        const sugWords = suggested.replace(/\s+/g, ' ').split(' ');
+
+                        return (
+                          <span className="inline-flex flex-wrap gap-x-1">
+                            {sugWords.map((word, idx) => {
+                              const curWord = curWords[idx];
+                              const hasChanged = curWord !== word;
+                              if (hasChanged) {
+                                return (
+                                  <span key={idx} className="text-emerald-700 bg-emerald-100/80 px-1 rounded font-black border border-emerald-250">
+                                    {word}
+                                  </span>
+                                );
+                              }
+                              return <span key={idx} className="text-emerald-600">{word}</span>;
+                            })}
+                          </span>
+                        );
+                      };
+
+                      return (
+                        <tr key={item.id} className={`hover:bg-slate-50/30 ${selectedIds.includes(item.id) ? 'bg-primary-50/5' : ''}`}>
+                          <td className="p-4 text-center">
+                            {isSelectable ? (
+                              <input
+                                type="checkbox"
+                                checked={selectedIds.includes(item.id)}
+                                onChange={() => toggleSelect(item.id)}
+                                className="rounded border-slate-300 text-primary-650"
+                              />
+                            ) : (
+                              <span className="text-slate-300">-</span>
+                            )}
+                          </td>
+                          <td className="p-4 font-bold text-slate-700">{item.assetCode}</td>
+                          <td className="p-4 font-black text-slate-800 break-words">{item.assetName}</td>
+                          <td className="p-4">
+                            <span className="text-[10px] uppercase font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded border">
+                              {ISSUE_TYPES_META.find(m => m.id === item.issueType)?.label || item.issueType}
+                            </span>
+                          </td>
+                          <td className="p-4 break-words">{renderCurrentDiff(item.currentValue, item.suggestedValue)}</td>
+                          <td className="p-4 bg-emerald-50/20 break-words">
+                            <span className="inline-flex items-start gap-1.5">
+                              <ArrowRight className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                              {renderSuggestedDiff(item.currentValue, item.suggestedValue)}
+                            </span>
+                          </td>
+                          <td className="p-4">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${scoreColor}`}>
+                              {score}%
+                            </span>
+                          </td>
+                          <td className="p-4 text-right space-x-1.5 whitespace-nowrap">
+                            {isSelectable ? (
+                              <>
+                                <button
+                                  onClick={() => {
+                                    setEditingItem(item);
+                                    setEditedValue(item.suggestedValue || '');
+                                    setEditReason('Điều chỉnh đề xuất thủ công');
+                                  }}
+                                  className="p-1 hover:bg-slate-100 border text-slate-500 rounded-lg transition-colors cursor-pointer"
+                                  title="Chỉnh sửa đề xuất"
+                                >
+                                  <Edit2 className="h-3.5 w-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => approveItems([item.id])}
+                                  className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-[10px] uppercase tracking-wide transition-colors cursor-pointer"
+                                >
+                                  Duyệt
+                                </button>
+                                <button
+                                  onClick={() => rejectItems([item.id])}
+                                  className="p-1 hover:bg-rose-50 border border-rose-200 text-rose-600 rounded-lg transition-colors cursor-pointer"
+                                  title="Từ chối đề xuất"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </button>
+                              </>
+                            ) : (
+                              <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${item.status === 'APPROVED' ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>
+                                {item.status === 'APPROVED' ? 'Đã duyệt' : 'Từ chối'}
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                    {suggestions.length === 0 && (
+                      <tr>
+                        <td colSpan={8} className="p-8 text-center text-slate-400 italic">Không tìm thấy lỗi rà soát dữ liệu tài sản nào phù hợp bộ lọc</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              )}
             </div>
 
             {/* Bottom bulk actions and table pagination */}
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/50 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0">
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-bold text-slate-400">{selectedIds.length} đã chọn:</span>
-                <button
-                  disabled={selectedIds.length === 0}
-                  onClick={() => approveItems(selectedIds)}
-                  className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-colors disabled:opacity-40 cursor-pointer"
-                >
-                  Duyệt đã chọn
-                </button>
-                <button
-                  disabled={selectedIds.length === 0}
-                  onClick={() => rejectItems(selectedIds)}
-                  className="bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 cursor-pointer"
-                >
-                  Từ chối
-                </button>
-              </div>
+              {viewMode === 'INDIVIDUAL' ? (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-400">{selectedIds.length} đã chọn:</span>
+                    <button
+                      disabled={selectedIds.length === 0}
+                      onClick={() => approveItems(selectedIds)}
+                      className="bg-slate-900 hover:bg-slate-800 text-white px-3.5 py-1.5 rounded-lg text-xs font-black uppercase tracking-wider transition-colors disabled:opacity-40 cursor-pointer"
+                    >
+                      Duyệt đã chọn
+                    </button>
+                    <button
+                      disabled={selectedIds.length === 0}
+                      onClick={() => rejectItems(selectedIds)}
+                      className="bg-white hover:bg-rose-50 border border-rose-200 text-rose-600 px-3.5 py-1.5 rounded-lg text-xs font-bold transition-colors disabled:opacity-40 cursor-pointer"
+                    >
+                      Từ chối
+                    </button>
+                  </div>
 
-              <div className="flex items-center justify-between gap-4 text-xs font-bold text-slate-500">
-                <span>Tổng số dòng: {totalItems}</span>
-                <div className="flex gap-2">
-                  <button
-                    disabled={page === 1}
-                    onClick={() => setPage(page - 1)}
-                    className="px-3.5 py-1.5 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-40 transition-colors"
-                  >
-                    Trước
-                  </button>
-                  <button
-                    disabled={page * limit >= totalItems}
-                    onClick={() => setPage(page + 1)}
-                    className="px-3.5 py-1.5 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-40 transition-colors"
-                  >
-                    Sau
-                  </button>
+                  <div className="flex items-center justify-between gap-4 text-xs font-bold text-slate-500">
+                    <span>Tổng số dòng: {totalItems}</span>
+                    <div className="flex gap-2">
+                      <button
+                        disabled={page === 1}
+                        onClick={() => setPage(page - 1)}
+                        className="px-3.5 py-1.5 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                      >
+                        Trước
+                      </button>
+                      <button
+                        disabled={page * limit >= totalItems}
+                        onClick={() => setPage(page + 1)}
+                        className="px-3.5 py-1.5 bg-white rounded-lg border hover:bg-slate-50 disabled:opacity-40 transition-colors"
+                      >
+                        Sau
+                      </button>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="text-xs font-bold text-slate-500 flex justify-between w-full">
+                  <span>Tổng số nhóm lỗi: {groupedSuggestions.length}</span>
+                  <span className="italic text-slate-400">Xem chế độ "Nhóm lỗi thông minh" giúp chuẩn hóa hàng loạt nhanh chóng</span>
                 </div>
-              </div>
+              )}
             </div>
           </div>
 
@@ -821,6 +1142,19 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
                   onChange={e => setEditReason(e.target.value)}
                 />
               </div>
+
+              <div className="flex items-center space-x-2 py-1">
+                <input
+                  type="checkbox"
+                  id="applyToAllSimilar"
+                  checked={applyToAllSimilar}
+                  onChange={e => setApplyToAllSimilar(e.target.checked)}
+                  className="rounded border-slate-300 text-primary-650 focus:ring-primary-500 h-4.5 w-4.5 cursor-pointer"
+                />
+                <label htmlFor="applyToAllSimilar" className="text-xs text-slate-600 font-bold select-none cursor-pointer">
+                  Áp dụng cho tất cả tài sản có giá trị tương tự (Lưu thành quy tắc)
+                </label>
+              </div>
             </div>
 
             <div className="flex justify-end gap-2 pt-2 border-t text-xs font-black">
@@ -837,6 +1171,140 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
                 className="px-4 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl uppercase tracking-wider shadow-md cursor-pointer"
               >
                 Lưu & Duyệt cập nhật
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* GROUP APPROVAL CONFIRMATION POPUP */}
+      {confirmGroupData && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white p-6 rounded-3xl max-w-md w-full shadow-2xl space-y-4 animate-in zoom-in-95">
+            <div className="flex items-center justify-between border-b pb-2">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">Xác nhận duyệt nhóm lỗi</h3>
+              <button onClick={() => setConfirmGroupData(null)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="space-y-3 text-xs font-semibold text-slate-650">
+              <div className="bg-primary-50/10 border border-primary-200 p-4 rounded-2xl flex items-center gap-3">
+                <AlertTriangle className="h-5 w-5 text-primary-600 shrink-0" />
+                <p className="text-xs text-primary-750 font-bold">
+                  Hành động này sẽ cập nhật trực tiếp vào <strong>Sổ tài sản</strong> cho tất cả <strong>{confirmGroupData.count} tài sản</strong> thuộc nhóm lỗi này.
+                </p>
+              </div>
+
+              <div className="space-y-1.5 pt-2">
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-black">Trường dữ liệu</span>
+                  <p className="font-mono text-primary-650 mt-0.5">{confirmGroupData.fieldName}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-black">Giá trị cũ</span>
+                  <p className="font-bold text-slate-500 mt-0.5 line-through">{confirmGroupData.oldValue || 'Trống'}</p>
+                </div>
+                <div>
+                  <span className="text-[10px] text-slate-400 uppercase font-black">Giá trị mới sẽ áp dụng</span>
+                  <p className="font-extrabold text-emerald-600 mt-0.5 flex items-center gap-1">
+                    <ArrowRight className="h-3.5 w-3.5 text-emerald-500" />
+                    {confirmGroupData.newValue}
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-2 pt-2 border-t text-xs font-black">
+              <button
+                type="button"
+                onClick={() => setConfirmGroupData(null)}
+                className="px-4 py-2 bg-slate-50 text-slate-500 hover:bg-slate-100 rounded-xl uppercase tracking-wide border cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const ids = confirmGroupData.ids;
+                  setConfirmGroupData(null);
+                  await approveItems(ids);
+                }}
+                className="px-4 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl uppercase tracking-wider shadow-md cursor-pointer"
+              >
+                Đồng ý & Cập nhật
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ROLLBACK BATCHES MODAL */}
+      {showRollbackModal && (
+        <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-[200] flex items-center justify-center p-4">
+          <div className="bg-white p-6 rounded-3xl max-w-2xl w-full shadow-2xl space-y-4 animate-in zoom-in-95 flex flex-col max-h-[80vh]">
+            <div className="flex items-center justify-between border-b pb-2 shrink-0">
+              <h3 className="text-sm font-black text-slate-800 uppercase tracking-wide">Hoàn tác lô chuẩn hóa gần đây</h3>
+              <button onClick={() => setShowRollbackModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto min-h-0 space-y-3">
+              <p className="text-xs text-slate-400 font-bold">
+                Chọn một lô chuẩn hóa đã phê duyệt trước đây để hoàn tác (khôi phục toàn bộ tài sản về giá trị trước khi chuẩn hóa).
+              </p>
+
+              <div className="border border-slate-100 rounded-2xl overflow-hidden shadow-sm">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50">
+                      <th className="p-3 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Mã Lô (Batch ID)</th>
+                      <th className="p-3 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Thời gian duyệt</th>
+                      <th className="p-3 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Người duyệt</th>
+                      <th className="p-3 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 text-center">Số lượng TS</th>
+                      <th className="p-3 text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100">Lý do/Mô tả</th>
+                      <th className="p-3 text-[10px] font-black text-slate-400 tracking-widest uppercase text-right">Hành động</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-600">
+                    {rollbackBatches.map((batch) => (
+                      <tr key={batch.batchId} className="hover:bg-slate-50/50">
+                        <td className="p-3 font-mono font-bold text-slate-700">{batch.batchId}</td>
+                        <td className="p-3 text-[10px] text-slate-400">{new Date(batch.approvedAt).toLocaleString('vi-VN')}</td>
+                        <td className="p-3 text-slate-700">{batch.approvedBy}</td>
+                        <td className="p-3 text-center font-bold text-primary-650">{batch.affectedCount} tài sản</td>
+                        <td className="p-3 italic text-slate-500 max-w-xs truncate" title={batch.reason}>{batch.reason || '-'}</td>
+                        <td className="p-3 text-right">
+                          <button
+                            onClick={async () => {
+                              await handleRollbackBatch(batch.batchId);
+                              setShowRollbackModal(false);
+                            }}
+                            className="bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wide transition-colors cursor-pointer"
+                          >
+                            Hoàn tác
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                    {rollbackBatches.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="p-6 text-center text-slate-400 italic">Không tìm thấy lô chuẩn hóa nào có thể hoàn tác</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="flex justify-end pt-2 border-t text-xs font-black shrink-0">
+              <button
+                type="button"
+                onClick={() => setShowRollbackModal(false)}
+                className="px-4 py-2 bg-slate-50 text-slate-500 hover:bg-slate-100 rounded-xl uppercase tracking-wide border cursor-pointer"
+              >
+                Đóng
               </button>
             </div>
           </div>
