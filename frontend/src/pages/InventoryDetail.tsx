@@ -225,7 +225,7 @@ export const InventoryDetail: React.FC = () => {
   const [wizardStep, setWizardStep] = useState<number>(1);
   const [isNormalizationOpen, setIsNormalizationOpen] = useState(false);
   const [cachedMetadata, setCachedMetadata] = useState<any>(null);
-  const [scopeSelection, setScopeSelection] = useState<'ALL' | 'COMPANY' | 'PROJECT' | 'LOCATION' | 'DEPARTMENT' | 'USER'>('DEPARTMENT');
+  const [scopeSelection, setScopeSelection] = useState<'ALL' | 'COMPANY' | 'PROJECT' | 'LOCATION' | 'DEPARTMENT' | 'USER' | 'FILTER'>('FILTER');
   const [sessionMembers, setSessionMembers] = useState<string[]>([]);
   const [newMemberName, setNewMemberName] = useState<string>('');
   const [showDeptDropdown, setShowDeptDropdown] = useState<boolean>(false);
@@ -547,8 +547,25 @@ export const InventoryDetail: React.FC = () => {
     setCreationProgress(0);
     setCreationStatusText("Khởi tạo cấu hình phiên...");
     try {
+      let deptNameVal = sessionForm.departmentName;
+      let locNameVal = sessionForm.locationName;
+      if (scopeSelection === 'FILTER') {
+        if (sessionFilters.departmentNames && sessionFilters.departmentNames.length > 0) {
+          deptNameVal = sessionFilters.departmentNames.length === 1 
+            ? sessionFilters.departmentNames[0] 
+            : `${sessionFilters.departmentNames.length} phòng ban`;
+        }
+        if (sessionFilters.locationNames && sessionFilters.locationNames.length > 0) {
+          locNameVal = sessionFilters.locationNames.length === 1 
+            ? sessionFilters.locationNames[0] 
+            : `${sessionFilters.locationNames.length} vị trí`;
+        }
+      }
+
       const payload = {
         ...sessionForm,
+        departmentName: deptNameVal || undefined,
+        locationName: locNameVal || undefined,
         members: sessionMembers,
         scopeType: scopeSelection,
         expectedAssetCount: previewAssetsCount || 0,
@@ -4023,6 +4040,10 @@ export const InventoryDetail: React.FC = () => {
                     <button
                       onClick={() => {
                         if (wizardStep === 1) {
+                          if (scopeSelection === 'FILTER' && previewAssetsCount === 0) {
+                            toast.warning("Không có tài sản nào khớp với bộ lọc đang chọn! Hãy bấm 'Xem trước tài sản' hoặc điều chỉnh bộ lọc.");
+                            return;
+                          }
                           if (scopeSelection === 'COMPANY' && !sessionForm.companyName) {
                             toast.error("Vui lòng chọn công ty!");
                             return;
@@ -4515,7 +4536,7 @@ export const InventoryDetail: React.FC = () => {
                       <div className="space-y-1">
                         <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Tên phiên (tự động):</span>
                         <span className="text-slate-800 font-black text-base">
-                          Kiểm kê {sessionForm.departmentName || sessionForm.locationName || 'Phòng ban'} ngày {format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}
+                          Kiểm kê {sessionForm.departmentName || sessionForm.locationName || (sessionFilters.departmentNames.length > 0 ? `${sessionFilters.departmentNames.length} phòng ban` : (sessionFilters.locationNames.length > 0 ? `${sessionFilters.locationNames.length} vị trí` : 'Đa điều kiện'))} ngày {format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}
                         </span>
                       </div>
                       <div className="space-y-1">
@@ -4529,7 +4550,8 @@ export const InventoryDetail: React.FC = () => {
                            scopeSelection === 'COMPANY' ? `Công ty con: ${sessionForm.companyName}` :
                            scopeSelection === 'PROJECT' ? `Dự án: ${sessionForm.projectName}` :
                            scopeSelection === 'LOCATION' ? `Vị trí: ${sessionForm.locationName}` :
-                           scopeSelection === 'DEPARTMENT' ? `Phòng ban: ${sessionForm.departmentName}` : 'Cá nhân'}
+                           scopeSelection === 'DEPARTMENT' ? `Phòng ban: ${sessionForm.departmentName}` :
+                           scopeSelection === 'FILTER' ? 'Đa điều kiện (Bộ lọc)' : 'Cá nhân'}
                         </span>
                       </div>
                       <div className="space-y-1">
