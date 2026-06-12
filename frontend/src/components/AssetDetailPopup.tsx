@@ -894,15 +894,14 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                           <div className="flex flex-wrap gap-2 pt-2">
                             <button
                               type="button"
+                              disabled={!asset.invoiceBatch.fileUrl}
                               onClick={() => {
                                 if (asset.invoiceBatch.fileUrl) {
                                   const url = asset.invoiceBatch.fileUrl.startsWith('http') ? asset.invoiceBatch.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${asset.invoiceBatch.fileUrl}`;
                                   window.open(url, '_blank');
-                                } else {
-                                  toast.warning("Không có file hóa đơn đính kèm.");
                                 }
                               }}
-                              className="flex items-center px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm"
+                              className="flex items-center px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-750"
                             >
                               <Eye className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
                               Xem hóa đơn
@@ -910,6 +909,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                             
                             <button
                               type="button"
+                              disabled={!asset.invoiceBatch.fileUrl}
                               onClick={() => {
                                 if (asset.invoiceBatch.fileUrl) {
                                   const url = asset.invoiceBatch.fileUrl.startsWith('http') ? asset.invoiceBatch.fileUrl : `${api.defaults.baseURL?.replace('/api', '')}${asset.invoiceBatch.fileUrl}`;
@@ -919,11 +919,9 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                                   document.body.appendChild(link);
                                   link.click();
                                   document.body.removeChild(link);
-                                } else {
-                                  toast.warning("Không có file hóa đơn đính kèm.");
                                 }
                               }}
-                              className="flex items-center px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm"
+                              className="flex items-center px-3 py-1.5 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 hover:text-slate-900 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:text-slate-750"
                             >
                               <Download className="h-3.5 w-3.5 mr-1.5 text-slate-400" />
                               Tải hóa đơn
