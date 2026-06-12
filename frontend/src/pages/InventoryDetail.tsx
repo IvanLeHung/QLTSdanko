@@ -3734,29 +3734,29 @@ export const InventoryDetail: React.FC = () => {
             setPreviewBreakdown({});
             setSessionMembers([]);
           }}
-          size="form"
+          size="wizard"
           title={
             <div>
-              <h2 className="text-md font-black uppercase tracking-widest text-slate-900">Tạo phiên kiểm kê mới</h2>
-              <div className="flex items-center gap-3 mt-1.5">
+              <h2 className="text-lg font-black uppercase tracking-widest text-slate-900">Tạo phiên kiểm kê mới</h2>
+              <div className="flex items-center gap-4 mt-2">
                 {[
-                  { step: 1, label: 'Phạm vi' },
-                  { step: 2, label: 'Nhân sự' },
-                  { step: 3, label: 'Xác nhận' }
+                  { step: 1, label: 'Phạm vi kiểm kê' },
+                  { step: 2, label: 'Nhân sự thực hiện' },
+                  { step: 3, label: 'Xác nhận thông tin' }
                 ].map((s) => (
-                  <div key={s.step} className="flex items-center gap-1">
-                    <span className={`w-4 h-4 rounded-full flex items-center justify-center text-[9px] font-bold ${
+                  <div key={s.step} className="flex items-center gap-1.5">
+                    <span className={`w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold ${
                       wizardStep === s.step ? 'bg-primary-600 text-white font-black' :
                       wizardStep > s.step ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'
                     }`}>
                       {s.step}
                     </span>
-                    <span className={`text-[10px] font-bold ${
+                    <span className={`text-xs font-bold ${
                       wizardStep === s.step ? 'text-slate-800' : 'text-slate-400'
                     }`}>
                       {s.label}
                     </span>
-                    {s.step < 3 && <span className="text-slate-300">➔</span>}
+                    {s.step < 3 && <span className="text-slate-300 ml-1">➔</span>}
                   </div>
                 ))}
               </div>
@@ -3774,7 +3774,7 @@ export const InventoryDetail: React.FC = () => {
                         setWizardStep(prev => prev - 1);
                       }
                     }}
-                    className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase cursor-pointer"
+                    className="px-6 py-3 bg-white border border-slate-200 rounded-xl text-slate-655 hover:bg-slate-50 font-bold text-sm uppercase cursor-pointer"
                   >
                     {wizardStep === 1 ? 'Hủy' : 'Quay lại'}
                   </button>
@@ -3801,7 +3801,7 @@ export const InventoryDetail: React.FC = () => {
                         }
                         setWizardStep(prev => prev + 1);
                       }}
-                      className="px-6 py-2.5 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-xs uppercase cursor-pointer shadow-md"
+                      className="px-8 py-3 bg-primary-600 hover:bg-primary-700 text-white rounded-xl font-bold text-sm uppercase cursor-pointer shadow-md"
                     >
                       Tiếp tục
                     </button>
@@ -3809,7 +3809,7 @@ export const InventoryDetail: React.FC = () => {
                     <button
                       onClick={handleCreateSession}
                       disabled={submitting}
-                      className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase flex items-center shadow-lg disabled:opacity-50 cursor-pointer"
+                      className="px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-sm uppercase flex items-center shadow-lg disabled:opacity-50 cursor-pointer"
                     >
                       {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />} Tạo phiên
                     </button>
@@ -3820,10 +3820,10 @@ export const InventoryDetail: React.FC = () => {
           }
         >
           {creationProgress !== null ? (
-            <div className="py-8 text-center space-y-4">
-              <Loader2 className="h-10 w-10 text-primary-600 animate-spin mx-auto" />
-              <p className="text-slate-800 font-bold">{creationStatusText}</p>
-              <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden max-w-md mx-auto border border-slate-200">
+            <div className="py-12 text-center space-y-6">
+              <Loader2 className="h-12 w-12 text-primary-600 animate-spin mx-auto" />
+              <p className="text-slate-800 font-bold text-sm">{creationStatusText}</p>
+              <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden max-w-md mx-auto border border-slate-200">
                 <div 
                   className="bg-primary-600 h-full rounded-full transition-all duration-150"
                   style={{ width: `${creationProgress}%` }}
@@ -3831,23 +3831,23 @@ export const InventoryDetail: React.FC = () => {
               </div>
             </div>
           ) : (
-            <div className="space-y-4 text-xs text-slate-655">
+            <div className="space-y-6 text-sm text-slate-700">
               {wizardStep === 1 && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-500">Ngày kiểm kê *</label>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Ngày kiểm kê *</label>
                       <input
                         type="date"
                         required
                         value={sessionForm.scheduledDate}
                         onChange={e => setSessionForm({ ...sessionForm, scheduledDate: e.target.value })}
-                        className="w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-primary-500"
                       />
                     </div>
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-500">Phạm vi kiểm kê theo:</label>
-                      <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Phạm vi kiểm kê theo:</label>
+                      <div className="grid grid-cols-3 gap-2.5">
                         {([
                           { key: 'ALL', label: 'Toàn Công ty' },
                           { key: 'COMPANY', label: 'Công ty con' },
@@ -3863,7 +3863,7 @@ export const InventoryDetail: React.FC = () => {
                               setScopeSelection(opt.key);
                               setPreviewAssetsCount(null);
                             }}
-                            className={`p-2 border rounded-lg text-center font-bold text-[10px] tracking-tight transition-all cursor-pointer ${
+                            className={`py-2 px-1 border rounded-xl text-center font-bold text-[11px] tracking-tight transition-all cursor-pointer ${
                               scopeSelection === opt.key 
                                 ? 'bg-primary-50 text-primary-650 border-primary-300 ring-2 ring-primary-50' 
                                 : 'bg-white border-slate-200 text-slate-500 hover:border-slate-350'
@@ -3876,16 +3876,16 @@ export const InventoryDetail: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4 pt-2 border-t border-slate-100">
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-500">Công ty</label>
+                  <div className="grid grid-cols-2 gap-6 pt-4 border-t border-slate-100">
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Công ty</label>
                       <select
                         value={sessionForm.companyName}
                         onChange={e => {
                           setSessionForm({ ...sessionForm, companyName: e.target.value, departmentName: '', locationName: '', projectName: '' });
                           setPreviewAssetsCount(null);
                         }}
-                        className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
+                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:border-primary-500"
                       >
                         <option value="">-- Chọn công ty --</option>
                         {companies.map((c: any) => (
@@ -3895,15 +3895,15 @@ export const InventoryDetail: React.FC = () => {
                     </div>
 
                     {scopeSelection === 'PROJECT' && (
-                      <div className="space-y-1">
-                        <label className="font-bold text-slate-500">Dự án</label>
+                      <div className="space-y-1.5">
+                        <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Dự án</label>
                         <select
                           value={sessionForm.projectName}
                           onChange={e => {
                             setSessionForm({ ...sessionForm, projectName: e.target.value });
                             setPreviewAssetsCount(null);
                           }}
-                          className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-850 text-xs"
+                          className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-855 text-sm focus:outline-none focus:border-primary-500"
                         >
                           <option value="">-- Chọn dự án --</option>
                           {reviewProjects.map((p, i) => (
@@ -3932,29 +3932,29 @@ export const InventoryDetail: React.FC = () => {
                       }
 
                       return (
-                        <div className="space-y-1 relative">
-                          <label className="font-bold text-slate-500">Phòng ban kiểm kê *</label>
+                        <div className="space-y-1.5 relative">
+                          <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Phòng ban kiểm kê *</label>
                           <div 
                             onClick={() => setShowDeptDropdown(!showDeptDropdown)}
-                            className="w-full min-h-[40px] px-3 py-2 bg-white border rounded-xl font-bold text-slate-800 text-xs flex items-center justify-between cursor-pointer shadow-sm hover:border-slate-300"
+                            className="w-full min-h-[48px] px-4 py-2.5 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm flex items-center justify-between cursor-pointer shadow-sm hover:border-slate-300"
                           >
                             <span className="truncate pr-4">{displayText}</span>
                             <span className="text-slate-400">▼</span>
                           </div>
 
                           {showDeptDropdown && (
-                            <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 space-y-2.5">
+                            <div className="absolute z-50 w-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl p-4 space-y-3">
                               <input 
                                 type="text"
                                 placeholder="Tìm phòng ban..."
                                 value={deptSearchQuery}
                                 onChange={e => setDeptSearchQuery(e.target.value)}
                                 onClick={e => e.stopPropagation()}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-primary-500"
+                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-semibold focus:outline-none focus:border-primary-500"
                               />
 
                               <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-                                <label className="flex items-center space-x-2 cursor-pointer select-none">
+                                <label className="flex items-center space-x-2.5 cursor-pointer select-none">
                                   <input 
                                     type="checkbox"
                                     checked={allSelected}
@@ -3970,17 +3970,17 @@ export const InventoryDetail: React.FC = () => {
                                       setSessionForm({ ...sessionForm, departmentName: nextSelected.join(',') });
                                       setPreviewAssetsCount(null);
                                     }}
-                                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5"
+                                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
                                   />
-                                  <span className="text-[11px] font-black text-slate-700">Chọn tất cả phòng ban</span>
+                                  <span className="text-xs font-black text-slate-700">Chọn tất cả phòng ban</span>
                                 </label>
                               </div>
 
-                              <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
+                              <div className="max-h-48 overflow-y-auto space-y-1.5 custom-scrollbar">
                                 {filteredDepts.map(dept => {
                                   const checked = selectedDepts.includes(dept);
                                   return (
-                                    <label key={dept} className="flex items-center space-x-2 px-1 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer select-none">
+                                    <label key={dept} className="flex items-center space-x-2.5 px-1.5 py-2 hover:bg-slate-50 rounded-lg cursor-pointer select-none">
                                       <input 
                                         type="checkbox"
                                         checked={checked}
@@ -3994,9 +3994,9 @@ export const InventoryDetail: React.FC = () => {
                                           setSessionForm({ ...sessionForm, departmentName: nextSelected.join(',') });
                                           setPreviewAssetsCount(null);
                                         }}
-                                        className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5"
+                                        className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-4 w-4"
                                       />
-                                      <span className={`text-[11px] ${checked ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>{dept}</span>
+                                      <span className={`text-xs ${checked ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>{dept}</span>
                                     </label>
                                   );
                                 })}
@@ -4005,14 +4005,14 @@ export const InventoryDetail: React.FC = () => {
                                 )}
                               </div>
                               
-                              <div className="flex justify-end pt-1 border-t border-slate-100">
+                              <div className="flex justify-end pt-2 border-t border-slate-100">
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     setShowDeptDropdown(false);
                                   }}
-                                  className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                                  className="px-4 py-1.5 bg-slate-900 text-white rounded-xl text-xs font-bold uppercase tracking-wider"
                                 >
                                   Đóng
                                 </button>
@@ -4024,15 +4024,15 @@ export const InventoryDetail: React.FC = () => {
                     })()}
 
                     {scopeSelection === 'LOCATION' && (
-                      <div className="space-y-1">
-                        <label className="font-bold text-slate-500">Kho / Vị trí chi tiết</label>
+                      <div className="space-y-1.5">
+                        <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Kho / Vị trí chi tiết</label>
                         <select
                           value={sessionForm.locationName}
                           onChange={e => {
                             setSessionForm({ ...sessionForm, locationName: e.target.value });
                             setPreviewAssetsCount(null);
                           }}
-                          className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-850 text-xs"
+                          className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-855 text-sm focus:outline-none focus:border-primary-500"
                         >
                           <option value="">-- Chọn vị trí --</option>
                           {reviewLocations.map((l, i) => (
@@ -4043,28 +4043,28 @@ export const InventoryDetail: React.FC = () => {
                     )}
                   </div>
 
-                  <div className="pt-4 border-t border-slate-100 space-y-3">
+                  <div className="pt-6 border-t border-slate-100 space-y-4">
                     <div className="flex items-center justify-between">
-                      <span className="font-bold text-slate-400">Xem trước danh sách tài sản trong phạm vi:</span>
+                      <span className="font-bold text-slate-400 text-xs uppercase tracking-wider">Xem trước danh sách tài sản trong phạm vi:</span>
                       <button
                         type="button"
                         onClick={handlePreviewAssets}
                         disabled={previewLoading}
-                        className="px-4 py-2 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-850 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                        className="px-5 py-2.5 bg-slate-900 text-white rounded-xl text-xs font-bold hover:bg-slate-850 transition-all flex items-center gap-2 cursor-pointer disabled:opacity-50"
                       >
-                        {previewLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '🔍'} Xem trước tài sản
+                        {previewLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : '🔍'} Xem trước tài sản
                       </button>
                     </div>
 
                     {previewAssetsCount !== null && (
-                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
-                        <div className="flex items-center justify-between font-black text-xs text-slate-800">
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
+                        <div className="flex items-center justify-between font-black text-sm text-slate-800">
                           <span>Tổng số tài sản tìm thấy:</span>
-                          <span className="text-sm text-primary-650 font-black">{previewAssetsCount} tài sản</span>
+                          <span className="text-base text-primary-650 font-black">{previewAssetsCount} tài sản</span>
                         </div>
-                        <div className="grid grid-cols-2 gap-2 text-[10px] font-bold text-slate-500">
+                        <div className="grid grid-cols-2 gap-3 text-xs font-bold text-slate-500">
                           {Object.entries(previewBreakdown).map(([cat, count]) => (
-                            <div key={cat} className="flex justify-between border-b border-slate-100 pb-1">
+                            <div key={cat} className="flex justify-between border-b border-slate-100 pb-1.5">
                               <span>{cat}:</span>
                               <span className="text-slate-800">{count}</span>
                             </div>
@@ -4077,26 +4077,26 @@ export const InventoryDetail: React.FC = () => {
               )}
 
               {wizardStep === 2 && (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-500">Trưởng đoàn kiểm kê *</label>
+                <div className="space-y-6">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Trưởng đoàn kiểm kê *</label>
                       <input
                         type="text"
                         required
                         placeholder="Nhập tên Trưởng đoàn..."
                         value={sessionForm.checkerName}
                         onChange={e => setSessionForm({ ...sessionForm, checkerName: e.target.value })}
-                        className="w-full bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                        className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-primary-500"
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="font-bold text-slate-500">Đại diện phòng ban ký biên bản *</label>
+                    <div className="space-y-1.5">
+                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Đại diện phòng ban ký biên bản *</label>
                       <select
                         value={sessionForm.representativeName}
                         onChange={e => setSessionForm({ ...sessionForm, representativeName: e.target.value })}
-                        className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-800 text-xs"
+                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:border-primary-500"
                       >
                         <option value="">-- Chọn người đại diện ký biên bản --</option>
                         {reviewUserSuggestions.length > 0 ? (
@@ -4114,27 +4114,27 @@ export const InventoryDetail: React.FC = () => {
                     </div>
                   </div>
 
-                  <div className="space-y-1 pt-2 border-t border-slate-100">
-                    <label className="font-bold text-slate-500">Đội kiểm kê *</label>
+                  <div className="space-y-1.5 pt-4 border-t border-slate-100">
+                    <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Đội kiểm kê *</label>
                     <input
                       type="text"
                       required
                       placeholder="Ví dụ: Đội kiểm kê số 01..."
                       value={sessionForm.teamName}
                       onChange={e => setSessionForm({ ...sessionForm, teamName: e.target.value })}
-                      className="w-full bg-white border rounded-xl px-3 py-2.5 text-xs font-bold text-slate-800"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm font-bold text-slate-800 focus:outline-none focus:border-primary-500"
                     />
                   </div>
 
-                  <div className="space-y-2 pt-2 border-t border-slate-100">
-                    <label className="font-bold text-slate-500 block">Thành viên tham gia đoàn kiểm kê</label>
-                    <div className="flex gap-2">
+                  <div className="space-y-3 pt-4 border-t border-slate-100">
+                    <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Thành viên tham gia đoàn kiểm kê</label>
+                    <div className="flex gap-3">
                       <input
                         type="text"
                         placeholder="Nhập tên thành viên..."
                         value={newMemberName}
                         onChange={e => setNewMemberName(e.target.value)}
-                        className="flex-1 bg-white border rounded-xl px-3 py-2 text-xs font-bold text-slate-800"
+                        className="flex-1 bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-primary-500"
                       />
                       <button
                         type="button"
@@ -4144,20 +4144,20 @@ export const InventoryDetail: React.FC = () => {
                             setNewMemberName('');
                           }
                         }}
-                        className="bg-slate-900 hover:bg-slate-850 text-white px-4 rounded-xl font-bold uppercase cursor-pointer"
+                        className="bg-slate-900 hover:bg-slate-850 text-white px-6 py-2.5 rounded-xl font-bold text-sm uppercase cursor-pointer"
                       >
                         + Thêm
                       </button>
                     </div>
                     {sessionMembers.length > 0 && (
-                      <div className="flex flex-wrap gap-2 mt-2 bg-slate-50 p-3 rounded-xl border border-slate-200">
+                      <div className="flex flex-wrap gap-2.5 mt-3 bg-slate-50 p-4 rounded-xl border border-slate-200">
                         {sessionMembers.map((m, i) => (
-                          <span key={i} className="px-2.5 py-1 bg-white border border-slate-200 rounded-lg text-slate-700 font-bold text-[10px] uppercase flex items-center gap-1.5 shadow-sm">
+                          <span key={i} className="px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-slate-700 font-bold text-xs uppercase flex items-center gap-2 shadow-sm">
                             👤 {m}
                             <button
                               type="button"
                               onClick={() => setSessionMembers(prev => prev.filter((_, idx) => idx !== i))}
-                              className="text-rose-500 hover:text-rose-700 font-black border-0 bg-transparent cursor-pointer text-xs ml-1"
+                              className="text-rose-500 hover:text-rose-700 font-black border-0 bg-transparent cursor-pointer text-xs ml-1.5"
                             >
                               ✕
                             </button>
@@ -4170,25 +4170,25 @@ export const InventoryDetail: React.FC = () => {
               )}
 
               {wizardStep === 3 && (
-                <div className="space-y-4">
-                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-5 space-y-4">
-                    <h4 className="font-black text-xs text-slate-800 uppercase tracking-widest border-b pb-2 text-primary-650">
+                <div className="space-y-6">
+                  <div className="bg-slate-50 border border-slate-200 rounded-2xl p-6 space-y-4">
+                    <h4 className="font-black text-xs text-slate-800 uppercase tracking-widest border-b pb-2.5 text-primary-650">
                       📋 Tóm tắt cấu hình phiên kiểm kê
                     </h4>
-                    <div className="grid grid-cols-2 gap-4 text-xs font-bold">
-                      <div>
-                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Tên phiên (tự động):</span>
-                        <span className="text-slate-800 font-black text-sm">
+                    <div className="grid grid-cols-2 gap-6 text-sm font-bold">
+                      <div className="space-y-1">
+                        <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Tên phiên (tự động):</span>
+                        <span className="text-slate-800 font-black text-base">
                           Kiểm kê {sessionForm.departmentName || sessionForm.locationName || 'Phòng ban'} ngày {format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Ngày thực hiện:</span>
-                        <span className="text-slate-800">{format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}</span>
+                      <div className="space-y-1">
+                        <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Ngày thực hiện:</span>
+                        <span className="text-slate-800 text-sm">{format(new Date(sessionForm.scheduledDate), 'dd/MM/yyyy')}</span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Phạm vi kiểm:</span>
-                        <span className="text-slate-800 uppercase text-[10px]">
+                      <div className="space-y-1">
+                        <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Phạm vi kiểm:</span>
+                        <span className="text-slate-800 uppercase text-xs">
                           {scopeSelection === 'ALL' ? 'Toàn Công ty' :
                            scopeSelection === 'COMPANY' ? `Công ty con: ${sessionForm.companyName}` :
                            scopeSelection === 'PROJECT' ? `Dự án: ${sessionForm.projectName}` :
@@ -4196,45 +4196,45 @@ export const InventoryDetail: React.FC = () => {
                            scopeSelection === 'DEPARTMENT' ? `Phòng ban: ${sessionForm.departmentName}` : 'Cá nhân'}
                         </span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Đội kiểm kê:</span>
-                        <span className="text-slate-800">{sessionForm.teamName || '-'}</span>
+                      <div className="space-y-1">
+                        <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Đội kiểm kê:</span>
+                        <span className="text-slate-800 text-sm">{sessionForm.teamName || '-'}</span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Trưởng đoàn:</span>
-                        <span className="text-slate-800 font-bold">{sessionForm.checkerName || '-'}</span>
+                      <div className="space-y-1">
+                        <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Trưởng đoàn:</span>
+                        <span className="text-slate-800 font-bold text-sm">{sessionForm.checkerName || '-'}</span>
                       </div>
-                      <div>
-                        <span className="text-slate-400 uppercase text-[9px] tracking-wider block">Thành viên:</span>
-                        <span className="text-slate-800">{sessionMembers.join(', ') || 'Không có thành viên phụ'}</span>
+                      <div className="space-y-1">
+                        <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Thành viên:</span>
+                        <span className="text-slate-800 text-sm">{sessionMembers.join(', ') || 'Không có thành viên phụ'}</span>
                       </div>
                     </div>
                   </div>
 
-                  <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-4 space-y-2">
-                    <div className="flex items-center justify-between font-black text-xs text-slate-800">
+                  <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-5 space-y-3">
+                    <div className="flex items-center justify-between font-black text-sm text-slate-800">
                       <span>Tổng tài sản dự kiến kiểm kê:</span>
-                      <span className="text-sm text-emerald-650 font-black">{previewAssetsCount || 156} tài sản</span>
+                      <span className="text-base text-emerald-650 font-black">{previewAssetsCount || 156} tài sản</span>
                     </div>
                     {Object.keys(previewBreakdown).length > 0 && (
-                      <div className="grid grid-cols-3 gap-2 text-[10px] font-bold text-emerald-700">
+                      <div className="grid grid-cols-3 gap-3 text-xs font-bold text-emerald-700">
                         {Object.entries(previewBreakdown).map(([cat, count]) => (
-                          <div key={cat} className="bg-white border border-emerald-100 rounded-lg p-2 text-center shadow-sm">
-                            <p className="text-slate-400 font-medium truncate">{cat}</p>
-                            <p className="text-sm font-black text-emerald-600 mt-0.5">{count}</p>
+                          <div key={cat} className="bg-white border border-emerald-100 rounded-xl p-3 text-center shadow-sm">
+                            <p className="text-slate-400 font-medium truncate text-[10px] uppercase">{cat}</p>
+                            <p className="text-base font-black text-emerald-600 mt-1">{count}</p>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
 
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Ghi chú thêm</label>
+                  <div className="space-y-1.5">
+                    <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Ghi chú thêm</label>
                     <textarea
                       placeholder="Ghi chú trực tiếp kiểm kê tại thực địa..."
                       value={sessionForm.note}
                       onChange={e => setSessionForm({ ...sessionForm, note: e.target.value })}
-                      className="w-full px-3 py-2 bg-white border rounded-xl font-semibold text-slate-800 h-16 resize-none"
+                      className="w-full px-4 py-3 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 text-sm h-24 resize-none focus:outline-none focus:border-primary-500"
                     />
                   </div>
                 </div>
