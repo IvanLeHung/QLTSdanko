@@ -46,7 +46,8 @@ const DonutChart: React.FC<{
   data: { label: string; value: number; color: string; statusKey?: string; isUnassigned?: boolean }[];
   total: number;
   onSegmentClick: (label: string, statusKey?: string, isUnassigned?: boolean) => void;
-}> = ({ data, total, onSegmentClick }) => {
+  centerLabel?: string;
+}> = ({ data, total, onSegmentClick, centerLabel = "Tài sản" }) => {
   let accumulatedAngle = 0;
   const radius = 50;
   const strokeWidth = 12;
@@ -93,7 +94,7 @@ const DonutChart: React.FC<{
       <div className="absolute flex flex-col items-center justify-center text-center">
         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">Tổng</span>
         <span className="text-2xl font-black text-slate-800 tracking-tight leading-none mt-1">{total.toLocaleString()}</span>
-        <span className="text-[11px] font-bold text-slate-400 mt-0.5">Tài sản</span>
+        <span className="text-[11px] font-bold text-slate-400 mt-0.5">{centerLabel}</span>
       </div>
     </div>
   );
@@ -360,8 +361,10 @@ export const Dashboard: React.FC = () => {
 
   const defaultDates = getPresetDates('Tháng này');
 
-  // Filter States
-  const [filters, setFilters] = useState({
+  // Active Tab State
+  const [activeTab, setActiveTab] = useState<'assets' | 'ccdc'>('assets');
+
+  const initialFilterState = {
     companyCode: isCompanyLocked ? (allowedCompanies[0] || '') : '',
     departmentName: isDepartmentLocked ? (allowedDepartments[0] || user?.departmentName || '') : '',
     cityName: '',
@@ -370,7 +373,20 @@ export const Dashboard: React.FC = () => {
     preset: 'Tháng này',
     startDate: defaultDates.start,
     endDate: defaultDates.end
-  });
+  };
+
+  // Filter States per tab
+  const [assetsFilters, setAssetsFilters] = useState({ ...initialFilterState });
+  const [ccdcFilters, setCcdcFilters] = useState({ ...initialFilterState });
+
+  const filters = activeTab === 'assets' ? assetsFilters : ccdcFilters;
+  const setFilters = (val: any) => {
+    if (activeTab === 'assets') {
+      setAssetsFilters(val);
+    } else {
+      setCcdcFilters(val);
+    }
+  };
 
   const [tempFilters, setTempFilters] = useState({ ...filters });
   const [isFilterOpen, setIsFilterOpen] = useState(false);
@@ -424,12 +440,22 @@ export const Dashboard: React.FC = () => {
     setDrilldownLoading(true);
     try {
       let url = '';
-      if (type === 'assets') {
-        url = `/dashboard/drilldown/assets`;
-      } else if (type === 'city') {
-        url = `/dashboard/drilldown/city`;
-      } else if (type === 'project') {
-        url = `/dashboard/drilldown/project`;
+      if (activeTab === 'assets') {
+        if (type === 'assets') {
+          url = `/dashboard/drilldown/assets`;
+        } else if (type === 'city') {
+          url = `/dashboard/drilldown/city`;
+        } else if (type === 'project') {
+          url = `/dashboard/drilldown/project`;
+        }
+      } else {
+        if (type === 'assets') {
+          url = `/dashboard/ccdc/drilldown/tools`;
+        } else if (type === 'city') {
+          url = `/dashboard/ccdc/drilldown/city`;
+        } else if (type === 'project') {
+          url = `/dashboard/ccdc/drilldown/project`;
+        }
       }
       const res = await api.get(url, { params });
       setDrilldownData(res.data);
@@ -481,13 +507,14 @@ export const Dashboard: React.FC = () => {
         endDate: format(dailyMonthEnd, 'yyyy-MM-dd')
       };
 
+      const prefix = activeTab === 'assets' ? '/dashboard' : '/dashboard/ccdc';
       const [summaryRes, statsRes, dailyStatsRes, actionItemsRes, activitiesRes, advancedRes] = await Promise.all([
-        api.get('/dashboard/summary', { params }).catch(err => { console.error(err); return { data: null }; }),
-        api.get('/dashboard/activity-stats', { params }).catch(err => { console.error(err); return { data: null }; }),
-        api.get('/dashboard/activity-daily-stats', { params: dailyParams }).catch(err => { console.error(err); return { data: [] }; }),
-        api.get('/dashboard/action-items', { params }).catch(err => { console.error(err); return { data: null }; }),
-        api.get('/dashboard/recent-activities', { params }).catch(err => { console.error(err); return { data: [] }; }),
-        api.get('/dashboard/advanced-stats', { params }).catch(err => { console.error(err); return { data: null }; })
+        api.get(`${prefix}/summary`, { params }).catch(err => { console.error(err); return { data: null }; }),
+        api.get(`${prefix}/activity-stats`, { params }).catch(err => { console.error(err); return { data: null }; }),
+        api.get(`${prefix}/activity-daily-stats`, { params: dailyParams }).catch(err => { console.error(err); return { data: [] }; }),
+        api.get(`${prefix}/action-items`, { params }).catch(err => { console.error(err); return { data: null }; }),
+        api.get(`${prefix}/recent-activities`, { params }).catch(err => { console.error(err); return { data: [] }; }),
+        api.get(`${prefix}/advanced-stats`, { params }).catch(err => { console.error(err); return { data: null }; })
       ]);
 
       if (summaryRes.data) setSummary(summaryRes.data);
@@ -503,9 +530,52 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const handleExportReport = async () => {
+    try {
+      const scopedParams = {
+        companyCode: filters.companyCode || undefined,
+        departmentName: filters.departmentName || undefined,
+        cityName: filters.cityName || undefined,
+        projectName: filters.projectName || undefined,
+        locationName: filters.locationName || undefined,
+      };
+      const params = {
+        ...scopedParams,
+        startDate: filters.startDate || undefined,
+        endDate: filters.endDate || undefined
+      };
+      
+      if (activeTab === 'assets') {
+        const response = await api.get('/assets/export-excel', { params, responseType: 'blob' });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `so_tai_san_snapshot_${new Date().toISOString().slice(0, 10)}.xlsx`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      } else {
+        const response = await api.get('/dashboard/ccdc/export', { params, responseType: 'blob' });
+        const url = window.URL.createObjectURL(new Blob([response.data]));
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `bao_cao_ccdc_${new Date().toISOString().slice(0, 10)}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+    } catch (err) {
+      console.error("Failed to export report", err);
+    }
+  };
+
   useEffect(() => {
     fetchDashboardData();
-  }, [filters, dailyMonth]);
+  }, [filters, dailyMonth, activeTab]);
+
+  useEffect(() => {
+    setTempFilters({ ...filters });
+  }, [activeTab, filters]);
 
   // Sync tempFilters when popover opens
   const openPopover = () => {
@@ -545,7 +615,7 @@ export const Dashboard: React.FC = () => {
   };
 
   const removeFilterKey = (key: string) => {
-    setFilters(prev => {
+    setFilters((prev: any) => {
       const updated = { ...prev };
       if (key === 'companyCode') updated.companyCode = '';
       else if (key === 'departmentName') updated.departmentName = '';
@@ -630,7 +700,7 @@ export const Dashboard: React.FC = () => {
   };
 
   // Cumulative Asset Status Options
-  const cumulativeCards = [
+  const cumulativeCards: any[] = activeTab === 'assets' ? [
     { 
       name: 'Tổng tài sản', 
       value: safeSummary.totalAssets, 
@@ -701,10 +771,88 @@ export const Dashboard: React.FC = () => {
       path: '/assets',
       params: { status: 'LIQUIDATED' }
     }
+  ] : [
+    { 
+      name: 'Tổng CCDC', 
+      value: safeSummary.totalTools, 
+      subValue: safeSummary.totalQuantity,
+      icon: Package, 
+      color: 'text-primary-600', 
+      bg: 'bg-primary-50 hover:bg-primary-100', 
+      border: 'hover:border-primary-300',
+      path: '/tools',
+      params: {}
+    },
+    { 
+      name: 'Đang sử dụng', 
+      value: safeSummary.using, 
+      subValue: safeSummary.totalUsing,
+      icon: UserCheck, 
+      color: 'text-emerald-600', 
+      bg: 'bg-emerald-50 hover:bg-emerald-100', 
+      border: 'hover:border-emerald-300',
+      path: '/tools',
+      params: { status: 'USING' }
+    },
+    { 
+      name: 'Trong kho', 
+      value: safeSummary.inStock, 
+      subValue: safeSummary.totalAvailable,
+      icon: Archive, 
+      color: 'text-sky-600', 
+      bg: 'bg-sky-50 hover:bg-sky-100', 
+      border: 'hover:border-sky-300',
+      path: '/tools',
+      params: { status: 'IN_STOCK' }
+    },
+    { 
+      name: 'Đang sửa chữa', 
+      value: safeSummary.damaged,
+      subValue: safeSummary.totalRepairing,
+      icon: Wrench, 
+      color: 'text-amber-600', 
+      bg: 'bg-amber-50 hover:bg-amber-100', 
+      border: 'hover:border-amber-300',
+      path: '/tools',
+      params: { status: 'DAMAGED' }
+    },
+    { 
+      name: 'Báo hỏng', 
+      value: safeSummary.damaged, 
+      subValue: safeSummary.totalBroken,
+      icon: AlertTriangle, 
+      color: 'text-orange-600', 
+      bg: 'bg-orange-50 hover:bg-orange-100', 
+      border: 'hover:border-orange-300',
+      path: '/tools',
+      params: { status: 'DAMAGED' }
+    },
+    { 
+      name: 'Mất / thất thoát', 
+      value: safeSummary.lost, 
+      subValue: safeSummary.totalLostQty,
+      icon: ShieldAlert, 
+      color: 'text-rose-600', 
+      bg: 'bg-rose-50 hover:bg-rose-100', 
+      border: 'hover:border-rose-300',
+      path: '/tools',
+      params: { status: 'LOST' }
+    },
+    { 
+      name: 'Đã thanh lý', 
+      value: safeSummary.liquidated, 
+      subValue: safeSummary.totalDestroyed,
+      icon: Trash2, 
+      color: 'text-slate-600', 
+      bg: 'bg-slate-50 hover:bg-slate-100', 
+      border: 'hover:border-slate-300',
+      path: '/tools',
+      params: { status: 'LIQUIDATED' }
+    }
   ];
 
   // Period-based Activity Options
-  const periodCards = [
+  const periodCards = activeTab === 'assets' ? [
     { 
       name: 'TS tạo mới', 
       value: safeStats.createdAssets, 
@@ -761,10 +909,67 @@ export const Dashboard: React.FC = () => {
       path: '/operational/liquidation',
       params: { fromDate: filters.startDate, toDate: filters.endDate }
     }
+  ] : [
+    { 
+      name: 'CCDC tạo mới', 
+      value: safeStats.createdAssets, 
+      color: 'text-primary-600', 
+      bg: 'bg-primary-50', 
+      path: '/tools',
+      params: { createdFrom: filters.startDate, createdTo: filters.endDate }
+    },
+    { 
+      name: 'CCDC bàn giao', 
+      value: safeStats.handedOverAssets, 
+      color: 'text-emerald-600', 
+      bg: 'bg-emerald-50', 
+      path: '/tools/history',
+      params: { type: 'HANDOVER', fromDate: filters.startDate, toDate: filters.endDate }
+    },
+    { 
+      name: 'CCDC điều chuyển', 
+      value: safeStats.transferredAssets, 
+      color: 'text-indigo-600', 
+      bg: 'bg-indigo-50', 
+      path: '/tools/history',
+      params: { type: 'TRANSFER', fromDate: filters.startDate, toDate: filters.endDate }
+    },
+    { 
+      name: 'CCDC thu hồi', 
+      value: safeStats.recalledAssets, 
+      color: 'text-amber-600', 
+      bg: 'bg-amber-50', 
+      path: '/tools/history',
+      params: { type: 'RECALL', fromDate: filters.startDate, toDate: filters.endDate }
+    },
+    { 
+      name: 'CCDC báo hỏng', 
+      value: safeStats.brokenReportedAssets, 
+      color: 'text-orange-600', 
+      bg: 'bg-orange-50', 
+      path: '/tools',
+      params: { status: 'DAMAGED', fromDate: filters.startDate, toDate: filters.endDate }
+    },
+    { 
+      name: 'CCDC mất', 
+      value: safeStats.lostReportedAssets, 
+      color: 'text-rose-600', 
+      bg: 'bg-rose-50', 
+      path: '/tools',
+      params: { status: 'LOST', fromDate: filters.startDate, toDate: filters.endDate }
+    },
+    { 
+      name: 'CCDC thanh lý', 
+      value: safeStats.liquidatedAssets, 
+      color: 'text-slate-600', 
+      bg: 'bg-slate-50', 
+      path: '/tools',
+      params: { status: 'LIQUIDATED', fromDate: filters.startDate, toDate: filters.endDate }
+    }
   ];
 
   const dailyStatColumns = [
-    { key: 'createdAssets', label: 'Tạo mới', color: 'text-primary-600' },
+    { key: 'createdAssets', label: activeTab === 'assets' ? 'Tạo mới' : 'Cấp mới', color: 'text-primary-600' },
     { key: 'handedOverAssets', label: 'Bàn giao', color: 'text-emerald-600' },
     { key: 'transferredAssets', label: 'Điều chuyển', color: 'text-indigo-600' },
     { key: 'recalledAssets', label: 'Thu hồi', color: 'text-amber-600' },
@@ -803,7 +1008,7 @@ export const Dashboard: React.FC = () => {
   };
 
   // Action Items Helper Mapping
-  const actionList = [
+  const actionList = (activeTab === 'assets' ? [
     { 
       label: 'Tài sản bàn giao chờ xác nhận', 
       count: actionItems?.handoverPending, 
@@ -844,7 +1049,40 @@ export const Dashboard: React.FC = () => {
       color: 'text-sky-600 bg-sky-50 border-sky-100',
       icon: Printer
     }
-  ].filter(item => item.count !== undefined && item.count !== null && item.count > 0);
+  ] : [
+    { 
+      label: 'CCDC bàn giao chờ xác nhận', 
+      count: actionItems?.handoverPending, 
+      path: '/tools/approvals', 
+      params: {},
+      color: 'text-amber-600 bg-amber-50 border-amber-100',
+      icon: Clock
+    },
+    { 
+      label: 'Đợt kiểm kê CCDC đang thực hiện', 
+      count: actionItems?.inventoryPending, 
+      path: '/tools/inventory', 
+      params: {},
+      color: 'text-primary-600 bg-primary-50 border-primary-100',
+      icon: ClipboardCheck
+    },
+    { 
+      label: 'Yêu cầu sửa chữa CCDC cần xử lý', 
+      count: actionItems?.repairPending, 
+      path: '/tools/approvals', 
+      params: { tab: 'repairs' },
+      color: 'text-orange-600 bg-orange-50 border-orange-100',
+      icon: Wrench
+    },
+    { 
+      label: 'Sự vụ báo mất CCDC đang xử lý', 
+      count: actionItems?.lostPending, 
+      path: '/tools/approvals', 
+      params: { tab: 'lost' },
+      color: 'text-rose-600 bg-rose-50 border-rose-100',
+      icon: ShieldAlert
+    }
+  ]).filter(item => item.count !== undefined && item.count !== null && item.count > 0);
 
   // Clean Technical Noise from Recent Activities
   const cleanLogs = activities.filter((log: any) => log.performedBy !== 'SYSTEM' && log.performedBy !== 'IMPORT_EXCEL');
@@ -863,6 +1101,14 @@ export const Dashboard: React.FC = () => {
           <p className="text-slate-500 font-medium text-base">Phần mềm quản lý vận hành tài sản tập trung.</p>
         </div>
         <div className="flex items-center space-x-3 relative">
+          {/* Export Report Button */}
+          <button 
+            onClick={handleExportReport} 
+            className="h-14 px-6 rounded-2xl font-bold text-sm uppercase tracking-widest transition-all flex items-center border bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+          >
+            <Printer className="mr-2 h-4 w-4" /> Xuất báo cáo
+          </button>
+
           {/* Filter Popover Trigger */}
           <button 
             onClick={openPopover} 
@@ -877,10 +1123,10 @@ export const Dashboard: React.FC = () => {
           </button>
 
           <button 
-            onClick={() => navigate('/assets/new')} 
+            onClick={() => navigate(activeTab === 'assets' ? '/assets/new' : '/tools/new')} 
             className="bg-primary-600 text-white h-14 px-8 rounded-2xl font-bold text-sm uppercase tracking-widest hover:bg-primary-700 transition-all flex items-center shadow-lg shadow-primary-100"
           >
-            <Plus className="mr-2 h-5 w-5" /> Cấp mới tài sản
+            <Plus className="mr-2 h-5 w-5" /> {activeTab === 'assets' ? 'Cấp mới tài sản' : 'Cấp mới CCDC'}
           </button>
 
           {/* Filter Popover Dropdown Panel */}
@@ -1042,6 +1288,32 @@ export const Dashboard: React.FC = () => {
         </div>
       </div>
 
+      {/* TABS SEGMENTED CONTROL */}
+      <div className="flex bg-slate-100/80 backdrop-blur-sm p-1 rounded-2xl border border-slate-200/50 w-fit">
+        <button
+          onClick={() => setActiveTab('assets')}
+          className={`px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${
+            activeTab === 'assets'
+              ? 'bg-white text-slate-800 shadow-sm transform scale-100 font-extrabold'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Package className="h-4 w-4 text-primary-600" />
+          Tài sản
+        </button>
+        <button
+          onClick={() => setActiveTab('ccdc')}
+          className={`px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${
+            activeTab === 'ccdc'
+              ? 'bg-white text-slate-800 shadow-sm transform scale-100 font-extrabold'
+              : 'text-slate-500 hover:text-slate-700'
+          }`}
+        >
+          <Wrench className="h-4 w-4 text-emerald-600" />
+          Công cụ dụng cụ
+        </button>
+      </div>
+
       {/* ACTIVE FILTER CHIPS */}
       {activeChips.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 bg-slate-50 p-4 rounded-2xl border border-slate-100 animate-fadeIn">
@@ -1079,7 +1351,9 @@ export const Dashboard: React.FC = () => {
       <div className="space-y-4">
         <div className="flex items-center space-x-2">
           <div className="w-1.5 h-6 bg-primary-600 rounded-full" />
-          <h2 className="text-xl font-[800] text-slate-800 tracking-tight">Hiện trạng tài sản</h2>
+          <h2 className="text-xl font-[800] text-slate-800 tracking-tight">
+            {activeTab === 'assets' ? 'Hiện trạng tài sản' : 'Hiện trạng CCDC'}
+          </h2>
           <span className="text-xs text-slate-400 font-medium">(Số liệu tích lũy đến hiện tại)</span>
         </div>
 
@@ -1097,7 +1371,16 @@ export const Dashboard: React.FC = () => {
               </div>
               <div>
                 <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 leading-tight">{card.name}</p>
-                <p className="text-2xl font-black text-slate-900 leading-none">{card.value?.toLocaleString()}</p>
+                <div className="flex flex-col gap-0.5">
+                  <p className="text-2xl font-black text-slate-900 leading-none">
+                    {card.value?.toLocaleString()}
+                  </p>
+                  {card.subValue !== undefined && (
+                    <p className="text-[10px] font-bold text-slate-400 truncate">
+                      dòng ({card.subValue?.toLocaleString()} cái)
+                    </p>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -1143,7 +1426,7 @@ export const Dashboard: React.FC = () => {
             <div>
               <h2 className="text-lg font-[800] text-slate-800 tracking-tight">Thống kê phát sinh theo ngày</h2>
               <p className="text-xs font-medium text-slate-400">
-                Chọn tháng hoặc ngày để xem phát sinh; vòng đỏ là ngày có thao tác liên quan đến tài sản
+                Chọn tháng hoặc ngày để xem phát sinh; vòng đỏ là ngày có thao tác liên quan đến {activeTab === 'assets' ? 'tài sản' : 'CCDC'}
               </p>
             </div>
           </div>
@@ -1387,14 +1670,15 @@ export const Dashboard: React.FC = () => {
                   <div>
                     <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
                       <TrendingUp className="mr-2 h-5 w-5 text-primary-600" />
-                      Phân bố tài sản
+                      {activeTab === 'assets' ? 'Phân bố tài sản' : 'Phân bố CCDC'}
                     </h3>
-                    <p className="text-xs text-slate-400 font-semibold mb-4">Nhấp vào từng phân đoạn biểu đồ để xem danh sách tài sản chi tiết</p>
+                    <p className="text-xs text-slate-400 font-semibold mb-4">Nhấp vào từng phân đoạn biểu đồ để xem danh sách {activeTab === 'assets' ? 'tài sản' : 'CCDC'} chi tiết</p>
                   </div>
 
                   <DonutChart 
                     data={donutData} 
                     total={safeAdvanced.total} 
+                    centerLabel={activeTab === 'assets' ? 'Tài sản' : 'CCDC'}
                     onSegmentClick={(label, statusKey, isUnassigned) => {
                       openDrilldown(label, 'assets', { status: statusKey, unassigned: isUnassigned ? 'true' : undefined });
                     }} 
@@ -1437,7 +1721,7 @@ export const Dashboard: React.FC = () => {
                   
                   <div className="mt-3 text-center">
                     <button 
-                      onClick={() => navigate('/assets')}
+                      onClick={() => navigate(activeTab === 'assets' ? '/assets' : '/tools')}
                       className="text-xs font-black text-primary-600 hover:text-primary-700 hover:underline uppercase tracking-wider"
                     >
                       Xem chi tiết →
@@ -1452,17 +1736,24 @@ export const Dashboard: React.FC = () => {
                       <Archive className="mr-2 h-5 w-5 text-indigo-600" />
                       Tình trạng sử dụng
                     </h3>
-                    <p className="text-xs text-slate-400 font-semibold mb-6">Thống kê chi tiết tài sản theo trạng thái vận hành của doanh nghiệp</p>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Thống kê chi tiết {activeTab === 'assets' ? 'tài sản' : 'CCDC'} theo trạng thái vận hành của doanh nghiệp</p>
                   </div>
 
                   <div className="space-y-5">
-                    {[
+                    {(activeTab === 'assets' ? [
                       { name: 'Đang sử dụng', count: safeAdvanced.statusCounts['ASSIGNED'] || 0, color: 'bg-emerald-500', statusKey: 'ASSIGNED' },
                       { name: 'Trong kho', count: safeAdvanced.statusCounts['IN_STOCK'] || 0, color: 'bg-sky-500', statusKey: 'IN_STOCK' },
                       { name: 'Đang sửa chữa', count: safeAdvanced.statusCounts['UNDER_REPAIR'] || 0, color: 'bg-amber-500', statusKey: 'UNDER_REPAIR' },
                       { name: 'Thanh lý', count: (safeAdvanced.statusCounts['LIQUIDATED'] || 0) + (safeAdvanced.statusCounts['DISPOSED'] || 0), color: 'bg-slate-500', statusKey: 'LIQUIDATED' },
                       { name: 'Mất / Thất thoát', count: safeAdvanced.statusCounts['LOST'] || 0, color: 'bg-rose-500', statusKey: 'LOST' }
-                    ].map((item) => {
+                    ] : [
+                      { name: 'Đang sử dụng', count: safeAdvanced.statusCounts['ASSIGNED'] || 0, color: 'bg-emerald-500', statusKey: 'ASSIGNED' },
+                      { name: 'Trong kho', count: safeAdvanced.statusCounts['IN_STOCK'] || 0, color: 'bg-sky-500', statusKey: 'IN_STOCK' },
+                      { name: 'Hỏng / Sửa chữa', count: safeAdvanced.statusCounts['DAMAGED'] || 0, color: 'bg-amber-500', statusKey: 'DAMAGED' },
+                      { name: 'Chờ thanh lý', count: safeAdvanced.statusCounts['WAITING_LIQUIDATION'] || 0, color: 'bg-orange-500', statusKey: 'WAITING_LIQUIDATION' },
+                      { name: 'Đã thanh lý', count: safeAdvanced.statusCounts['LIQUIDATED'] || 0, color: 'bg-slate-500', statusKey: 'LIQUIDATED' },
+                      { name: 'Mất / Thất thoát', count: safeAdvanced.statusCounts['LOST'] || 0, color: 'bg-rose-500', statusKey: 'LOST' }
+                    ]).map((item) => {
                       const pct = safeAdvanced.total > 0 ? (item.count / safeAdvanced.total) * 100 : 0;
                       return (
                         <div 
@@ -1472,7 +1763,7 @@ export const Dashboard: React.FC = () => {
                         >
                           <div className="flex justify-between items-center text-sm">
                             <span className="font-bold text-slate-700 group-hover:text-primary-600 transition-colors">{item.name}</span>
-                            <span className="font-black text-slate-800">{item.count.toLocaleString()} TS <span className="text-xs text-slate-400 font-medium">({Math.round(pct)}%)</span></span>
+                            <span className="font-black text-slate-800">{item.count.toLocaleString()} {activeTab === 'assets' ? 'TS' : 'CCDC'} <span className="text-xs text-slate-400 font-medium">({Math.round(pct)}%)</span></span>
                           </div>
                           <div className="h-3 w-full bg-slate-100 rounded-full overflow-hidden">
                             <div 
@@ -1498,7 +1789,7 @@ export const Dashboard: React.FC = () => {
                         Tồn kho ({totalInStock.toLocaleString()} thiết bị)
                       </h3>
                       <button 
-                        onClick={() => openDrilldown('Tài sản trong kho', 'assets', { status: 'IN_STOCK' })}
+                        onClick={() => openDrilldown(activeTab === 'assets' ? 'Tài sản trong kho' : 'CCDC trong kho', 'assets', { status: 'IN_STOCK' })}
                         className="text-xs font-black text-slate-400 hover:text-primary-600 uppercase tracking-wider"
                       >
                         Xem danh sách →
@@ -1533,10 +1824,10 @@ export const Dashboard: React.FC = () => {
                     <div className="flex justify-between items-start mb-2">
                       <h3 className="text-base font-[800] text-slate-800 flex items-center">
                         <AlertTriangle className="mr-2 h-5 w-5 text-amber-500" />
-                        Chưa phân bổ ({totalUnassigned.toLocaleString()} tài sản)
+                        Chưa phân bổ ({totalUnassigned.toLocaleString()} {activeTab === 'assets' ? 'tài sản' : 'CCDC'})
                       </h3>
                       <button 
-                        onClick={() => navigate('/assets', { state: { allocationFilter: 'UNASSIGNED' } })}
+                        onClick={() => navigate(activeTab === 'assets' ? '/assets' : '/tools', { state: { allocationFilter: 'UNASSIGNED' } })}
                         className="text-xs font-black text-amber-600 hover:text-amber-700 uppercase tracking-widest font-black"
                       >
                         [Phân bổ ngay]
@@ -1548,7 +1839,7 @@ export const Dashboard: React.FC = () => {
                   <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
                     {safeAdvanced.unassignedCategories.length === 0 ? (
                       <div className="text-center py-8 bg-emerald-50 rounded-2xl border border-emerald-100 text-emerald-800 font-bold text-xs">
-                        🎉 Đã phân bổ toàn bộ tài sản trong kho!
+                        🎉 Đã phân bổ toàn bộ {activeTab === 'assets' ? 'tài sản' : 'CCDC'} trong kho!
                       </div>
                     ) : (
                       safeAdvanced.unassignedCategories.map((c: any) => (
@@ -1575,7 +1866,7 @@ export const Dashboard: React.FC = () => {
                   <div>
                     <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
                       <Filter className="mr-2 h-5 w-5 text-indigo-600" />
-                      Tài sản theo khu vực (Tổng: {safeAdvanced.cityCounts.filter((c: any) => c.name !== 'Không xác định').length} thành phố)
+                      {activeTab === 'assets' ? 'Tài sản' : 'CCDC'} theo khu vực (Tổng: {safeAdvanced.cityCounts.filter((c: any) => c.name !== 'Không xác định').length} thành phố)
                     </h3>
                     <p className="text-xs text-slate-400 font-semibold mb-6">Click vào từng thành phố để xem chi tiết kho và văn phòng nhánh</p>
                   </div>
@@ -1595,7 +1886,7 @@ export const Dashboard: React.FC = () => {
                           >
                             <div className="flex justify-between items-center text-xs font-bold text-slate-600">
                               <span className="group-hover:text-primary-600 transition-colors">{city.name}</span>
-                              <span className="font-black text-slate-800">{city.count.toLocaleString()} TS</span>
+                              <span className="font-black text-slate-800">{city.count.toLocaleString()} {activeTab === 'assets' ? 'TS' : 'CCDC'}</span>
                             </div>
                             <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                               <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${pct}%` }}></div>
@@ -1612,7 +1903,7 @@ export const Dashboard: React.FC = () => {
                   <div>
                     <h3 className="text-base font-[800] text-slate-800 mb-2 flex items-center">
                       <Calendar className="mr-2 h-5 w-5 text-sky-600" />
-                      Vị trí tài sản
+                      Vị trí {activeTab === 'assets' ? 'tài sản' : 'CCDC'}
                     </h3>
                     <p className="text-xs text-slate-400 font-semibold mb-6">Danh sách kho chứa, tầng làm việc và các vị trí lưu trữ thực tế</p>
                   </div>
@@ -1629,7 +1920,7 @@ export const Dashboard: React.FC = () => {
                           Không rõ vị trí (Dữ liệu thiếu)
                         </span>
                         <span className="text-xs font-black bg-white border border-rose-200 px-3 py-1 rounded-lg">
-                          {safeAdvanced.missingLocationCount} TS ⚠️
+                          {safeAdvanced.missingLocationCount} {activeTab === 'assets' ? 'TS' : 'CCDC'} ⚠️
                         </span>
                       </div>
                     )}
@@ -1647,7 +1938,7 @@ export const Dashboard: React.FC = () => {
                           >
                             <span className="text-xs font-bold text-slate-600">📍 {l.name}</span>
                             <span className="text-xs font-black text-slate-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
-                              {l.count} TS
+                              {l.count} {activeTab === 'assets' ? 'TS' : 'CCDC'}
                             </span>
                           </div>
                         ))
@@ -1665,7 +1956,7 @@ export const Dashboard: React.FC = () => {
                       <UserCheck className="mr-2 h-5 w-5 text-emerald-600" />
                       Theo phòng ban
                     </h3>
-                    <p className="text-xs text-slate-400 font-semibold mb-6">Thống kê số lượng sử dụng và nguyên giá tài sản thuộc phòng ban quản lý</p>
+                    <p className="text-xs text-slate-400 font-semibold mb-6">Thống kê số lượng sử dụng và nguyên giá {activeTab === 'assets' ? 'tài sản' : 'CCDC'} thuộc phòng ban quản lý</p>
                   </div>
 
                   <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
@@ -1680,7 +1971,7 @@ export const Dashboard: React.FC = () => {
                         >
                           <span className="text-xs font-bold text-slate-600">👥 {dept.name}</span>
                           <div className="text-right">
-                            <span className="text-xs font-black text-slate-800 block">{dept.count} TS</span>
+                            <span className="text-xs font-black text-slate-800 block">{dept.count} {activeTab === 'assets' ? 'TS' : 'CCDC'}</span>
                             {hasPricePermission && dept.value !== null && (
                               <span className="text-[10px] font-black text-emerald-600 tracking-wider">
                                 {formatCurrencyShort(dept.value)}
@@ -1706,12 +1997,12 @@ export const Dashboard: React.FC = () => {
                   <div className="space-y-4 max-h-[220px] overflow-y-auto pr-2">
                     {safeAdvanced.noProjectCount > 0 && (
                       <div 
-                        onClick={() => openDrilldown('Tài sản không thuộc dự án', 'assets', { projectName: '' })}
+                        onClick={() => openDrilldown(activeTab === 'assets' ? 'Tài sản không thuộc dự án' : 'CCDC không thuộc dự án', 'assets', { projectName: '' })}
                         className="flex items-center justify-between p-3 bg-slate-50 hover:bg-slate-100/80 border border-slate-100 rounded-xl cursor-pointer transition-colors"
                       >
                         <span className="text-xs font-bold text-slate-505">🏢 Không thuộc dự án</span>
                         <span className="text-xs font-black text-slate-800 bg-white border border-slate-200 px-2.5 py-1 rounded-lg">
-                          {safeAdvanced.noProjectCount} TS
+                          {safeAdvanced.noProjectCount} {activeTab === 'assets' ? 'TS' : 'CCDC'}
                         </span>
                       </div>
                     )}
@@ -1732,7 +2023,7 @@ export const Dashboard: React.FC = () => {
                             >
                               <div className="flex justify-between items-center text-xs font-bold text-slate-600">
                                 <span className="group-hover:text-primary-600 transition-colors">🚀 {p.name}</span>
-                                <span className="font-black text-slate-800">{p.count.toLocaleString()} TS</span>
+                                <span className="font-black text-slate-800">{p.count.toLocaleString()} {activeTab === 'assets' ? 'TS' : 'CCDC'}</span>
                               </div>
                               <div className="h-2 w-full bg-slate-100 rounded-full overflow-hidden">
                                 <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${pct}%` }}></div>
@@ -1755,13 +2046,13 @@ export const Dashboard: React.FC = () => {
                       <div className="flex items-center justify-between">
                         <h3 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center">
                           <DollarSign className="mr-2.5 h-4 w-4 text-emerald-400" />
-                          Giá trị tài sản
+                          Giá trị {activeTab === 'assets' ? 'tài sản' : 'CCDC'}
                         </h3>
                         <span className="text-[10px] font-black text-emerald-400 bg-emerald-400/10 px-3 py-1 rounded-full uppercase tracking-wider">Tổng nguyên giá</span>
                       </div>
                       <div>
                         <p className="text-4xl font-black tracking-tight">{formatCurrencyShort(safeAdvanced.financials.totalValue)}</p>
-                        <p className="text-xs text-slate-500 font-semibold mt-1">Giá trị nguyên giá của toàn bộ tài sản sổ sách hiện hành</p>
+                        <p className="text-xs text-slate-500 font-semibold mt-1">Giá trị nguyên giá của toàn bộ {activeTab === 'assets' ? 'tài sản' : 'CCDC'} sổ sách hiện hành</p>
                       </div>
                     </div>
                     <div className="grid grid-cols-3 gap-2 pt-6 mt-6 border-t border-slate-800">
@@ -1782,8 +2073,8 @@ export const Dashboard: React.FC = () => {
                 ) : (
                   <div className="lg:col-span-6 bg-slate-800 rounded-[2.5rem] p-8 text-white relative overflow-hidden flex flex-col justify-center items-center text-center">
                     <ShieldAlert className="h-10 w-10 text-amber-400 mb-2" />
-                    <h4 className="text-sm font-black">Giá trị tài sản bảo mật</h4>
-                    <p className="text-xs text-slate-400 max-w-xs mt-1">Yêu cầu quyền hạn đặc biệt để xem dữ liệu định giá và báo cáo tài chính tài sản.</p>
+                    <h4 className="text-sm font-black">Giá trị {activeTab === 'assets' ? 'tài sản' : 'CCDC'} bảo mật</h4>
+                    <p className="text-xs text-slate-400 max-w-xs mt-1">Yêu cầu quyền hạn đặc biệt để xem dữ liệu định giá và báo cáo tài chính {activeTab === 'assets' ? 'tài sản' : 'CCDC'}.</p>
                   </div>
                 )}
 
@@ -1809,7 +2100,7 @@ export const Dashboard: React.FC = () => {
                         <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{age.range}</span>
                         <div className="flex items-baseline space-x-1 mt-2">
                           <span className={`text-2xl font-black ${age.isCritical ? 'text-rose-600' : 'text-slate-800'}`}>{age.count}</span>
-                          <span className="text-[10px] font-bold text-slate-400">TS</span>
+                          <span className="text-[10px] font-bold text-slate-400">{activeTab === 'assets' ? 'TS' : 'CCDC'}</span>
                         </div>
                       </div>
                     ))}
