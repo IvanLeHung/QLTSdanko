@@ -281,7 +281,7 @@ export const ChipPopoverFilter: React.FC<{
       </div>
       {isOpen && (
         <div className="absolute top-full left-0 mt-2 bg-white border border-slate-200 rounded-2xl shadow-2xl z-[100] p-5 animate-in zoom-in-95 duration-100 min-w-[280px]">
-          <div className="max-h-64 overflow-y-auto custom-scrollbar">
+          <div className="overflow-visible">
             {children}
           </div>
           <div className="mt-4 pt-3 border-t border-slate-100 flex justify-between gap-3">
