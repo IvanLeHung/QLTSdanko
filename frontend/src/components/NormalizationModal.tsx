@@ -599,6 +599,56 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
                     if (score >= 95) scoreColor = 'bg-emerald-50 text-emerald-600 border border-emerald-100';
                     else if (score >= 80) scoreColor = 'bg-amber-50 text-amber-600 border border-amber-100';
 
+                    const renderCurrentDiff = (current: string | null, suggested: string | null) => {
+                      if (!current) return <span className="text-slate-400 italic">Trống</span>;
+                      if (!suggested) return <span className="text-slate-500">{current}</span>;
+
+                      const curWords = current.replace(/\s+/g, ' ').split(' ');
+                      const sugWords = suggested.replace(/\s+/g, ' ').split(' ');
+
+                      return (
+                        <span className="inline-flex flex-wrap gap-x-1">
+                          {curWords.map((word, idx) => {
+                            const sugWord = sugWords[idx];
+                            const hasChanged = sugWord !== word;
+                            if (hasChanged) {
+                              return (
+                                <span key={idx} className="text-rose-600 bg-rose-50/50 px-1 rounded line-through border border-rose-100/50">
+                                  {word}
+                                </span>
+                              );
+                            }
+                            return <span key={idx} className="text-slate-400 line-through">{word}</span>;
+                          })}
+                        </span>
+                      );
+                    };
+
+                    const renderSuggestedDiff = (current: string | null, suggested: string | null) => {
+                      if (!suggested) return <span className="text-slate-400 italic">Trống</span>;
+                      if (!current) return <span className="text-emerald-600 font-extrabold">{suggested}</span>;
+
+                      const curWords = current.replace(/\s+/g, ' ').split(' ');
+                      const sugWords = suggested.replace(/\s+/g, ' ').split(' ');
+
+                      return (
+                        <span className="inline-flex flex-wrap gap-x-1">
+                          {sugWords.map((word, idx) => {
+                            const curWord = curWords[idx];
+                            const hasChanged = curWord !== word;
+                            if (hasChanged) {
+                              return (
+                                <span key={idx} className="text-emerald-700 bg-emerald-100/80 px-1 rounded font-black border border-emerald-250">
+                                  {word}
+                                </span>
+                              );
+                            }
+                            return <span key={idx} className="text-emerald-600">{word}</span>;
+                          })}
+                        </span>
+                      );
+                    };
+
                     return (
                       <tr key={item.id} className={`hover:bg-slate-50/30 ${selectedIds.includes(item.id) ? 'bg-primary-50/5' : ''}`}>
                         <td className="p-4 text-center">
@@ -620,11 +670,11 @@ export const NormalizationModal: React.FC<NormalizationModalProps> = ({
                             {ISSUE_TYPES_META.find(m => m.id === item.issueType)?.label || item.issueType}
                           </span>
                         </td>
-                        <td className="p-4 line-through text-slate-400 break-words">{item.currentValue || 'Trống'}</td>
-                        <td className="p-4 font-bold text-emerald-600 bg-emerald-50/20 break-words">
+                        <td className="p-4 break-words">{renderCurrentDiff(item.currentValue, item.suggestedValue)}</td>
+                        <td className="p-4 bg-emerald-50/20 break-words">
                           <span className="inline-flex items-start gap-1.5">
-                            <ArrowRight className="h-3 w-3 text-emerald-500 mt-0.5 shrink-0" />
-                            <span>{item.suggestedValue || 'Trống'}</span>
+                            <ArrowRight className="h-3.5 w-3.5 text-emerald-500 mt-0.5 shrink-0" />
+                            {renderSuggestedDiff(item.currentValue, item.suggestedValue)}
                           </span>
                         </td>
                         <td className="p-4">
