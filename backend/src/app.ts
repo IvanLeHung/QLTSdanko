@@ -21,6 +21,7 @@ import adminRoutes from './routes/admin.routes';
 import historyImportRoutes from './routes/history-import.routes';
 import templateRoutes from './routes/template.routes';
 import toolRoutes from './routes/tool.routes';
+import normalizationRoutes from './routes/normalization.routes';
 import { auditMiddleware } from './middleware/audit.middleware';
 import { authenticateToken, loadPermissions } from './middleware/auth.middleware';
 
@@ -61,6 +62,7 @@ protectedApi.use('/operational', operationalRoutes);
 protectedApi.use('/creation', creationRoutes);
 protectedApi.use('/audit', auditRoutes);
 protectedApi.use('/templates', templateRoutes);
+protectedApi.use('/normalization', normalizationRoutes);
 
 app.use('/api', protectedApi);
 

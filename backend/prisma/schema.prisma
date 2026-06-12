@@ -250,6 +250,7 @@ model Asset {
   lostReports             LostReport[]
   lostLogs                LostReportLog[]
   histories               AssetHistory[]
+  normalizationSuggestions AssetNormalizationSuggestion[]
 }
 
 model CreationBatch {
@@ -1283,6 +1284,50 @@ model ToolInvoiceLine {
   batch              ToolInvoiceBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade)
   tools              ToolEquipment[]
 }
+
+model AssetNormalizationJob {
+  id          Int                          @id @default(autoincrement())
+  status      String                       @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED
+  progress    Int                          @default(0) // 0 to 100
+  totalIssues Int                          @default(0)
+  criteria    String                       // JSON string representing filters and issue types scanned
+  createdBy   String
+  createdAt   DateTime                     @default(now())
+  completedAt DateTime?
+  suggestions AssetNormalizationSuggestion[]
+}
+
+model AssetNormalizationSuggestion {
+  id              Int                   @id @default(autoincrement())
+  jobId           Int
+  job             AssetNormalizationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  assetId         Int
+  asset           Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  assetCode       String
+  assetName       String
+  issueType       String                // MISSING_CODE, DUPLICATE_CODE, MISSING_NAME, WRONG_NAME, WRONG_CATEGORY, MISSING_DEPARTMENT, MISSING_LOCATION, MISSING_USER, WRONG_STATUS, MISSING_SERIAL, MISSING_INVOICE, MISMATCH_SCOPE, EXTRA_ASSET
+  fieldName       String                // assetCode, assetName, level1Name, level2Name, level3Name, level4Name, departmentName, locationName, currentUserName, status, serialNumber, invoiceBatchId
+  currentValue    String?
+  suggestedValue  String?
+  confidenceScore Float                 // 0.0 to 1.0
+  source          String?               // SYSTEM_RULE, CUSTODIAN_HEURISTICS, DEPARTMENT_MAPPING, CATEGORY_MAPPING
+  status          String                @default("PENDING") // PENDING, APPROVED, REJECTED, EDITED
+  reason          String?
+}
+
+model AssetNormalizationHistory {
+  id             Int      @id @default(autoincrement())
+  assetId        Int
+  fieldName      String
+  oldValue       String?
+  suggestedValue String?
+  finalValue     String?
+  confidenceScore Float
+  approvedBy     String
+  approvedAt     DateTime @default(now())
+  reason         String?
+}
+
 
 
 

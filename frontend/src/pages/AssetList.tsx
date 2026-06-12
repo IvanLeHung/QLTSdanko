@@ -37,6 +37,7 @@ import { toast } from 'react-toastify';
 import { AutocompleteInput, MultiSelect, PopoverFilter, FilterChip, ChipPopoverFilter } from '../components/FilterComponents';
 import { Can } from '../components/Can';
 import { useAuth } from '../context/AuthContext';
+import { NormalizationModal } from '../components/NormalizationModal';
 import { useModal } from '../context/ModalContext';
 
 export const AssetList: React.FC = () => {
@@ -108,6 +109,7 @@ export const AssetList: React.FC = () => {
 
   // Drawer advanced filters
   const [tempCompanyCode, setTempCompanyCode] = useState('');
+  const [isNormalizationOpen, setIsNormalizationOpen] = useState(false);
   const [tempPriceMin, setTempPriceMin] = useState('');
   const [tempPriceMax, setTempPriceMax] = useState('');
   const [tempPurchaseFrom, setTempPurchaseFrom] = useState('');
@@ -1252,6 +1254,14 @@ export const AssetList: React.FC = () => {
                 </button>
               </Can>
               
+              <button
+                type="button"
+                onClick={() => setIsNormalizationOpen(true)}
+                className="h-[36px] px-4 flex items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-650 whitespace-nowrap shadow-xs cursor-pointer"
+              >
+                🔍 Rà soát & Chuẩn hóa
+              </button>
+
               <Can permission="ASSET_CREATE">
                 <button 
                   type="button"
@@ -1786,6 +1796,17 @@ export const AssetList: React.FC = () => {
         </div>
       </div>
     )}
+
+      {isNormalizationOpen && (
+        <NormalizationModal
+          isOpen={isNormalizationOpen}
+          onClose={() => {
+            setIsNormalizationOpen(false);
+            fetchAssets();
+          }}
+          currentFilters={filters}
+        />
+      )}
   </div>
 );
 };

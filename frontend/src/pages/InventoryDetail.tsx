@@ -36,6 +36,7 @@ import { format } from 'date-fns';
 import { toast } from 'react-toastify';
 import { BaseModal } from '../components/BaseModal';
 import { useAuth } from '../context/AuthContext';
+import { NormalizationModal } from '../components/NormalizationModal';
 
 const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {
@@ -222,6 +223,7 @@ export const InventoryDetail: React.FC = () => {
 
   // Wizard States for Create Session Modal
   const [wizardStep, setWizardStep] = useState<number>(1);
+  const [isNormalizationOpen, setIsNormalizationOpen] = useState(false);
   const [cachedMetadata, setCachedMetadata] = useState<any>(null);
   const [scopeSelection, setScopeSelection] = useState<'ALL' | 'COMPANY' | 'PROJECT' | 'LOCATION' | 'DEPARTMENT' | 'USER'>('DEPARTMENT');
   const [sessionMembers, setSessionMembers] = useState<string[]>([]);
@@ -2058,6 +2060,13 @@ export const InventoryDetail: React.FC = () => {
                     className="bg-emerald-50 hover:bg-emerald-100 text-emerald-650 px-5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all flex items-center border border-emerald-250"
                   >
                     <Plus className="mr-1 h-4 w-4" /> Báo ngoài sổ
+                  </button>
+                  <button 
+                    type="button"
+                    onClick={() => setIsNormalizationOpen(true)}
+                    className="bg-blue-50 hover:bg-blue-100 text-blue-650 px-5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all flex items-center border border-blue-200/50 cursor-pointer"
+                  >
+                    🔍 Rà soát & Chuẩn hóa
                   </button>
                 </div>
               )}
@@ -5124,6 +5133,18 @@ export const InventoryDetail: React.FC = () => {
             </div>
           )}
         </BaseModal>
+      )}
+
+      {isNormalizationOpen && (
+        <NormalizationModal
+          isOpen={isNormalizationOpen}
+          onClose={() => {
+            setIsNormalizationOpen(false);
+            fetchDetail();
+          }}
+          activeSessionId={session?.id}
+          activeSessionName={session?.departmentName || session?.locationName ? `Phiên: ${session.departmentName || session.locationName}` : undefined}
+        />
       )}
       </div>
   );
