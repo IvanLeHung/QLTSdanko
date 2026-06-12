@@ -317,46 +317,26 @@ export const InventoryDetail: React.FC = () => {
         'Công cụ dụng cụ (CCDC)': 51
       };
 
+      let searchParams: any = {};
       if (scopeSelection === 'COMPANY' && sessionForm.companyName) {
-        total = 2850;
-        breakdown = {
-          'Laptop & Máy tính': 820,
-          'Thiết bị ngoại vi': 640,
-          'Công cụ dụng cụ (CCDC)': 510,
-          'Thiết bị văn phòng': 880
-        };
+        searchParams.companyCode = companies.find(c => c.name === sessionForm.companyName)?.code || '';
       } else if (scopeSelection === 'LOCATION' && sessionForm.locationName) {
-        total = 780;
-        breakdown = {
-          'Laptop & Máy tính': 210,
-          'Thiết bị ngoại vi': 180,
-          'Công cụ dụng cụ (CCDC)': 290,
-          'Thiết bị văn phòng': 100
-        };
+        searchParams.locationQuery = sessionForm.locationName;
       } else if (scopeSelection === 'DEPARTMENT' && sessionForm.departmentName) {
-        total = 356;
-        breakdown = {
-          'Laptop & Máy tính': 50,
-          'Thiết bị ngoại vi': 120,
-          'Công cụ dụng cụ (CCDC)': 186
-        };
-      } else if (scopeSelection === 'USER' && sessionForm.representativeName) {
-        total = 5;
-        breakdown = {
-          'Laptop & Máy tính': 2,
-          'Thiết bị ngoại vi': 3
-        };
+        searchParams.departmentName = sessionForm.departmentName;
       } else if (scopeSelection === 'PROJECT' && sessionForm.projectName) {
-        total = 1200;
-        breakdown = {
-          'Laptop & Máy tính': 400,
-          'Thiết bị ngoại vi': 350,
-          'Công cụ dụng cụ (CCDC)': 450
-        };
+        searchParams.projectName = sessionForm.projectName;
       }
 
-      setPreviewAssetsCount(total);
-      setPreviewBreakdown(breakdown);
+      const res = await api.get('/assets/stats', { params: searchParams });
+      
+      setPreviewAssetsCount(res.data.total);
+      setPreviewBreakdown({
+        'Đang sử dụng (Assigned)': res.data.assigned,
+        'Trong kho (In Stock)': res.data.inStock,
+        'Báo hỏng (Damaged)': res.data.damaged,
+        'Mất/Thất thoát (Lost)': res.data.lost
+      });
     } catch (err) {
       toast.error("Không thể xem trước tài sản");
     } finally {
@@ -3931,24 +3911,117 @@ export const InventoryDetail: React.FC = () => {
                       </div>
                     )}
 
-                    {scopeSelection === 'DEPARTMENT' && (
-                      <div className="space-y-1">
-                        <label className="font-bold text-slate-500">Phòng ban</label>
-                        <select
-                          value={sessionForm.departmentName}
-                          onChange={e => {
-                            setSessionForm({ ...sessionForm, departmentName: e.target.value });
-                            setPreviewAssetsCount(null);
-                          }}
-                          className="w-full h-10 px-3 bg-white border rounded-xl font-bold text-slate-850 text-xs"
-                        >
-                          <option value="">-- Chọn phòng ban --</option>
-                          {reviewDepartments.map((d, i) => (
-                            <option key={i} value={d}>{d}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    {scopeSelection === 'DEPARTMENT' && (() => {
+                      const selectedDepts = sessionForm.departmentName ? sessionForm.departmentName.split(',').map(x => x.trim()).filter(Boolean) : [];
+                      const [showDeptDropdown, setShowDeptDropdown] = useState(false);
+                      const [deptSearchQuery, setDeptSearchQuery] = useState('');
+                      
+                      const filteredDepts = reviewDepartments.filter(d => 
+                        !deptSearchQuery || d.toLowerCase().includes(deptSearchQuery.toLowerCase())
+                      );
+                      
+                      const allSelected = filteredDepts.length > 0 && filteredDepts.every(d => selectedDepts.includes(d));
+
+                      let displayText = 'Chọn phòng ban...';
+                      if (selectedDepts.length > 0) {
+                        if (selectedDepts.length <= 3) {
+                          displayText = selectedDepts.join(', ');
+                        } else {
+                          displayText = `Đã chọn ${selectedDepts.length} phòng ban`;
+                        }
+                      }
+
+                      return (
+                        <div className="space-y-1 relative">
+                          <label className="font-bold text-slate-500">Phòng ban kiểm kê *</label>
+                          <div 
+                            onClick={() => setShowDeptDropdown(!showDeptDropdown)}
+                            className="w-full min-h-[40px] px-3 py-2 bg-white border rounded-xl font-bold text-slate-800 text-xs flex items-center justify-between cursor-pointer shadow-sm hover:border-slate-300"
+                          >
+                            <span className="truncate pr-4">{displayText}</span>
+                            <span className="text-slate-400">▼</span>
+                          </div>
+
+                          {showDeptDropdown && (
+                            <div className="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 space-y-2.5">
+                              <input 
+                                type="text"
+                                placeholder="Tìm phòng ban..."
+                                value={deptSearchQuery}
+                                onChange={e => setDeptSearchQuery(e.target.value)}
+                                onClick={e => e.stopPropagation()}
+                                className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-semibold focus:outline-none focus:border-primary-500"
+                              />
+
+                              <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                                <label className="flex items-center space-x-2 cursor-pointer select-none">
+                                  <input 
+                                    type="checkbox"
+                                    checked={allSelected}
+                                    onChange={() => {
+                                      let nextSelected = [...selectedDepts];
+                                      if (allSelected) {
+                                        nextSelected = nextSelected.filter(d => !filteredDepts.includes(d));
+                                      } else {
+                                        filteredDepts.forEach(d => {
+                                          if (!nextSelected.includes(d)) nextSelected.push(d);
+                                        });
+                                      }
+                                      setSessionForm({ ...sessionForm, departmentName: nextSelected.join(',') });
+                                      setPreviewAssetsCount(null);
+                                    }}
+                                    className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5"
+                                  />
+                                  <span className="text-[11px] font-black text-slate-700">Chọn tất cả phòng ban</span>
+                                </label>
+                              </div>
+
+                              <div className="max-h-48 overflow-y-auto space-y-1 custom-scrollbar">
+                                {filteredDepts.map(dept => {
+                                  const checked = selectedDepts.includes(dept);
+                                  return (
+                                    <label key={dept} className="flex items-center space-x-2 px-1 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer select-none">
+                                      <input 
+                                        type="checkbox"
+                                        checked={checked}
+                                        onChange={() => {
+                                          let nextSelected;
+                                          if (checked) {
+                                            nextSelected = selectedDepts.filter(d => d !== dept);
+                                          } else {
+                                            nextSelected = [...selectedDepts, dept];
+                                          }
+                                          setSessionForm({ ...sessionForm, departmentName: nextSelected.join(',') });
+                                          setPreviewAssetsCount(null);
+                                        }}
+                                        className="rounded border-slate-300 text-primary-600 focus:ring-primary-500 h-3.5 w-3.5"
+                                      />
+                                      <span className={`text-[11px] ${checked ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>{dept}</span>
+                                    </label>
+                                  );
+                                })}
+                                {filteredDepts.length === 0 && (
+                                  <div className="text-center py-4 text-xs text-slate-400 italic">Không tìm thấy phòng ban</div>
+                                )}
+                              </div>
+                              
+                              <div className="flex justify-end pt-1 border-t border-slate-100">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setShowDeptDropdown(false);
+                                  }}
+                                  className="px-3 py-1 bg-slate-900 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider"
+                                >
+                                  Đóng
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     {scopeSelection === 'LOCATION' && (
                       <div className="space-y-1">

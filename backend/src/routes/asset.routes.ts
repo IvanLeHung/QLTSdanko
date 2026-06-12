@@ -15,6 +15,36 @@ const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
 router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
+  const { 
+    search = '', 
+    status,         
+    companyCode,
+    currentUserName,
+    departmentName,
+    locationQuery,
+    cityName,
+    projectName,
+    level4Code,
+    level4Name,
+    priceMin,
+    priceMax,
+    purchaseDateFrom,
+    purchaseDateTo,
+    handoverDateFrom,
+    handoverDateTo,
+    depreciationEndDateFrom,
+    depreciationEndDateTo,
+    supplierName,
+    hasSerial,
+    hasDocuments,
+    lastInventoryFrom,
+    lastInventoryTo,
+    inventoryStatus,
+    createdFrom,
+    createdTo,
+    invoiceBatchId
+  } = req.query;
+
   try {
     const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
       company: 'companyCode',
@@ -23,22 +53,173 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
       user: 'currentUserName'
     });
 
-    const baseWhere: any = { isDeleted: false };
+    const where: any = { isDeleted: false };
+    const andClauses: any[] = [];
     if (Object.keys(scopeWhere).length > 0) {
       if (scopeWhere.id === -1) {
         return res.json({ total: 0, assigned: 0, inStock: 0, underRepair: 0, damaged: 0, lost: 0, liquidated: 0 });
       }
-      baseWhere.AND = [scopeWhere];
+      andClauses.push(scopeWhere);
     }
 
+    // Advanced Search
+    if (search) {
+      const searchString = String(search);
+      andClauses.push({
+        OR: [
+          { assetCode: { contains: searchString, mode: 'insensitive' } },
+          { assetName: { contains: searchString, mode: 'insensitive' } },
+          { assetNameShort: { contains: searchString, mode: 'insensitive' } },
+          { serialNumber: { contains: searchString, mode: 'insensitive' } },
+          { companyCode: { contains: searchString, mode: 'insensitive' } },
+          { companyName: { contains: searchString, mode: 'insensitive' } },
+          { projectName: { contains: searchString, mode: 'insensitive' } },
+          { level1Code: { contains: searchString, mode: 'insensitive' } },
+          { level1Name: { contains: searchString, mode: 'insensitive' } },
+          { level2Code: { contains: searchString, mode: 'insensitive' } },
+          { level2Name: { contains: searchString, mode: 'insensitive' } },
+          { level3Code: { contains: searchString, mode: 'insensitive' } },
+          { level3Name: { contains: searchString, mode: 'insensitive' } },
+          { level4Code: { contains: searchString, mode: 'insensitive' } },
+          { level4Name: { contains: searchString, mode: 'insensitive' } },
+          { runningNoText: { contains: searchString, mode: 'insensitive' } },
+          { status: { contains: searchString, mode: 'insensitive' } },
+          { unit: { contains: searchString, mode: 'insensitive' } },
+          { usagePurpose: { contains: searchString, mode: 'insensitive' } },
+          { supplierName: { contains: searchString, mode: 'insensitive' } },
+          { currentUserName: { contains: searchString, mode: 'insensitive' } },
+          { currentPosition: { contains: searchString, mode: 'insensitive' } },
+          { departmentName: { contains: searchString, mode: 'insensitive' } },
+          { locationName: { contains: searchString, mode: 'insensitive' } },
+          { cityName: { contains: searchString, mode: 'insensitive' } },
+          { documentNote: { contains: searchString, mode: 'insensitive' } },
+          { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
+        ]
+      });
+    }
+
+    if (companyCode) where.companyCode = String(companyCode);
+    if (req.query.isAssigned === 'true') {
+      where.currentUserName = { not: null, notIn: ['', 'N/A', 'n/a'] };
+    } else if (req.query.isAssigned === 'false') {
+      where.currentUserName = { in: [null, '', 'N/A', 'n/a'] };
+    } else if (currentUserName) {
+      where.currentUserName = { contains: String(currentUserName), mode: 'insensitive' };
+    }
+    if (departmentName) {
+      const deptArray = String(departmentName).split(',').map(d => d.trim()).filter(Boolean);
+      if (deptArray.length > 1) {
+        where.departmentName = { in: deptArray };
+      } else if (deptArray.length === 1) {
+        where.departmentName = { contains: deptArray[0], mode: 'insensitive' };
+      }
+    }
+    
+    if (level4Name) {
+      const nameArray = String(level4Name).split(',').filter(Boolean);
+      if (nameArray.length > 0) {
+        where.level4Name = { in: nameArray };
+      }
+    } else if (level4Code) {
+      const codeArray = String(level4Code).split(',').filter(Boolean);
+      if (codeArray.length > 0) {
+        where.level4Code = { in: codeArray };
+      }
+    }
+    
+    if (cityName) where.cityName = { contains: String(cityName), mode: 'insensitive' };
+    if (projectName) where.projectName = { contains: String(projectName), mode: 'insensitive' };
+    if (locationQuery) {
+      andClauses.push({
+        OR: [
+          { locationName: { contains: String(locationQuery), mode: 'insensitive' } },
+          { cityName: { contains: String(locationQuery), mode: 'insensitive' } },
+          { projectName: { contains: String(locationQuery), mode: 'insensitive' } }
+        ]
+      });
+    }
+
+    if (priceMin || priceMax) {
+      where.purchasePriceExVat = {};
+      if (priceMin) where.purchasePriceExVat.gte = Number(priceMin);
+      if (priceMax) where.purchasePriceExVat.lte = Number(priceMax);
+    }
+
+    if (purchaseDateFrom || purchaseDateTo) {
+      where.purchaseDate = {};
+      if (purchaseDateFrom) where.purchaseDate.gte = new Date(String(purchaseDateFrom));
+      if (purchaseDateTo) where.purchaseDate.lte = new Date(String(purchaseDateTo));
+    }
+    
+    if (handoverDateFrom || handoverDateTo) {
+      where.handoverDate = {};
+      if (handoverDateFrom) where.handoverDate.gte = new Date(String(handoverDateFrom));
+      if (handoverDateTo) where.handoverDate.lte = new Date(String(handoverDateTo));
+    }
+
+    if (depreciationEndDateFrom || depreciationEndDateTo) {
+      where.depreciationEndDate = {};
+      if (depreciationEndDateFrom) where.depreciationEndDate.gte = new Date(String(depreciationEndDateFrom));
+      if (depreciationEndDateTo) where.depreciationEndDate.lte = new Date(String(depreciationEndDateTo));
+    }
+
+    if (lastInventoryFrom || lastInventoryTo) {
+      where.lastInventoryDate = {};
+      if (lastInventoryFrom) where.lastInventoryDate.gte = new Date(String(lastInventoryFrom));
+      if (lastInventoryTo) where.lastInventoryDate.lte = new Date(String(lastInventoryTo));
+    }
+
+    if (createdFrom || createdTo) {
+      where.createdAt = {};
+      if (createdFrom) where.createdAt.gte = new Date(String(createdFrom));
+      if (createdTo) {
+        const end = new Date(String(createdTo));
+        end.setHours(23, 59, 59, 999);
+        where.createdAt.lte = end;
+      }
+    }
+
+    if (supplierName) where.supplierName = { contains: String(supplierName), mode: 'insensitive' };
+    if (inventoryStatus) where.lastInventoryStatus = String(inventoryStatus);
+
+    if (hasSerial === 'true') where.serialNumber = { not: null, notIn: ['', 'N/A', 'n/a'] };
+    if (hasSerial === 'false') where.serialNumber = { in: [null, '', 'N/A', 'n/a'] };
+
+    if (hasDocuments === 'true') where.documentNote = { not: null, notIn: ['', 'N/A', 'n/a'] };
+    if (hasDocuments === 'false') where.documentNote = { in: [null, '', 'N/A', 'n/a'] };
+
+    if (req.query.hasPrinted === 'true') where.lastLabelPrint = { not: null };
+    if (req.query.hasPrinted === 'false') where.lastLabelPrint = null;
+
+    if (req.query.isChecked === 'true') where.lastInventoryDate = { not: null };
+    if (req.query.isChecked === 'false') where.lastInventoryDate = null;
+
+    if (invoiceBatchId) {
+      where.invoiceBatchId = Number(invoiceBatchId);
+    }
+
+    if (andClauses.length > 0) {
+      where.AND = andClauses;
+    }
+
+    // Now, stats calculate count based on filters except for the specific status counts which override the status key on where clause
+    const baseWhere = { ...where };
+    // Remove status from baseWhere when calculating status counts, or keep it? Wait! 
+    // The user requests: "Hiển thị tổng tài sản và các trạng thái theo danh sách tài sản có số lượng được hiển thị theo bộ lọc"
+    // Meaning the stats card should reflect the current filters.
+    // If they filter by departmentName = "HCNS", the stats card should show: Total assets in HCNS, Total assigned in HCNS, Total in_stock in HCNS, etc.
+    // So status field should be ignored/overridden in specific status counts. But other filters (company, department, search, etc.) must remain.
+    const statsWhere = { ...baseWhere };
+    delete statsWhere.status;
+
     const [total, assigned, inStock, underRepair, damaged, lost, liquidated] = await Promise.all([
-      prisma.asset.count({ where: baseWhere }),
-      prisma.asset.count({ where: { ...baseWhere, status: 'ASSIGNED' } }),
-      prisma.asset.count({ where: { ...baseWhere, status: 'IN_STOCK' } }),
-      prisma.asset.count({ where: { ...baseWhere, status: 'UNDER_REPAIR' } }),
-      prisma.asset.count({ where: { ...baseWhere, status: 'DAMAGED' } }),
-      prisma.asset.count({ where: { ...baseWhere, status: 'LOST' } }),
-      prisma.asset.count({ where: { ...baseWhere, status: 'LIQUIDATED' } }),
+      prisma.asset.count({ where: statsWhere }),
+      prisma.asset.count({ where: { ...statsWhere, status: 'ASSIGNED' } }),
+      prisma.asset.count({ where: { ...statsWhere, status: 'IN_STOCK' } }),
+      prisma.asset.count({ where: { ...statsWhere, status: 'UNDER_REPAIR' } }),
+      prisma.asset.count({ where: { ...statsWhere, status: 'DAMAGED' } }),
+      prisma.asset.count({ where: { ...statsWhere, status: 'LOST' } }),
+      prisma.asset.count({ where: { ...statsWhere, status: 'LIQUIDATED' } }),
     ]);
     res.json({ total, assigned, inStock, underRepair, damaged, lost, liquidated });
   } catch (error: any) {
@@ -283,7 +464,14 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
   } else if (currentUserName) {
     where.currentUserName = { contains: String(currentUserName), mode: 'insensitive' };
   }
-  if (departmentName) where.departmentName = { contains: String(departmentName), mode: 'insensitive' };
+  if (departmentName) {
+    const deptArray = String(departmentName).split(',').map(d => d.trim()).filter(Boolean);
+    if (deptArray.length > 1) {
+      where.departmentName = { in: deptArray };
+    } else if (deptArray.length === 1) {
+      where.departmentName = { contains: deptArray[0], mode: 'insensitive' };
+    }
+  }
   
   if (level4Name) {
     const nameArray = String(level4Name).split(',').filter(Boolean);

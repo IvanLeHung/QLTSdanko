@@ -370,14 +370,15 @@ export const AssetList: React.FC = () => {
     }
   }, [searchParams]);
 
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
-      const res = await api.get('/assets/stats');
+      const params = Object.fromEntries(searchParams.entries());
+      const res = await api.get('/assets/stats', { params });
       setStats(res.data);
     } catch (err) {
       console.error(err);
     }
-  };
+  }, [searchParams]);
 
   useEffect(() => {
     fetchAssets();
@@ -385,7 +386,7 @@ export const AssetList: React.FC = () => {
 
   useEffect(() => {
     fetchStats();
-  }, []);
+  }, [fetchStats]);
 
   const toggleSelectAll = () => {
     if (selectedIds.length === assets.length && assets.length > 0) {
@@ -1083,7 +1084,7 @@ export const AssetList: React.FC = () => {
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Ngày bàn giao</label>
                     <div className="grid grid-cols-2 gap-2">
                       <input
-                        type="date"
+                         type="date"
                         value={tempHandoverFrom}
                         onChange={(e) => setTempHandoverFrom(e.target.value)}
                         className="w-full border border-slate-200 rounded-xl px-2 py-1 text-[11px] font-semibold text-slate-650 focus:outline-none focus:border-primary-500 h-[34px]"
@@ -1095,6 +1096,37 @@ export const AssetList: React.FC = () => {
                         className="w-full border border-slate-200 rounded-xl px-2 py-1 text-[11px] font-semibold text-slate-650 focus:outline-none focus:border-primary-500 h-[34px]"
                       />
                     </div>
+                  </div>
+                </div>
+              </ChipPopoverFilter>
+
+              {/* Phòng ban filter chip */}
+              <ChipPopoverFilter
+                label={filters.departmentName ? `Phòng ban: ${filters.departmentName}` : 'Phòng ban'}
+                isActive={!!filters.departmentName}
+                onClear={() => {
+                  setTempDeptName('');
+                  updateParam('departmentName', null);
+                }}
+                onApply={() => {
+                  updateParam('departmentName', tempDeptName);
+                }}
+                onReset={() => {
+                  setTempDeptName('');
+                  updateParam('departmentName', null);
+                }}
+              >
+                <div className="space-y-2 py-2 w-64">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-wider">Tên phòng ban</label>
+                    <AutocompleteInput 
+                      placeholder="Chọn phòng ban..." 
+                      value={tempDeptName} 
+                      onChange={setTempDeptName} 
+                      endpoint="/assets/filter-options/departments" 
+                      icon={<Search className="h-3 w-3" />}
+                      className="w-full"
+                    />
                   </div>
                 </div>
               </ChipPopoverFilter>

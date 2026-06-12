@@ -48,10 +48,25 @@ export class InventoryService {
 
       // 2. Fetch assets in scope
       const where: any = { isDeleted: false };
-      if (data.scopeType === 'DEPARTMENT' && data.scopeValue) {
-        where.departmentName = data.scopeValue;
-      } else if (data.scopeType === 'COMPANY' && data.scopeValue) {
+      
+      // If company scope is set
+      if (data.scopeType === 'COMPANY' && data.scopeValue) {
         where.companyCode = data.scopeValue;
+      } 
+      // If department scope is set
+      else if (data.scopeType === 'DEPARTMENT') {
+        const companyCode = data.note && data.note.startsWith("COMPANY:") ? data.note.split(":")[1] : undefined; // we will pass companyCode in note or we can search for companyCode in req body if passed. Let's see if we can parse companyCode from data. Let's look at frontend payload.
+        if (companyCode) {
+          where.companyCode = companyCode;
+        }
+
+        if (data.scopeValue) {
+          // Can be multiple department names separated by commas
+          const depts = data.scopeValue.split(',').map(d => d.trim()).filter(Boolean);
+          if (depts.length > 0) {
+            where.departmentName = { in: depts };
+          }
+        }
       }
 
       const assets = await tx.asset.findMany({ where });
