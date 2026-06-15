@@ -10,6 +10,8 @@ import {
   FileText,
   LogOut,
   ChevronRight,
+  ChevronLeft,
+  Menu,
   Building2,
   Layers,
   ShieldAlert,
@@ -92,6 +94,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const { user, logout, hasPermission } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
 
   const handleLogout = () => {
     logout();
@@ -104,7 +107,10 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
   return (
     <div className="flex h-screen bg-slate-50">
-      <aside className="w-72 bg-white border-r border-slate-200 flex flex-col">
+      <aside className={cn(
+        "transition-all duration-300 bg-white flex flex-col shrink-0",
+        isSidebarCollapsed ? "w-0 overflow-hidden border-r-0" : "w-72 border-r border-slate-200"
+      )}>
         <div className="p-6">
           <h1 className="text-2xl font-bold text-primary-600 tracking-tight">AssetManager</h1>
           <p className="text-xs text-slate-500 mt-1 uppercase tracking-widest">Enterprise Edition</p>
@@ -171,9 +177,18 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
 
       <main className="flex-1 flex flex-col overflow-hidden">
         <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
-          <h2 className="text-lg font-semibold text-slate-800">
-            {currentNav?.name || 'Dashboard'}
-          </h2>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-all cursor-pointer flex items-center justify-center"
+              title={isSidebarCollapsed ? "Hiện thanh menu" : "Ẩn thanh menu"}
+            >
+              {isSidebarCollapsed ? <Menu className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+            </button>
+            <h2 className="text-lg font-semibold text-slate-800">
+              {currentNav?.name || 'Dashboard'}
+            </h2>
+          </div>
           <div className="flex items-center space-x-4" />
         </header>
 
