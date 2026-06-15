@@ -2029,12 +2029,27 @@ export const InventoryDetail: React.FC = () => {
         // Store result summary & detailed lists
         setBatchResult(response.data);
         setShowBatchScanModal(false);
-        setShowBatchResultModal(true);
 
-        // Set active batch for review workspace
-        setActiveBatchId(response.data.batchId);
+        const newBatchId = response.data.batchId;
+        setActiveBatchId(newBatchId);
 
-        // Refresh pending batches list (NOT progress/history — batch is data collection only)
+        const mappedBatchData = {
+          batchId: newBatchId,
+          createdAt: new Date().toISOString(),
+          totalCount: response.data.summary.totalScanned,
+          groups: {
+            matchPendingItems: response.data.autoSavedItems || [],
+            reviewItems: response.data.reviewItems || [],
+            alreadyCheckedItems: response.data.alreadyCheckedItems || [],
+            outOfBookItems: response.data.outOfBookItems || [],
+            failedItems: response.data.failedItems || []
+          }
+        };
+        setActiveBatchData(mappedBatchData);
+        setBatchReviewTab('matchPendingItems');
+        setShowBatchReviewWorkspace(true);
+
+        // Refresh pending batches list
         fetchPendingBatches();
       } else {
         toast.error(response.data?.message || "Lỗi đối chiếu lô quét");
@@ -2097,7 +2112,7 @@ export const InventoryDetail: React.FC = () => {
           assetCode: item.barcode,
           actualLocation: editData.actualLocation || item.expectedLocation || '',
           actualUser: editData.actualUser || item.expectedUser || '',
-          actualDepartment: editData.actualDepartment || '',
+          actualDepartment: editData.actualDepartment || item.expectedDepartment || '',
           actualStatus: editData.actualStatus || item.expectedStatus || 'GOOD',
           quality: editData.quality || 'GOOD',
           checkCondition: editData.checkCondition || 'FOUND',
@@ -6731,7 +6746,7 @@ export const InventoryDetail: React.FC = () => {
         <BaseModal
           isOpen={showBatchReviewWorkspace}
           onClose={() => setShowBatchReviewWorkspace(false)}
-          title="RÀ SOÁT KẾT QUẢ LÔ QUÉT"
+          title="✅ ĐÃ ĐỐI CHIẾU LÔ QUÉT — CHỜ XÁC NHẬN KIỂM KÊ"
           size="detail"
         >
           <div className="p-4 space-y-4" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
@@ -6766,6 +6781,21 @@ export const InventoryDetail: React.FC = () => {
 
             {activeBatchData && (
               <>
+                {/* Summary counters block */}
+                <div className="bg-slate-50 border border-slate-200 p-4 rounded-2xl space-y-2">
+                  <div className="flex justify-between items-center text-xs font-bold text-slate-700">
+                    <span>Lô quét: <strong className="font-extrabold text-slate-900">{activeBatchData.batchId}</strong></span>
+                    <span>Tổng số lượng quét: <strong className="font-extrabold text-slate-900">{activeBatchData.totalCount}</strong></span>
+                  </div>
+                  <div className="flex gap-4 text-[10px] font-black uppercase tracking-wider flex-wrap border-t pt-2 border-slate-200">
+                    <span className="text-emerald-700">🟢 Khớp: {activeBatchData.groups.matchPendingItems?.length || 0}</span>
+                    <span className="text-amber-700">🟡 Sai lệch: {activeBatchData.groups.reviewItems?.length || 0}</span>
+                    <span className="text-blue-700">🔵 Đã kiểm trước: {activeBatchData.groups.alreadyCheckedItems?.length || 0}</span>
+                    <span className="text-rose-700">🔴 Ngoài sổ: {activeBatchData.groups.outOfBookItems?.length || 0}</span>
+                    <span className="text-slate-600">⚫ Lỗi: {activeBatchData.groups.failedItems?.length || 0}</span>
+                  </div>
+                </div>
+
                 {/* Tab buttons */}
                 <div className="flex gap-1 flex-wrap border-b pb-2">
                   {[
@@ -6812,9 +6842,22 @@ export const InventoryDetail: React.FC = () => {
                       return (
                         <div key={item.id} className={`border rounded-xl p-3 ${isConfirmed ? 'bg-emerald-50 border-emerald-200' : 'bg-white'}`}>
                           <div className="flex items-center justify-between">
-                            <div>
-                              <span className="font-black text-xs text-slate-800">{item.barcode}</span>
-                              <span className="ml-2 text-[10px] text-slate-500">{item.assetName}</span>
+                            <div className="space-y-1">
+                              <div className="flex items-center gap-2">
+                                <span className="font-black text-xs text-slate-800">{item.barcode}</span>
+                                <span className="text-[10px] font-bold text-slate-500">— {item.assetName}</span>
+                              </div>
+                              <div className="text-[10px] font-bold text-slate-400 grid grid-cols-2 gap-x-4 gap-y-0.5">
+                                <div>Sổ sách vị trí: {item.expectedLocation}</div>
+                                <div>Thực tế vị trí: {item.expectedLocation}</div>
+                                <div>Sổ sách người dùng: {item.expectedUser}</div>
+                                <div>Thực tế người dùng: {item.expectedUser}</div>
+                                <div>Sổ sách phòng ban: {item.expectedDepartment}</div>
+                                <div>Thực tế phòng ban: {item.expectedDepartment}</div>
+                                <div>Sổ sách serial: {item.expectedSerial}</div>
+                                <div>Thực tế serial: {item.expectedSerial}</div>
+                              </div>
+                              <div className="text-[10px] font-black text-emerald-600 mt-1">Kết quả: KHỚP</div>
                             </div>
                             {isConfirmed ? (
                               <div className="flex items-center gap-2">
@@ -6830,7 +6873,7 @@ export const InventoryDetail: React.FC = () => {
                                 )}
                               </div>
                             ) : (
-                              <span className="text-[10px] font-bold text-amber-600">Chờ xác nhận</span>
+                              <span className="text-[10px] font-bold text-amber-600 bg-amber-50 px-2 py-0.5 rounded border border-amber-200">Chờ xác nhận</span>
                             )}
                           </div>
                         </div>
@@ -6850,12 +6893,12 @@ export const InventoryDetail: React.FC = () => {
                       const editData = batchReviewEditData[item.id] || {};
 
                       return (
-                        <div key={item.id} className={`border rounded-xl p-3 space-y-2 ${isConfirmed ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
-                          <div className="flex items-center justify-between">
+                        <div key={item.id} className={`border rounded-xl p-3 space-y-3 ${isConfirmed ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                          <div className="flex items-center justify-between border-b pb-1.5 border-amber-200/50">
                             <div>
                               <span className="font-black text-xs text-slate-800">{item.barcode}</span>
-                              <span className="ml-2 text-[10px] text-slate-500">{item.assetName}</span>
-                              <span className="ml-2 text-[9px] text-amber-600 font-bold">({item.reason})</span>
+                              <span className="ml-2 text-[10px] text-slate-500 font-bold">— {item.assetName}</span>
+                              <span className="ml-2 text-[9px] text-amber-600 font-black uppercase tracking-wider">({item.reason})</span>
                             </div>
                             {isConfirmed ? (
                               <div className="flex items-center gap-2">
@@ -6864,30 +6907,61 @@ export const InventoryDetail: React.FC = () => {
                                   <button type="button" onClick={() => handleBatchUndo(item.id)} className="px-2 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] font-bold hover:bg-rose-200 cursor-pointer">↩ Hoàn tác</button>
                                 )}
                               </div>
-                            ) : null}
+                            ) : (
+                              <span className="text-[10px] font-bold text-amber-600 bg-amber-100/50 px-2 py-0.5 rounded">Chờ rà soát</span>
+                            )}
                           </div>
                           {!isConfirmed && (
-                            <div className="grid grid-cols-2 gap-2">
-                              <div>
-                                <label className="text-[9px] font-bold text-slate-500 block">Vị trí thực tế</label>
-                                <input type="text" value={editData.actualLocation || item.expectedLocation || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), actualLocation: e.target.value}}))} className="w-full border rounded px-2 py-1 text-xs" />
+                            <div className="space-y-3">
+                              {/* Comparison Grid */}
+                              <div className="grid grid-cols-2 gap-4 bg-white/50 p-2.5 rounded-lg border border-amber-200/40 text-[10px] font-bold text-slate-600">
+                                <div className="space-y-1">
+                                  <div className="text-[8px] font-black text-slate-400 uppercase tracking-wider">Thông tin Sổ sách (Book)</div>
+                                  <div>🏢 Phòng ban: {item.expectedDepartment}</div>
+                                  <div>📍 Vị trí: {item.expectedLocation}</div>
+                                  <div>👤 Người dùng: {item.expectedUser}</div>
+                                  <div>🔢 Serial: {item.expectedSerial}</div>
+                                </div>
+                                <div className="space-y-1 border-l pl-3 border-amber-200/40">
+                                  <div className="text-[8px] font-black text-amber-600 uppercase tracking-wider">Thông tin Thực tế (Scanned)</div>
+                                  <div className="text-amber-800">🏢 Phòng ban: {editData.actualDepartment || item.expectedDepartment}</div>
+                                  <div className="text-amber-800">📍 Vị trí: {editData.actualLocation || item.expectedLocation}</div>
+                                  <div className="text-amber-800">👤 Người dùng: {editData.actualUser || item.expectedUser}</div>
+                                  <div className="text-amber-800">🔢 Serial: {editData.serial || item.expectedSerial}</div>
+                                </div>
                               </div>
-                              <div>
-                                <label className="text-[9px] font-bold text-slate-500 block">Người dùng thực tế</label>
-                                <input type="text" value={editData.actualUser || item.expectedUser || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), actualUser: e.target.value}}))} className="w-full border rounded px-2 py-1 text-xs" />
+                              
+                              {/* Edit inputs */}
+                              <div className="grid grid-cols-2 md:grid-cols-5 gap-2 items-end">
+                                <div>
+                                  <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">Vị trí thực tế</label>
+                                  <input type="text" placeholder={item.expectedLocation} value={editData.actualLocation || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), actualLocation: e.target.value}}))} className="w-full border rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">Người dùng thực tế</label>
+                                  <input type="text" placeholder={item.expectedUser} value={editData.actualUser || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), actualUser: e.target.value}}))} className="w-full border rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">Phòng ban thực tế</label>
+                                  <input type="text" placeholder={item.expectedDepartment} value={editData.actualDepartment || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), actualDepartment: e.target.value}}))} className="w-full border rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">Serial thực tế</label>
+                                  <input type="text" placeholder={item.expectedSerial} value={editData.serial || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), serial: e.target.value}}))} className="w-full border rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white" />
+                                </div>
+                                <div>
+                                  <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider block mb-0.5">Ghi chú</label>
+                                  <input type="text" placeholder="Ghi chú điều chỉnh..." value={editData.note || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), note: e.target.value}}))} className="w-full border rounded-lg px-2.5 py-1.5 text-xs font-bold bg-white" />
+                                </div>
                               </div>
-                              <div>
-                                <label className="text-[9px] font-bold text-slate-500 block">Ghi chú</label>
-                                <input type="text" value={editData.note || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), note: e.target.value}}))} className="w-full border rounded px-2 py-1 text-xs" />
-                              </div>
-                              <div className="flex items-end">
+                              <div className="flex justify-end pt-1">
                                 <button
                                   type="button"
                                   onClick={() => handleBatchConfirmItem(item)}
                                   disabled={submitting}
-                                  className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer disabled:opacity-50"
                                 >
-                                  ✅ Xác nhận kiểm
+                                  [Điều chỉnh & Xác nhận]
                                 </button>
                               </div>
                             </div>
