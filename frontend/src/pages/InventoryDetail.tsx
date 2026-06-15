@@ -357,6 +357,16 @@ export const InventoryDetail: React.FC = () => {
   const [isBatchPaused, setIsBatchPaused] = useState(false);
   const [batchScanInput, setBatchScanInput] = useState('');
 
+  // Batch Review Workspace states
+  const [showBatchReviewWorkspace, setShowBatchReviewWorkspace] = useState(false);
+  const [pendingBatches, setPendingBatches] = useState<any[]>([]);
+  const [activeBatchId, setActiveBatchId] = useState<string>(localStorage.getItem('qlts_active_batch_id') || '');
+  const [activeBatchData, setActiveBatchData] = useState<any>(null);
+  const [batchReviewTab, setBatchReviewTab] = useState<string>('matchPendingItems');
+  const [batchConfirmedMeta, setBatchConfirmedMeta] = useState<{[itemId: number]: { undoDeadline: string; confirmedAt: string }}>({});
+  const [batchReviewEditData, setBatchReviewEditData] = useState<{[itemId: number]: any}>({});
+  const [showOverrideWarning, setShowOverrideWarning] = useState<any>(null);
+
   // Load batch queue from localStorage when session/activeSession is loaded
   useEffect(() => {
     if (!session && !activeSession) return;
@@ -380,6 +390,15 @@ export const InventoryDetail: React.FC = () => {
     const key = `qlts_batch_scan_queue_${activeSession ? 'session_' + activeSession.id : 'check_' + session?.id}`;
     localStorage.setItem(key, JSON.stringify(newQueue));
   };
+
+  // Persist activeBatchId to localStorage
+  useEffect(() => {
+    if (activeBatchId) {
+      localStorage.setItem('qlts_active_batch_id', activeBatchId);
+    } else {
+      localStorage.removeItem('qlts_active_batch_id');
+    }
+  }, [activeBatchId]);
 
   // Multi-conditional Filter states
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
@@ -1955,6 +1974,25 @@ export const InventoryDetail: React.FC = () => {
     playBeep('success');
   };
 
+  // Fetch pending batches from server
+  const fetchPendingBatches = async () => {
+    try {
+      const params: any = {};
+      if (session?.id) params.inventoryCheckId = session.id;
+      if (activeSession?.id) params.sessionId = activeSession.id;
+      const res = await api.get('/inventory/pending-batches', { params });
+      setPendingBatches(res.data || []);
+
+      // If activeBatchId is set, load its data
+      if (activeBatchId && res.data) {
+        const found = (res.data as any[]).find((b: any) => b.batchId === activeBatchId);
+        if (found) setActiveBatchData(found);
+      }
+    } catch (err) {
+      console.error('Lỗi tải pending batches:', err);
+    }
+  };
+
   const handleProcessBatch = async () => {
     if (batchQueue.length === 0) {
       toast.error("Hàng đợi quét đang trống");
@@ -1983,7 +2021,7 @@ export const InventoryDetail: React.FC = () => {
       });
 
       if (response.data && response.data.success) {
-        toast.success("Xử lý kiểm kê hàng loạt hoàn tất!");
+        toast.success("Đã đối chiếu lô quét thành công!");
         
         // Clear local queue and localStorage
         updateBatchQueue([]);
@@ -1992,16 +2030,124 @@ export const InventoryDetail: React.FC = () => {
         setBatchResult(response.data);
         setShowBatchScanModal(false);
         setShowBatchResultModal(true);
-        
-        // Refresh session/check data
-        fetchDetail();
-        fetchScanLogs();
+
+        // Set active batch for review workspace
+        setActiveBatchId(response.data.batchId);
+
+        // Refresh pending batches list (NOT progress/history — batch is data collection only)
+        fetchPendingBatches();
       } else {
-        toast.error(response.data?.message || "Lỗi xử lý kiểm kê hàng loạt");
+        toast.error(response.data?.message || "Lỗi đối chiếu lô quét");
       }
     } catch (err: any) {
       console.error(err);
       toast.error(err.response?.data?.message || "Lỗi kết nối đến máy chủ");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Batch Confirm All Matches
+  const handleBatchConfirmAll = async () => {
+    if (!activeBatchId) return;
+    setSubmitting(true);
+    try {
+      const res = await api.post('/inventory/batch-confirm', {
+        mode: activeSession ? 'SESSION' : 'CHECK',
+        inventoryCheckId: session?.id,
+        sessionId: activeSession?.id,
+        batchId: activeBatchId,
+        confirmMatchOnly: true
+      });
+
+      if (res.data?.success) {
+        const confirmed = res.data.confirmedItems || [];
+        const newMeta = { ...batchConfirmedMeta };
+        confirmed.forEach((c: any) => {
+          newMeta[c.itemId] = { undoDeadline: c.undoDeadline, confirmedAt: c.confirmedAt };
+        });
+        setBatchConfirmedMeta(newMeta);
+        toast.success(`Đã xác nhận ${confirmed.length} tài sản khớp!`);
+
+        // Refresh data
+        fetchDetail();
+        fetchScanLogs();
+        fetchPendingBatches();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi xác nhận lô');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Batch Confirm Single Item
+  const handleBatchConfirmItem = async (item: any) => {
+    if (!activeBatchId) return;
+    const editData = batchReviewEditData[item.id] || {};
+    setSubmitting(true);
+    try {
+      const res = await api.post('/inventory/batch-confirm', {
+        mode: activeSession ? 'SESSION' : 'CHECK',
+        inventoryCheckId: session?.id,
+        sessionId: activeSession?.id,
+        batchId: activeBatchId,
+        confirmedItems: [{
+          id: item.id,
+          assetCode: item.barcode,
+          actualLocation: editData.actualLocation || item.expectedLocation || '',
+          actualUser: editData.actualUser || item.expectedUser || '',
+          actualDepartment: editData.actualDepartment || '',
+          actualStatus: editData.actualStatus || item.expectedStatus || 'GOOD',
+          quality: editData.quality || 'GOOD',
+          checkCondition: editData.checkCondition || 'FOUND',
+          serial: editData.serial || item.expectedSerial || '',
+          note: editData.note || ''
+        }]
+      });
+
+      if (res.data?.success) {
+        const confirmed = res.data.confirmedItems || [];
+        if (confirmed.length > 0) {
+          const newMeta = { ...batchConfirmedMeta };
+          confirmed.forEach((c: any) => {
+            newMeta[c.itemId] = { undoDeadline: c.undoDeadline, confirmedAt: c.confirmedAt };
+          });
+          setBatchConfirmedMeta(newMeta);
+        }
+        toast.success('Xác nhận kiểm kê thành công!');
+        fetchDetail();
+        fetchScanLogs();
+        fetchPendingBatches();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi xác nhận');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Batch Undo
+  const handleBatchUndo = async (itemId: number) => {
+    if (!activeBatchId) return;
+    setSubmitting(true);
+    try {
+      const res = await api.post('/inventory/batch-undo', {
+        batchId: activeBatchId,
+        itemIds: [itemId]
+      });
+
+      if (res.data?.success) {
+        const newMeta = { ...batchConfirmedMeta };
+        delete newMeta[itemId];
+        setBatchConfirmedMeta(newMeta);
+        toast.success('Hoàn tác thành công!');
+        fetchDetail();
+        fetchScanLogs();
+        fetchPendingBatches();
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi hoàn tác');
     } finally {
       setSubmitting(false);
     }
@@ -6495,14 +6641,15 @@ export const InventoryDetail: React.FC = () => {
         <BaseModal
           isOpen={showBatchResultModal}
           onClose={() => setShowBatchResultModal(false)}
-          title="KẾT QUẢ KIỂM KÊ HÀNG LOẠT"
+          title="KẾT QUẢ ĐỐI CHIẾU LÔ QUÉT"
           size="form"
         >
           <div className="p-6 space-y-6">
             <div className="text-center space-y-1 py-2">
-              <span className="text-4xl">🎉</span>
-              <h3 className="text-base font-black uppercase text-slate-900 tracking-wider">Xử lý lô thành công!</h3>
+              <span className="text-4xl">📋</span>
+              <h3 className="text-base font-black uppercase text-slate-900 tracking-wider">Đã đối chiếu lô quét</h3>
               <p className="text-[11px] text-slate-450 font-bold">Mã lô: {batchResult.batchId}</p>
+              <p className="text-[10px] text-amber-600 font-bold">⚠ Chưa xác nhận kiểm kê — vui lòng rà soát kết quả</p>
             </div>
 
             {/* Numerical breakdown */}
@@ -6512,7 +6659,7 @@ export const InventoryDetail: React.FC = () => {
                 <span className="text-xl font-black text-slate-800 mt-0.5 block">{batchResult.summary.totalScanned}</span>
               </div>
               <div className="bg-emerald-50 border border-emerald-150 p-3 rounded-2xl text-center">
-                <span className="block text-[8px] font-black text-emerald-600 uppercase tracking-wide">Tự hoàn tất (khớp)</span>
+                <span className="block text-[8px] font-black text-emerald-600 uppercase tracking-wide">Khớp, chờ xác nhận</span>
                 <span className="text-xl font-black text-emerald-700 mt-0.5 block">{batchResult.summary.autoSaved}</span>
               </div>
               <div className="bg-amber-50 border border-amber-150 p-3 rounded-2xl text-center">
@@ -6540,12 +6687,13 @@ export const InventoryDetail: React.FC = () => {
               <button
                 type="button"
                 onClick={() => {
-                  setFilter('CHECKED');
                   setShowBatchResultModal(false);
+                  setShowBatchReviewWorkspace(true);
+                  fetchPendingBatches();
                 }}
-                className="px-3.5 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
+                className="px-3.5 py-2 bg-indigo-600 text-white hover:bg-indigo-700 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
               >
-                Xem đã kiểm
+                📋 Rà soát kết quả
               </button>
               <button
                 type="button"
@@ -6555,7 +6703,7 @@ export const InventoryDetail: React.FC = () => {
                 }}
                 className="px-3.5 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
               >
-                Xem cần rà soát
+                🔍 Xem cần rà soát
               </button>
               <button
                 type="button"
@@ -6564,15 +6712,291 @@ export const InventoryDetail: React.FC = () => {
               >
                 ⬇ Tải báo cáo lô
               </button>
-            </div>
-
-            <div className="flex justify-end pt-2">
               <button
                 type="button"
                 onClick={() => setShowBatchResultModal(false)}
-                className="px-5 py-2.5 bg-slate-200 hover:bg-slate-350 text-slate-800 text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm"
+                className="px-3.5 py-2 bg-slate-200 hover:bg-slate-350 text-slate-800 text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm"
               >
-                Hoàn thành
+                💾 Tạm lưu lô quét
+              </button>
+            </div>
+          </div>
+        </BaseModal>
+      )}
+
+      {/* ============================================= */}
+      {/* BATCH REVIEW WORKSPACE MODAL                  */}
+      {/* ============================================= */}
+      {showBatchReviewWorkspace && (
+        <BaseModal
+          isOpen={showBatchReviewWorkspace}
+          onClose={() => setShowBatchReviewWorkspace(false)}
+          title="RÀ SOÁT KẾT QUẢ LÔ QUÉT"
+          size="detail"
+        >
+          <div className="p-4 space-y-4" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+            {/* Batch Selector Dropdown */}
+            <div className="flex items-center gap-3 flex-wrap">
+              <label className="text-xs font-black text-slate-600 uppercase tracking-wider">Lô quét chờ rà soát:</label>
+              <select
+                value={activeBatchId}
+                onChange={(e) => {
+                  setActiveBatchId(e.target.value);
+                  const found = pendingBatches.find((b: any) => b.batchId === e.target.value);
+                  setActiveBatchData(found || null);
+                  setBatchReviewTab('matchPendingItems');
+                }}
+                className="border rounded-lg px-3 py-1.5 text-xs font-bold bg-white"
+              >
+                <option value="">-- Chọn lô --</option>
+                {pendingBatches.map((b: any) => (
+                  <option key={b.batchId} value={b.batchId}>
+                    {b.batchId.substring(0, 8)}... ({b.totalCount} mã) — {new Date(b.createdAt).toLocaleTimeString('vi-VN')}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={fetchPendingBatches}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-bold cursor-pointer"
+              >
+                🔄 Tải lại
+              </button>
+            </div>
+
+            {activeBatchData && (
+              <>
+                {/* Tab buttons */}
+                <div className="flex gap-1 flex-wrap border-b pb-2">
+                  {[
+                    { key: 'matchPendingItems', label: `✅ Khớp (${activeBatchData.groups.matchPendingItems?.length || 0})`, color: 'emerald' },
+                    { key: 'reviewItems', label: `⚠ Cần rà soát (${activeBatchData.groups.reviewItems?.length || 0})`, color: 'amber' },
+                    { key: 'alreadyCheckedItems', label: `🔵 Đã kiểm (${activeBatchData.groups.alreadyCheckedItems?.length || 0})`, color: 'blue' },
+                    { key: 'outOfBookItems', label: `🔴 Ngoài sổ (${activeBatchData.groups.outOfBookItems?.length || 0})`, color: 'rose' },
+                    { key: 'failedItems', label: `⚫ Lỗi (${activeBatchData.groups.failedItems?.length || 0})`, color: 'slate' },
+                  ].map(tab => (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      onClick={() => setBatchReviewTab(tab.key)}
+                      className={`px-3 py-1.5 rounded-t-lg text-[10px] font-black uppercase tracking-wider transition cursor-pointer ${
+                        batchReviewTab === tab.key
+                          ? `bg-${tab.color}-100 text-${tab.color}-800 border border-b-0 border-${tab.color}-200`
+                          : 'bg-slate-50 text-slate-500 hover:bg-slate-100'
+                      }`}
+                    >
+                      {tab.label}
+                    </button>
+                  ))}
+                </div>
+
+                {/* MATCH_PENDING_CONFIRM Tab */}
+                {batchReviewTab === 'matchPendingItems' && (
+                  <div className="space-y-3">
+                    {(activeBatchData.groups.matchPendingItems?.length || 0) > 0 && (
+                      <button
+                        type="button"
+                        onClick={handleBatchConfirmAll}
+                        disabled={submitting}
+                        className="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-sm font-black uppercase tracking-wider transition cursor-pointer disabled:opacity-50"
+                      >
+                        ✅ Xác nhận {activeBatchData.groups.matchPendingItems.length} tài sản khớp
+                      </button>
+                    )}
+                    {(activeBatchData.groups.matchPendingItems || []).map((item: any) => {
+                      const meta = batchConfirmedMeta[item.id];
+                      const isConfirmed = item.checkStatus === 'CHECKED' || !!meta;
+                      const undoDeadline = meta?.undoDeadline || item.undoDeadline;
+                      const canUndo = undoDeadline && new Date(undoDeadline) > new Date();
+
+                      return (
+                        <div key={item.id} className={`border rounded-xl p-3 ${isConfirmed ? 'bg-emerald-50 border-emerald-200' : 'bg-white'}`}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="font-black text-xs text-slate-800">{item.barcode}</span>
+                              <span className="ml-2 text-[10px] text-slate-500">{item.assetName}</span>
+                            </div>
+                            {isConfirmed ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-emerald-600">✅ Đã xác nhận</span>
+                                {canUndo && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleBatchUndo(item.id)}
+                                    className="px-2 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] font-bold hover:bg-rose-200 cursor-pointer"
+                                  >
+                                    ↩ Hoàn tác
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <span className="text-[10px] font-bold text-amber-600">Chờ xác nhận</span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* NEED_REVIEW Tab */}
+                {batchReviewTab === 'reviewItems' && (
+                  <div className="space-y-3">
+                    {(activeBatchData.groups.reviewItems || []).map((item: any) => {
+                      const meta = batchConfirmedMeta[item.id];
+                      const isConfirmed = item.checkStatus === 'CHECKED' || !!meta;
+                      const undoDeadline = meta?.undoDeadline || item.undoDeadline;
+                      const canUndo = undoDeadline && new Date(undoDeadline) > new Date();
+                      const editData = batchReviewEditData[item.id] || {};
+
+                      return (
+                        <div key={item.id} className={`border rounded-xl p-3 space-y-2 ${isConfirmed ? 'bg-emerald-50 border-emerald-200' : 'bg-amber-50 border-amber-200'}`}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <span className="font-black text-xs text-slate-800">{item.barcode}</span>
+                              <span className="ml-2 text-[10px] text-slate-500">{item.assetName}</span>
+                              <span className="ml-2 text-[9px] text-amber-600 font-bold">({item.reason})</span>
+                            </div>
+                            {isConfirmed ? (
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-bold text-emerald-600">✅ Đã xác nhận</span>
+                                {canUndo && (
+                                  <button type="button" onClick={() => handleBatchUndo(item.id)} className="px-2 py-1 bg-rose-100 text-rose-700 rounded-lg text-[10px] font-bold hover:bg-rose-200 cursor-pointer">↩ Hoàn tác</button>
+                                )}
+                              </div>
+                            ) : null}
+                          </div>
+                          {!isConfirmed && (
+                            <div className="grid grid-cols-2 gap-2">
+                              <div>
+                                <label className="text-[9px] font-bold text-slate-500 block">Vị trí thực tế</label>
+                                <input type="text" value={editData.actualLocation || item.expectedLocation || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), actualLocation: e.target.value}}))} className="w-full border rounded px-2 py-1 text-xs" />
+                              </div>
+                              <div>
+                                <label className="text-[9px] font-bold text-slate-500 block">Người dùng thực tế</label>
+                                <input type="text" value={editData.actualUser || item.expectedUser || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), actualUser: e.target.value}}))} className="w-full border rounded px-2 py-1 text-xs" />
+                              </div>
+                              <div>
+                                <label className="text-[9px] font-bold text-slate-500 block">Ghi chú</label>
+                                <input type="text" value={editData.note || ''} onChange={e => setBatchReviewEditData(prev => ({...prev, [item.id]: {...(prev[item.id]||{}), note: e.target.value}}))} className="w-full border rounded px-2 py-1 text-xs" />
+                              </div>
+                              <div className="flex items-end">
+                                <button
+                                  type="button"
+                                  onClick={() => handleBatchConfirmItem(item)}
+                                  disabled={submitting}
+                                  className="w-full py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer disabled:opacity-50"
+                                >
+                                  ✅ Xác nhận kiểm
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ALREADY_CHECKED Tab */}
+                {batchReviewTab === 'alreadyCheckedItems' && (
+                  <div className="space-y-3">
+                    {(activeBatchData.groups.alreadyCheckedItems || []).map((item: any) => (
+                      <div key={item.id || item.barcode} className="border border-blue-200 bg-blue-50 rounded-xl p-3">
+                        <div className="flex items-center justify-between">
+                          <div>
+                            <span className="font-black text-xs text-slate-800">{item.barcode}</span>
+                            <span className="ml-2 text-[10px] text-slate-500">{item.assetName}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowOverrideWarning(item)}
+                            className="px-2.5 py-1 bg-amber-100 text-amber-700 rounded-lg text-[10px] font-bold hover:bg-amber-200 cursor-pointer"
+                          >
+                            ⚠ Cập nhật thông tin
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* OUT_OF_BOOK Tab — Display only, no confirm */}
+                {batchReviewTab === 'outOfBookItems' && (
+                  <div className="space-y-3">
+                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-[11px] text-rose-700 font-bold">
+                      ⚠ Tài sản ngoài sổ không được xác nhận kiểm kê. Chỉ xem thông tin và tải báo cáo sai lệch.
+                    </div>
+                    {(activeBatchData.groups.outOfBookItems || []).map((item: any, idx: number) => (
+                      <div key={idx} className="border border-rose-200 bg-rose-50 rounded-xl p-3">
+                        <span className="font-black text-xs text-slate-800">{item.barcode}</span>
+                        <span className="ml-2 text-[10px] text-rose-600">{item.assetName}</span>
+                      </div>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={downloadBatchReport}
+                      className="px-4 py-2 bg-rose-600 text-white rounded-xl text-xs font-black uppercase tracking-wider hover:bg-rose-700 cursor-pointer"
+                    >
+                      ⬇ Tải báo cáo sai lệch
+                    </button>
+                  </div>
+                )}
+
+                {/* FAILED Tab */}
+                {batchReviewTab === 'failedItems' && (
+                  <div className="space-y-3">
+                    {(activeBatchData.groups.failedItems || []).map((item: any, idx: number) => (
+                      <div key={idx} className="border border-slate-200 bg-slate-50 rounded-xl p-3">
+                        <span className="font-black text-xs text-slate-800">{item.barcode}</span>
+                        <span className="ml-2 text-[10px] text-slate-500">{item.reason}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+
+            {!activeBatchData && activeBatchId && (
+              <div className="text-center py-8 text-slate-400 text-sm">Đang tải dữ liệu lô quét...</div>
+            )}
+            {!activeBatchId && (
+              <div className="text-center py-8 text-slate-400 text-sm">Vui lòng chọn một lô quét từ dropdown phía trên.</div>
+            )}
+          </div>
+        </BaseModal>
+      )}
+
+      {/* Override Warning Modal */}
+      {showOverrideWarning && (
+        <BaseModal
+          isOpen={!!showOverrideWarning}
+          onClose={() => setShowOverrideWarning(null)}
+          title="⚠ CẬP NHẬT TÀI SẢN ĐÃ KIỂM"
+          size="confirm"
+        >
+          <div className="p-5 space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 font-bold">
+              Tài sản <strong>{showOverrideWarning.barcode}</strong> đã được kiểm kê trước đó.
+              Nếu tiếp tục, hệ thống sẽ ghi đè kết quả kiểm trước và tạo audit log với action = OVERRIDE_CHECKED.
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                onClick={() => setShowOverrideWarning(null)}
+                className="px-4 py-2 bg-slate-200 rounded-xl text-xs font-bold cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleBatchConfirmItem(showOverrideWarning);
+                  setShowOverrideWarning(null);
+                }}
+                className="px-4 py-2 bg-amber-600 text-white rounded-xl text-xs font-bold hover:bg-amber-700 cursor-pointer"
+              >
+                Xác nhận ghi đè
               </button>
             </div>
           </div>

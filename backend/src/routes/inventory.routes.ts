@@ -7,6 +7,7 @@ import { buildDataScopeWhere } from '../utils/data-scope.util';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -1369,8 +1370,8 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
   const checkIdInt = inventoryCheckId ? Number(inventoryCheckId) : null;
   const sessIdInt = sessionId ? Number(sessionId) : null;
   
-  // Generate tracking batchId
-  const batchId = `BATCH-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+  // Generate UUID batchId
+  const batchId = crypto.randomUUID();
 
   // Stats Counters
   const totalScanned = barcodes.length;
@@ -1409,7 +1410,7 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
     return true;
   };
 
-  // Process barcodes individually so one failure does not break the entire batch
+  // Process barcodes individually
   for (const barcode of uniqueBarcodesList) {
     try {
       // Find asset by code or serial
@@ -1453,7 +1454,7 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
             barcode,
             inventoryCheckId: checkIdInt,
             sessionId: sessIdInt,
-            action: 'NOT_FOUND',
+            action: 'SCANNED_PENDING_REVIEW',
             result: 'OUT_OF_BOOK',
             scannedBy: username,
             batchId
@@ -1487,8 +1488,9 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'OUT_OF_SCOPE',
+              action: 'SCANNED_PENDING_REVIEW',
               result: 'OUT_OF_SCOPE',
+              reason: 'Không thuộc danh mục kiểm kê của phiên này',
               scannedBy: username,
               batchId
             }
@@ -1506,8 +1508,9 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'DUPLICATE_CODE',
-              result: 'DUPLICATE_CODE',
+              action: 'SCANNED_PENDING_REVIEW',
+              result: 'NEED_REVIEW',
+              reason: 'Trùng mã tài sản trong danh sách kiểm kê',
               scannedBy: username,
               batchId
             }
@@ -1528,14 +1531,14 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'ALREADY_CHECKED',
+              action: 'SCANNED_PENDING_REVIEW',
               result: 'ALREADY_CHECKED',
               scannedBy: username,
               batchId
             }
           });
           alreadyChecked++;
-          alreadyCheckedItems.push({ barcode, assetName: asset.assetName });
+          alreadyCheckedItems.push({ id: detail.id, barcode, assetName: asset.assetName, checkStatus: 'CHECKED', checkedAt: detail.checkedAt });
           continue;
         }
 
@@ -1561,8 +1564,9 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'OUT_OF_SCOPE',
+              action: 'SCANNED_PENDING_REVIEW',
               result: 'OUT_OF_SCOPE',
+              reason: 'Ngoài phạm vi được khóa bộ lọc',
               scannedBy: username,
               batchId
             }
@@ -1587,37 +1591,6 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
         }
 
         if (discrepancyAction === 'MATCH_AUTO_SAVED') {
-          // Perform auto-save in transaction
-          await prisma.$transaction(async (tx) => {
-            await tx.inventoryDetail.update({
-              where: { id: detail.id },
-              data: {
-                actualUserName: bookUser,
-                actualDepartmentName: bookDept || '',
-                actualLocationName: bookLocation || '',
-                resultStatus: 'MATCH',
-                checkedAt: new Date(),
-                checkedBy: username
-              }
-            });
-            await tx.asset.update({
-              where: { id: detail.assetId! },
-              data: {
-                lastInventoryDate: new Date(),
-                lastInventoryStatus: 'MATCH'
-              }
-            });
-            await tx.auditLog.create({
-              data: {
-                entityType: 'ASSET',
-                entityId: detail.assetId!,
-                action: 'FAST_SCAN_CHECK',
-                details: `Quét lô liên tục khớp hoàn toàn. Batch ID: ${batchId}`,
-                performedBy: username
-              }
-            });
-          });
-
           await prisma.inventoryScanLog.create({
             data: {
               assetId: detail.assetId,
@@ -1625,15 +1598,15 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'MATCH_AUTO_SAVED',
-              result: 'MATCHED',
+              action: 'SCANNED_PENDING_REVIEW',
+              result: 'MATCH_PENDING_CONFIRM',
               scannedBy: username,
               batchId
             }
           });
 
           autoSaved++;
-          autoSavedItems.push({ id: detail.id, barcode, assetName: asset.assetName });
+          autoSavedItems.push({ id: detail.id, barcode, assetName: asset.assetName, checkStatus: 'PENDING' });
         } else {
           await prisma.inventoryScanLog.create({
             data: {
@@ -1642,14 +1615,15 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: discrepancyAction,
-              result: 'MISMATCH',
+              action: 'SCANNED_PENDING_REVIEW',
+              result: 'NEED_REVIEW',
+              reason: discrepancyAction,
               scannedBy: username,
               batchId
             }
           });
           needReview++;
-          reviewItems.push({ id: detail.id, barcode, assetName: asset.assetName, reason: discrepancyAction });
+          reviewItems.push({ id: detail.id, barcode, assetName: asset.assetName, reason: discrepancyAction, checkStatus: 'PENDING' });
         }
       } 
       // 3. Mode CHECK (Main inventory campaign)
@@ -1673,8 +1647,9 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'OUT_OF_SCOPE',
+              action: 'SCANNED_PENDING_REVIEW',
               result: 'OUT_OF_SCOPE',
+              reason: 'Không thuộc danh mục kiểm kê của kỳ này',
               scannedBy: username,
               batchId
             }
@@ -1692,8 +1667,9 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'DUPLICATE_CODE',
-              result: 'DUPLICATE_CODE',
+              action: 'SCANNED_PENDING_REVIEW',
+              result: 'NEED_REVIEW',
+              reason: 'Trùng mã tài sản',
               scannedBy: username,
               batchId
             }
@@ -1714,14 +1690,14 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'ALREADY_CHECKED',
+              action: 'SCANNED_PENDING_REVIEW',
               result: 'ALREADY_CHECKED',
               scannedBy: username,
               batchId
             }
           });
           alreadyChecked++;
-          alreadyCheckedItems.push({ barcode, assetName: asset.assetName });
+          alreadyCheckedItems.push({ id: item.id, barcode, assetName: asset.assetName, checkStatus: 'CHECKED', checkedAt: item.checkedAt, checkedBy: item.checkedBy });
           continue;
         }
 
@@ -1747,8 +1723,9 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'OUT_OF_SCOPE',
+              action: 'SCANNED_PENDING_REVIEW',
               result: 'OUT_OF_SCOPE',
+              reason: 'Ngoài phạm vi được khóa bộ lọc',
               scannedBy: username,
               batchId
             }
@@ -1773,39 +1750,6 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
         }
 
         if (discrepancyAction === 'MATCH_AUTO_SAVED') {
-          // Perform auto-save in transaction
-          await prisma.$transaction(async (tx) => {
-            await tx.inventoryItem.update({
-              where: { id: item.id },
-              data: {
-                actualLocation: bookLocation,
-                actualUserName: bookUser,
-                actualSerialNumber: asset.serialNumber || '',
-                checkStatus: 'CHECKED',
-                checkedAt: new Date(),
-                checkedBy: username,
-                result: 'MATCHED',
-                checkCondition: 'FOUND'
-              }
-            });
-            await tx.asset.update({
-              where: { id: item.assetId },
-              data: {
-                lastInventoryDate: new Date(),
-                lastInventoryStatus: 'MATCH'
-              }
-            });
-            await tx.auditLog.create({
-              data: {
-                entityType: 'ASSET',
-                entityId: item.assetId,
-                action: 'FAST_SCAN_CHECK',
-                details: `Quét lô liên tục khớp hoàn toàn. Batch ID: ${batchId}`,
-                performedBy: username
-              }
-            });
-          });
-
           await prisma.inventoryScanLog.create({
             data: {
               assetId: item.assetId,
@@ -1813,15 +1757,15 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: 'MATCH_AUTO_SAVED',
-              result: 'MATCHED',
+              action: 'SCANNED_PENDING_REVIEW',
+              result: 'MATCH_PENDING_CONFIRM',
               scannedBy: username,
               batchId
             }
           });
 
           autoSaved++;
-          autoSavedItems.push({ id: item.id, barcode, assetName: asset.assetName });
+          autoSavedItems.push({ id: item.id, barcode, assetName: asset.assetName, checkStatus: 'PENDING' });
         } else {
           await prisma.inventoryScanLog.create({
             data: {
@@ -1830,14 +1774,15 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               barcode,
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: discrepancyAction,
-              result: 'MISMATCH',
+              action: 'SCANNED_PENDING_REVIEW',
+              result: 'NEED_REVIEW',
+              reason: discrepancyAction,
               scannedBy: username,
               batchId
             }
           });
           needReview++;
-          reviewItems.push({ id: item.id, barcode, assetName: asset.assetName, reason: discrepancyAction });
+          reviewItems.push({ id: item.id, barcode, assetName: asset.assetName, reason: discrepancyAction, checkStatus: 'PENDING' });
         }
       }
     } catch (itemErr: any) {
@@ -1909,12 +1854,631 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────
+// GET PENDING BATCHES (RECONSTRUCT FROM DATABASE LOGS)
+// ──────────────────────────────────────────────────────────────
+router.get('/pending-batches', authenticateToken, async (req: any, res) => {
+  const { inventoryCheckId, sessionId } = req.query;
+  const checkIdInt = inventoryCheckId ? Number(inventoryCheckId) : null;
+  const sessIdInt = sessionId ? Number(sessionId) : null;
+
+  try {
+    const where: any = { action: 'SCANNED_PENDING_REVIEW' };
+    if (checkIdInt) where.inventoryCheckId = checkIdInt;
+    if (sessIdInt) where.sessionId = sessIdInt;
+
+    const logs = await prisma.inventoryScanLog.findMany({
+      where,
+      orderBy: { scannedAt: 'asc' }
+    });
+
+    const batchesMap: { [batchId: string]: any } = {};
+
+    for (const log of logs) {
+      const bId = log.batchId || 'UNTRACKED';
+      if (!batchesMap[bId]) {
+        batchesMap[bId] = {
+          batchId: bId,
+          createdAt: log.scannedAt,
+          totalCount: 0,
+          barcodes: []
+        };
+      }
+      batchesMap[bId].barcodes.push(log);
+      batchesMap[bId].totalCount++;
+    }
+
+    const resultBatches = [];
+
+    for (const batchId of Object.keys(batchesMap)) {
+      const batchInfo = batchesMap[batchId];
+      const matchPendingItems: any[] = [];
+      const reviewItems: any[] = [];
+      const alreadyCheckedItems: any[] = [];
+      const outOfBookItems: any[] = [];
+      const failedItems: any[] = [];
+
+      for (const log of batchInfo.barcodes) {
+        const barcode = log.barcode;
+        const groupType = log.result;
+
+        if (groupType === 'OUT_OF_BOOK') {
+          outOfBookItems.push({ barcode, assetName: 'Tài sản ngoài sổ', status: 'NOT_FOUND' });
+          continue;
+        }
+
+        if (sessIdInt) {
+          const detail = await prisma.inventoryDetail.findFirst({
+            where: {
+              sessionId: sessIdInt,
+              OR: [
+                { assetCode: barcode },
+                { serialNumber: barcode },
+                { asset: { serialNumber: barcode } }
+              ]
+            },
+            include: { asset: true }
+          });
+
+          if (detail) {
+            const itemObj = {
+              id: detail.id,
+              assetId: detail.assetId,
+              barcode,
+              assetName: detail.asset?.assetName || detail.assetName || 'Tài sản',
+              expectedLocation: detail.bookLocationName || detail.asset?.locationName || 'Trong kho',
+              expectedUser: detail.bookUserName || detail.asset?.currentUserName || 'N/A',
+              expectedStatus: detail.asset?.status || 'N/A',
+              expectedSerial: detail.serialNumber || detail.asset?.serialNumber || 'N/A',
+              actualLocation: detail.actualLocationName || '',
+              actualUser: detail.actualUserName || '',
+              actualDepartment: detail.actualDepartmentName || '',
+              actualStatus: detail.resultStatus || '',
+              checkStatus: detail.checkedAt ? 'CHECKED' : 'PENDING',
+              checkedAt: detail.checkedAt,
+              checkedBy: '',
+              resultStatus: detail.resultStatus,
+              reason: log.reason,
+              undoDeadline: detail.checkedAt ? new Date(new Date(detail.checkedAt).getTime() + 30 * 60000).toISOString() : null
+            };
+
+            if (detail.checkedAt) {
+              alreadyCheckedItems.push(itemObj);
+            } else if (groupType === 'MATCH_PENDING_CONFIRM') {
+              matchPendingItems.push(itemObj);
+            } else if (groupType === 'NEED_REVIEW') {
+              reviewItems.push(itemObj);
+            } else {
+              failedItems.push({ barcode, assetName: itemObj.assetName, reason: log.reason || 'Lỗi phân loại hoặc ngoài phạm vi' });
+            }
+          } else {
+            failedItems.push({ barcode, assetName: 'Không xác định', reason: 'Không tìm thấy dòng thông tin trong phiên' });
+          }
+        } else if (checkIdInt) {
+          const item = await prisma.inventoryItem.findFirst({
+            where: {
+              inventoryCheckId: checkIdInt,
+              OR: [
+                { assetCode: barcode },
+                { asset: { serialNumber: barcode } }
+              ]
+            },
+            include: { asset: true }
+          });
+
+          if (item) {
+            const itemObj = {
+              id: item.id,
+              assetId: item.assetId,
+              barcode,
+              assetName: item.asset?.assetName || 'Tài sản',
+              expectedLocation: item.expectedLocation || item.asset?.locationName || 'Trong kho',
+              expectedUser: item.asset?.currentUserName || 'N/A',
+              expectedStatus: item.expectedStatus || item.asset?.status || 'N/A',
+              expectedSerial: item.actualSerialNumber || item.asset?.serialNumber || 'N/A',
+              actualLocation: item.actualLocation || '',
+              actualUser: item.actualUserName || '',
+              actualDepartment: item.asset?.departmentName || '',
+              actualStatus: item.actualStatus || '',
+              checkStatus: item.checkStatus,
+              checkedAt: item.checkedAt,
+              checkedBy: item.checkedBy,
+              resultStatus: item.result,
+              reason: log.reason,
+              undoDeadline: item.checkedAt ? new Date(new Date(item.checkedAt).getTime() + 30 * 60000).toISOString() : null
+            };
+
+            if (item.checkStatus === 'CHECKED') {
+              alreadyCheckedItems.push(itemObj);
+            } else if (groupType === 'MATCH_PENDING_CONFIRM') {
+              matchPendingItems.push(itemObj);
+            } else if (groupType === 'NEED_REVIEW') {
+              reviewItems.push(itemObj);
+            } else {
+              failedItems.push({ barcode, assetName: itemObj.assetName, reason: log.reason || 'Lỗi phân loại hoặc ngoài phạm vi' });
+            }
+          } else {
+            failedItems.push({ barcode, assetName: 'Không xác định', reason: 'Không tìm thấy dòng thông tin trong kỳ' });
+          }
+        }
+      }
+
+      resultBatches.push({
+        batchId,
+        createdAt: batchInfo.createdAt,
+        totalCount: batchInfo.totalCount,
+        groups: {
+          matchPendingItems,
+          reviewItems,
+          alreadyCheckedItems,
+          outOfBookItems,
+          failedItems
+        }
+      });
+    }
+
+    res.json(resultBatches);
+  } catch (error: any) {
+    console.error('Lỗi pending-batches:', error);
+    res.status(500).json({ message: error.message || 'Lỗi hệ thống' });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+// POST BATCH CONFIRM (XÁC NHẬN KẾT QUẢ QUÉT THEO LÔ)
+// ──────────────────────────────────────────────────────────────
+router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
+  const { mode, inventoryCheckId, sessionId, batchId, confirmedItems, confirmMatchOnly } = req.body;
+  const username = req.user?.username || 'system';
+
+  const checkIdInt = inventoryCheckId ? Number(inventoryCheckId) : null;
+  const sessIdInt = sessionId ? Number(sessionId) : null;
+
+  try {
+    let itemsToConfirm: any[] = [];
+
+    if (confirmMatchOnly) {
+      const pendingLogs = await prisma.inventoryScanLog.findMany({
+        where: {
+          batchId,
+          action: 'SCANNED_PENDING_REVIEW',
+          result: 'MATCH_PENDING_CONFIRM'
+        }
+      });
+
+      for (const log of pendingLogs) {
+        if (sessIdInt) {
+          const detail = await prisma.inventoryDetail.findFirst({
+            where: {
+              sessionId: sessIdInt,
+              OR: [
+                { assetCode: log.barcode },
+                { serialNumber: log.barcode },
+                { asset: { serialNumber: log.barcode } }
+              ]
+            },
+            include: { asset: true }
+          });
+          if (detail && !detail.checkedAt) {
+            itemsToConfirm.push({
+              id: detail.id,
+              assetCode: detail.assetCode,
+              actualLocation: detail.bookLocationName || detail.asset?.locationName || 'Trong kho',
+              actualUser: detail.bookUserName || detail.asset?.currentUserName || 'N/A',
+              actualDepartment: detail.bookDepartmentName || detail.asset?.departmentName || '',
+              actualStatus: detail.asset?.status || 'GOOD',
+              quality: 'GOOD',
+              checkCondition: 'FOUND',
+              assetId: detail.assetId,
+              serial: detail.serialNumber || detail.asset?.serialNumber || ''
+            });
+          }
+        } else if (checkIdInt) {
+          const item = await prisma.inventoryItem.findFirst({
+            where: {
+              inventoryCheckId: checkIdInt,
+              OR: [
+                { assetCode: log.barcode },
+                { asset: { serialNumber: log.barcode } }
+              ]
+            },
+            include: { asset: true }
+          });
+          if (item && item.checkStatus !== 'CHECKED') {
+            itemsToConfirm.push({
+              id: item.id,
+              assetCode: item.assetCode,
+              actualLocation: item.expectedLocation || item.asset?.locationName || 'Trong kho',
+              actualUser: item.asset?.currentUserName || 'N/A',
+              actualDepartment: item.asset?.departmentName || '',
+              actualStatus: item.expectedStatus || item.asset?.status || 'GOOD',
+              quality: 'GOOD',
+              checkCondition: 'FOUND',
+              assetId: item.assetId,
+              serial: item.actualSerialNumber || item.asset?.serialNumber || ''
+            });
+          }
+        }
+      }
+    } else {
+      if (!confirmedItems || !Array.isArray(confirmedItems)) {
+        return res.status(400).json({ message: 'Danh sách xác nhận là bắt buộc' });
+      }
+      itemsToConfirm = confirmedItems;
+    }
+
+    const responseConfirmedList: { itemId: number; checkedAt: Date; confirmedAt: Date; undoDeadline: string }[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const itemConf of itemsToConfirm) {
+        const itemId = Number(itemConf.id);
+
+        if (sessIdInt) {
+          const detail = await tx.inventoryDetail.findUnique({
+            where: { id: itemId },
+            include: { asset: true }
+          });
+
+          if (!detail) {
+            throw new Error(`Không tìm thấy dòng chi tiết kiểm kê ID: ${itemId}`);
+          }
+
+          if (!detail.assetId) {
+            throw new Error(`Tài sản ngoài sổ (không có liên kết gốc) không được phép xác nhận kiểm kê trực tiếp.`);
+          }
+
+          const isOverride = !!detail.checkedAt;
+          const confirmedAt = new Date();
+
+          let resultStatus: 'MATCH' | 'MISMATCH' = 'MATCH';
+          if (
+            (itemConf.actualLocation && detail.bookLocationName && itemConf.actualLocation !== detail.bookLocationName) ||
+            (itemConf.actualUser && detail.bookUserName && itemConf.actualUser !== detail.bookUserName) ||
+            (itemConf.actualStatus && detail.asset?.status && itemConf.actualStatus !== detail.asset.status)
+          ) {
+            resultStatus = 'MISMATCH';
+          }
+
+          await tx.inventoryDetail.update({
+            where: { id: itemId },
+            data: {
+              actualLocationName: itemConf.actualLocation || detail.bookLocationName || '',
+              actualUserName: itemConf.actualUser || detail.bookUserName || '',
+              actualDepartmentName: itemConf.actualDepartment || detail.bookDepartmentName || '',
+              // InventoryDetail has no actualStatus/quality columns; use note for status tracking
+              // actualStatus stored via resultStatus logic above
+              note: itemConf.note || '',
+              resultStatus,
+              checkedAt: confirmedAt,
+              // InventoryDetail has no checkedBy column; tracked via auditLog
+            }
+          });
+
+          await tx.asset.update({
+            where: { id: detail.assetId },
+            data: {
+              lastInventoryDate: confirmedAt,
+              lastInventoryStatus: resultStatus === 'MATCH' ? 'MATCH' : 'MISMATCH'
+            }
+          });
+
+          await tx.auditLog.create({
+            data: {
+              entityType: 'ASSET',
+              entityId: detail.assetId,
+              action: isOverride ? 'OVERRIDE_CHECKED' : 'FAST_SCAN_CHECK',
+              details: `Xác nhận kiểm kê lô ${batchId}. Trạng thái: ${resultStatus}.`,
+              performedBy: username
+            }
+          });
+
+          await tx.inventoryScanLog.create({
+            data: {
+              assetId: detail.assetId,
+              assetCode: detail.assetCode,
+              barcode: detail.assetCode || '',
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: isOverride ? 'OVERRIDE_CHECKED' : 'FAST_SCAN_CHECK',
+              result: resultStatus === 'MATCH' ? 'MATCHED' : 'MISMATCH',
+              scannedBy: username,
+              batchId
+            }
+          });
+
+          responseConfirmedList.push({
+            itemId,
+            checkedAt: confirmedAt,
+            confirmedAt,
+            undoDeadline: new Date(confirmedAt.getTime() + 30 * 60000).toISOString()
+          });
+
+        } else if (checkIdInt) {
+          const item = await tx.inventoryItem.findUnique({
+            where: { id: itemId },
+            include: { asset: true }
+          });
+
+          if (!item) {
+            throw new Error(`Không tìm thấy dòng tài sản kiểm kê ID: ${itemId}`);
+          }
+
+          if (!item.assetId) {
+            throw new Error(`Tài sản ngoài sổ không được phép xác nhận kiểm kê trực tiếp.`);
+          }
+
+          const isOverride = item.checkStatus === 'CHECKED';
+          const confirmedAt = new Date();
+
+          let result: 'MATCHED' | 'MISSING' | 'DAMAGED' | 'WRONG_LOCATION' | 'WRONG_STATUS' | 'WRONG_USER' = 'MATCHED';
+          const asset = item.asset!;
+
+          if (itemConf.checkCondition === 'MISSING' || itemConf.actualStatus === 'LOST') {
+            result = 'MISSING';
+          } else if (itemConf.quality === 'DAMAGED' || itemConf.actualStatus === 'DAMAGED') {
+            result = 'DAMAGED';
+          } else if (itemConf.actualLocation && item.expectedLocation && itemConf.actualLocation !== item.expectedLocation) {
+            result = 'WRONG_LOCATION';
+          } else if (itemConf.actualStatus && item.expectedStatus && itemConf.actualStatus !== item.expectedStatus) {
+            result = 'WRONG_STATUS';
+          } else if (itemConf.actualUser && asset.currentUserName && itemConf.actualUser !== asset.currentUserName) {
+            result = 'WRONG_USER';
+          }
+
+          await tx.inventoryItem.update({
+            where: { id: itemId },
+            data: {
+              actualLocation: itemConf.actualLocation || item.expectedLocation || '',
+              actualUserName: itemConf.actualUser || asset.currentUserName || '',
+              actualStatus: itemConf.actualStatus || item.expectedStatus || 'GOOD',
+              quality: itemConf.quality || 'GOOD',
+              note: itemConf.note || '',
+              checkStatus: 'CHECKED',
+              checkedAt: confirmedAt,
+              checkedBy: username,
+              result,
+              checkCondition: itemConf.checkCondition || 'FOUND',
+              actualSerialNumber: itemConf.serial || item.actualSerialNumber || ''
+            }
+          });
+
+          await tx.asset.update({
+            where: { id: item.assetId },
+            data: {
+              lastInventoryDate: confirmedAt,
+              lastInventoryStatus: result
+            }
+          });
+
+          await tx.auditLog.create({
+            data: {
+              entityType: 'ASSET',
+              entityId: item.assetId,
+              action: isOverride ? 'OVERRIDE_CHECKED' : 'FAST_SCAN_CHECK',
+              details: `Xác nhận kiểm kê lô ${batchId}. Kết quả: ${result}.`,
+              performedBy: username
+            }
+          });
+
+          await tx.inventoryScanLog.create({
+            data: {
+              assetId: item.assetId,
+              assetCode: item.assetCode,
+              barcode: item.assetCode || '',
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: isOverride ? 'OVERRIDE_CHECKED' : 'FAST_SCAN_CHECK',
+              result,
+              scannedBy: username,
+              batchId
+            }
+          });
+
+          responseConfirmedList.push({
+            itemId,
+            checkedAt: confirmedAt,
+            confirmedAt,
+            undoDeadline: new Date(confirmedAt.getTime() + 30 * 60000).toISOString()
+          });
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      confirmedItems: responseConfirmedList
+    });
+  } catch (error: any) {
+    console.error('Lỗi batch-confirm:', error);
+    res.status(400).json({ message: error.message || 'Lỗi xác nhận lô quét' });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+// POST BATCH UNDO (HOÀN TÁC CÁC MÃ ĐÃ XÁC NHẬN KIỂM TRONG LÔ)
+// ──────────────────────────────────────────────────────────────
+router.post('/batch-undo', authenticateToken, async (req: any, res) => {
+  const { batchId, itemIds } = req.body;
+  const username = req.user?.username || 'system';
+
+  if (!itemIds || !Array.isArray(itemIds) || itemIds.length === 0) {
+    return res.status(400).json({ message: 'Danh sách itemId hoàn tác là bắt buộc' });
+  }
+
+  try {
+    const undoneList: number[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const idVal of itemIds) {
+        const itemId = Number(idVal);
+
+        let detail = await tx.inventoryDetail.findUnique({
+          where: { id: itemId },
+          include: { asset: true }
+        });
+
+        if (detail) {
+          if (!detail.checkedAt) {
+            throw new Error(`Tài sản ${detail.assetCode} chưa được kiểm kê, không thể hoàn tác.`);
+          }
+
+          const now = new Date();
+          const diffMin = (now.getTime() - new Date(detail.checkedAt).getTime()) / 60000;
+          if (diffMin > 30) {
+            throw new Error(`Quá hạn 30 phút để hoàn tác tài sản ${detail.assetCode}`);
+          }
+
+          await tx.inventoryDetail.update({
+            where: { id: itemId },
+            data: {
+              actualLocationName: '',
+              actualUserName: '',
+              actualDepartmentName: '',
+              note: null,
+              resultStatus: 'MATCH',
+              checkedAt: null
+            }
+          });
+
+          const nextRecentLog = await tx.inventoryScanLog.findFirst({
+            where: {
+              assetId: detail.assetId,
+              action: { in: ['CHECKED', 'OVERRIDE_CHECKED', 'MATCH_AUTO_SAVED', 'FAST_SCAN_CHECK'] },
+              scannedAt: { lt: detail.checkedAt }
+            },
+            orderBy: { scannedAt: 'desc' }
+          });
+
+          await tx.asset.update({
+            where: { id: detail.assetId! },
+            data: {
+              lastInventoryDate: nextRecentLog ? nextRecentLog.scannedAt : null,
+              lastInventoryStatus: nextRecentLog ? (nextRecentLog.result === 'MATCHED' ? 'MATCH' : 'MISMATCH') : null
+            }
+          });
+
+          await tx.auditLog.create({
+            data: {
+              entityType: 'ASSET',
+              entityId: detail.assetId!,
+              action: 'UNDO_CHECKED',
+              details: `Hoàn tác kiểm kê trong lô ${batchId}`,
+              performedBy: username
+            }
+          });
+
+          await tx.inventoryScanLog.create({
+            data: {
+              assetId: detail.assetId,
+              assetCode: detail.assetCode,
+              barcode: detail.assetCode || '',
+              sessionId: detail.sessionId,
+              action: 'UNDO_CHECKED',
+              result: 'PENDING',
+              scannedBy: username,
+              batchId
+            }
+          });
+
+          undoneList.push(itemId);
+          continue;
+        }
+
+        let item = await tx.inventoryItem.findUnique({
+          where: { id: itemId },
+          include: { asset: true }
+        });
+
+        if (item) {
+          if (item.checkStatus !== 'CHECKED' || !item.checkedAt) {
+            throw new Error(`Tài sản ${item.assetCode} chưa được kiểm kê, không thể hoàn tác.`);
+          }
+
+          const now = new Date();
+          const diffMin = (now.getTime() - new Date(item.checkedAt).getTime()) / 60000;
+          if (diffMin > 30) {
+            throw new Error(`Quá hạn 30 phút để hoàn tác tài sản ${item.assetCode}`);
+          }
+
+          await tx.inventoryItem.update({
+            where: { id: itemId },
+            data: {
+              actualLocation: '',
+              actualUserName: '',
+              actualStatus: '',
+              quality: 'GOOD',
+              note: '',
+              checkStatus: 'PENDING',
+              checkedAt: null,
+              checkedBy: null,
+              result: 'MATCHED',
+              checkCondition: 'FOUND',
+              actualSerialNumber: ''
+            }
+          });
+
+          const nextRecentLog = await tx.inventoryScanLog.findFirst({
+            where: {
+              assetId: item.assetId,
+              action: { in: ['CHECKED', 'OVERRIDE_CHECKED', 'MATCH_AUTO_SAVED', 'FAST_SCAN_CHECK'] },
+              scannedAt: { lt: item.checkedAt }
+            },
+            orderBy: { scannedAt: 'desc' }
+          });
+
+          await tx.asset.update({
+            where: { id: item.assetId! },
+            data: {
+              lastInventoryDate: nextRecentLog ? nextRecentLog.scannedAt : null,
+              lastInventoryStatus: nextRecentLog ? (nextRecentLog.result || 'MATCHED') : null
+            }
+          });
+
+          await tx.auditLog.create({
+            data: {
+              entityType: 'ASSET',
+              entityId: item.assetId!,
+              action: 'UNDO_CHECKED',
+              details: `Hoàn tác kiểm kê trong lô ${batchId}`,
+              performedBy: username
+            }
+          });
+
+          await tx.inventoryScanLog.create({
+            data: {
+              assetId: item.assetId,
+              assetCode: item.assetCode,
+              barcode: item.assetCode || '',
+              inventoryCheckId: item.inventoryCheckId,
+              sessionId: null,
+              action: 'UNDO_CHECKED',
+              result: 'PENDING',
+              scannedBy: username,
+              batchId
+            }
+          });
+
+          undoneList.push(itemId);
+        }
+      }
+    });
+
+    res.json({ success: true, undoneList });
+  } catch (error: any) {
+    console.error('Lỗi batch-undo:', error);
+    res.status(400).json({ message: error.message || 'Lỗi hoàn tác lô quét' });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
 // GET RECENT SCAN LOGS (LAST 20 RECORDS)
 // ──────────────────────────────────────────────────────────────
 router.get('/scan-logs', authenticateToken, async (req, res) => {
   const { inventoryCheckId, sessionId } = req.query;
   try {
-    const where: any = {};
+    const where: any = {
+      // Scan History whitelist: only expose completed check actions
+      action: { in: ['CHECKED', 'OVERRIDE_CHECKED', 'MATCH_AUTO_SAVED', 'FAST_SCAN_CHECK'] }
+    };
     if (inventoryCheckId) where.inventoryCheckId = Number(inventoryCheckId);
     if (sessionId) where.sessionId = Number(sessionId);
 
