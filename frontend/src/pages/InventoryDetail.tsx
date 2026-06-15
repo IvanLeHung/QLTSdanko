@@ -2150,6 +2150,106 @@ export const InventoryDetail: React.FC = () => {
     }
   };
 
+  // Batch Save Only (Chỉ Lưu - không xác nhận, không tăng tiến độ)
+  const handleBatchSaveOnly = async (item: any) => {
+    if (!activeBatchId) return;
+    const editData = batchReviewEditData[item.id] || {};
+    setSubmitting(true);
+    try {
+      const res = await api.post('/inventory/batch-save', {
+        mode: activeSession ? 'SESSION' : 'CHECK',
+        inventoryCheckId: session?.id,
+        sessionId: activeSession?.id,
+        batchId: activeBatchId,
+        savedItems: [{
+          id: item.id,
+          assetCode: item.barcode,
+          actualLocation: editData.actualLocation || item.actualLocation || '',
+          actualUser: editData.actualUser || item.actualUser || '',
+          actualDepartment: editData.actualDepartment || item.actualDepartment || '',
+          actualProject: editData.actualProject || item.actualProject || '',
+          actualStatus: editData.actualStatus || item.actualStatus || '',
+          quality: editData.quality || '',
+          serial: editData.serial || '',
+          note: editData.note || ''
+        }]
+      });
+      if (res.data?.success) {
+        toast.success('Đã lưu thực tế (chưa xác nhận kiểm kê)');
+        fetchPendingBatches();
+        // Close editing mode
+        setEditingItemIds(prev => {
+          const next = new Set(prev);
+          next.delete(item.id);
+          return next;
+        });
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi lưu thực tế');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  // Batch Propose Book Update (Đề xuất cập nhật sổ sách)
+  const handleBatchProposeBookUpdate = async (item: any) => {
+    if (!activeBatchId) return;
+    const editData = batchReviewEditData[item.id] || {};
+
+    // Build fields array - only include fields that differ between actual and book
+    const fields: { fieldName: string; oldValue: string; newValue: string; reason: string }[] = [];
+    
+    const actLoc = editData.actualLocation || item.actualLocation || item.expectedLocation || '';
+    const actUser = editData.actualUser || item.actualUser || item.expectedUser || '';
+    const actDept = editData.actualDepartment || item.actualDepartment || item.expectedDepartment || '';
+    const actProj = editData.actualProject || item.actualProject || item.expectedProject || '';
+    const actSerial = editData.serial || item.actualSerial || item.expectedSerial || '';
+    const actStatus = editData.actualStatus || item.actualStatus || item.expectedStatus || '';
+
+    if (actLoc && actLoc !== item.expectedLocation) {
+      fields.push({ fieldName: 'locationName', oldValue: item.expectedLocation || '', newValue: actLoc, reason: 'Sai lệch vị trí phát hiện trong kiểm kê' });
+    }
+    if (actUser && actUser !== item.expectedUser) {
+      fields.push({ fieldName: 'currentUserName', oldValue: item.expectedUser || '', newValue: actUser, reason: 'Sai lệch người sử dụng phát hiện trong kiểm kê' });
+    }
+    if (actDept && actDept !== item.expectedDepartment) {
+      fields.push({ fieldName: 'departmentName', oldValue: item.expectedDepartment || '', newValue: actDept, reason: 'Sai lệch phòng ban phát hiện trong kiểm kê' });
+    }
+    if (actProj && actProj !== item.expectedProject) {
+      fields.push({ fieldName: 'projectName', oldValue: item.expectedProject || '', newValue: actProj, reason: 'Sai lệch dự án phát hiện trong kiểm kê' });
+    }
+    if (actSerial && actSerial !== item.expectedSerial) {
+      fields.push({ fieldName: 'serialNumber', oldValue: item.expectedSerial || '', newValue: actSerial, reason: 'Sai lệch Serial phát hiện trong kiểm kê' });
+    }
+    if (actStatus && actStatus !== item.expectedStatus) {
+      fields.push({ fieldName: 'status', oldValue: item.expectedStatus || '', newValue: actStatus, reason: 'Sai lệch trạng thái sử dụng phát hiện trong kiểm kê' });
+    }
+
+    if (fields.length === 0) {
+      toast.info('Không có trường nào sai lệch để đề xuất cập nhật');
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const res = await api.post('/inventory/batch-propose-book-update', {
+        inventoryCheckId: session?.id,
+        sessionId: activeSession?.id,
+        batchId: activeBatchId,
+        assetId: item.assetId,
+        itemId: item.id,
+        fields
+      });
+      if (res.data?.success) {
+        toast.success(`Đã tạo ${res.data.proposals} đề xuất cập nhật sổ. Chờ phê duyệt từ Admin.`);
+      }
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi tạo đề xuất cập nhật sổ');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   // Batch Undo
   const handleBatchUndo = async (itemId: number) => {
     if (!activeBatchId) return;
@@ -7298,60 +7398,90 @@ export const InventoryDetail: React.FC = () => {
                                   ) : (
                                     <>
                                       {isEditing ? (
-                                        <>
+                                        <div className="flex flex-col gap-2 items-end">
+                                          <div className="flex gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingItemIds(prev => {
+                                                  const next = new Set(prev);
+                                                  next.delete(item.id);
+                                                  return next;
+                                                });
+                                              }}
+                                              className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition"
+                                            >
+                                              Hủy
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleBatchSaveOnly(item)}
+                                              disabled={submitting}
+                                              className="px-3.5 py-2 bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50"
+                                            >
+                                              💾 Chỉ Lưu
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={async () => {
+                                                await handleBatchConfirmItem(item);
+                                                setEditingItemIds(prev => {
+                                                  const next = new Set(prev);
+                                                  next.delete(item.id);
+                                                  return next;
+                                                });
+                                              }}
+                                              disabled={submitting}
+                                              className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50 shadow-sm"
+                                            >
+                                              ✅ Lưu & Xác nhận
+                                            </button>
+                                          </div>
                                           <button
                                             type="button"
-                                            onClick={() => {
-                                              setEditingItemIds(prev => {
-                                                const next = new Set(prev);
-                                                next.delete(item.id);
-                                                return next;
-                                              });
-                                            }}
-                                            className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition"
-                                          >
-                                            Hủy
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={async () => {
-                                              await handleBatchConfirmItem(item);
-                                              setEditingItemIds(prev => {
-                                                const next = new Set(prev);
-                                                next.delete(item.id);
-                                                return next;
-                                              });
-                                            }}
+                                            onClick={() => handleBatchProposeBookUpdate(item)}
                                             disabled={submitting}
-                                            className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50 shadow-sm"
+                                            className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50"
                                           >
-                                            [ Lưu & Xác nhận ]
+                                            📋 Đề xuất cập nhật sổ
                                           </button>
-                                        </>
+                                        </div>
                                       ) : (
-                                        <>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setEditingItemIds(prev => {
-                                                const next = new Set(prev);
-                                                next.add(item.id);
-                                                return next;
-                                              });
-                                            }}
-                                            className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition border border-slate-200"
-                                          >
-                                            ✏ Chỉnh sửa
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => handleBatchConfirmItem(item)}
-                                            disabled={submitting}
-                                            className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50 shadow-sm"
-                                          >
-                                            [ Xác nhận lệch ]
-                                          </button>
-                                        </>
+                                        <div className="flex flex-col gap-2 items-end">
+                                          <div className="flex gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingItemIds(prev => {
+                                                  const next = new Set(prev);
+                                                  next.add(item.id);
+                                                  return next;
+                                                });
+                                              }}
+                                              className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition border border-slate-200"
+                                            >
+                                              ✏ Chỉnh sửa
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => handleBatchConfirmItem(item)}
+                                              disabled={submitting}
+                                              className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50 shadow-sm"
+                                            >
+                                              [ Xác nhận lệch ]
+                                            </button>
+                                          </div>
+                                          {item.assetId && (
+                                            <button
+                                              type="button"
+                                              onClick={() => handleBatchProposeBookUpdate(item)}
+                                              disabled={submitting}
+                                              className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50"
+                                            >
+                                              📋 Đề xuất cập nhật sổ
+                                            </button>
+                                          )}
+                                        </div>
                                       )}
                                     </>
                                   )}

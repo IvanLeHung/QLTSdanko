@@ -1,0 +1,437 @@
+          {/* VÙNG QUÉT MÃ VÀ ĐỐI SOÁT NHANH */}
+          {(session.status === 'OPEN' || session.status === 'IN_PROGRESS') && hasNguoiKKRights() && (
+            <div className="p-8 border-b border-slate-100 bg-slate-50/50">
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                {/* CỘT TRÁI: KHU VỰC QUÉT MÃ & THỐNG KÊ */}
+                <div className="space-y-6">
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-black text-xs uppercase tracking-widest text-[#0F1720]">Bàn quét kiểm kê</h3>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isFastScanMode}
+                          onChange={(e) => setIsFastScanMode(e.target.checked)}
+                          className="rounded text-primary-600 focus:ring-primary-500 w-4 h-4"
+                        />
+                        <span className="text-xs font-bold text-slate-600">Quét nhanh ⚡</span>
+                      </label>
+                    </div>
+
+                    <form onSubmit={handleScanSubmit} className="space-y-3">
+                      <div className="relative">
+                        <input
+                          ref={scanInputRef}
+                          type="text"
+                          className="w-full bg-slate-50 border border-slate-250 rounded-2xl px-4 py-3.5 text-sm font-mono font-bold text-slate-800 focus:ring-4 focus:ring-primary-50 focus:border-primary-500 transition-all outline-none"
+                          placeholder="Quét Barcode/QR hoặc nhập mã..."
+                          value={scanCodeInput}
+                          onChange={(e) => setScanCodeInput(e.target.value)}
+                          autoFocus
+                        />
+                        <button
+                          type="submit"
+                          className="absolute right-2 top-1/2 -translate-y-1/2 bg-primary-600 hover:bg-primary-700 text-white rounded-xl px-4 py-2 text-xs font-black uppercase tracking-wider transition-all"
+                        >
+                          Tìm
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-slate-400 font-medium italic">
+                        * Súng quét tự động nhấn Enter sau khi quét. Nhập tay nhấn "Tìm".
+                      </p>
+                    </form>
+
+                    {/* Scope Lock & Selectors */}
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-700">Phạm vi kiểm kê</span>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isScopeLocked}
+                            onChange={(e) => setIsScopeLocked(e.target.checked)}
+                            className="rounded text-primary-600 focus:ring-primary-500 w-3.5 h-3.5"
+                          />
+                          <span className="text-[11px] font-bold text-slate-600">Khóa phạm vi 🔒</span>
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Thành phố</label>
+                          <select
+                            value={scanScopeCity}
+                            onChange={(e) => setScanScopeCity(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                          >
+                            <option value="">Tất cả</option>
+                            {reviewCities.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Vị trí</label>
+                          <select
+                            value={scanScopeLocation}
+                            onChange={(e) => setScanScopeLocation(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                          >
+                            <option value="">Tất cả</option>
+                            {reviewLocations.map(l => <option key={l} value={l}>{l}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Dự án</label>
+                          <select
+                            value={scanScopeProject}
+                            onChange={(e) => setScanScopeProject(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                          >
+                            <option value="">Tất cả</option>
+                            {reviewProjects.map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Phòng ban</label>
+                          <select
+                            value={scanScopeDepartment}
+                            onChange={(e) => setScanScopeDepartment(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                          >
+                            <option value="">Tất cả</option>
+                            {reviewDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Người sử dụng</label>
+                        <input
+                          type="text"
+                          value={scanScopeUser}
+                          onChange={(e) => setScanScopeUser(e.target.value)}
+                          placeholder="Nhập tên người dùng..."
+                          className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Stats Dashboard Indicators */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-emerald-50 border border-emerald-150 p-2.5 rounded-2xl text-center">
+                        <span className="block text-[8px] font-black text-emerald-600 uppercase tracking-wider">Đã quét</span>
+                        <span className="text-xs font-black text-emerald-700 mt-0.5 block">
+                          {stats.checked}/{stats.total}
+                        </span>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-150 p-2.5 rounded-2xl text-center">
+                        <span className="block text-[8px] font-black text-amber-600 uppercase tracking-wider">Sai lệch</span>
+                        <span className="text-xs font-black text-amber-700 mt-0.5 block">
+                          {activeSession ? (activeSession.details?.filter((i: any) => i.checkedAt && i.resultStatus !== 'MATCH').length || 0) : (session?.items?.filter((i: any) => i.checkStatus === 'CHECKED' && i.result !== 'MATCHED').length || 0)}
+                        </span>
+                      </div>
+                      <div className="bg-slate-100 border border-slate-250 p-2.5 rounded-2xl text-center">
+                        <span className="block text-[8px] font-black text-slate-500 uppercase tracking-wider">Ngoài sổ</span>
+                        <span className="text-xs font-black text-slate-700 mt-0.5 block">
+                          {discoveredAssets.length}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setIsDiscoveredModalOpen(true)}
+                        className="flex-1 bg-emerald-50 hover:bg-emerald-100 text-emerald-650 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center border border-emerald-250"
+                      >
+                        <Plus className="mr-1 h-3.5 w-3.5" /> Báo ngoài sổ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsNormalizationOpen(true)}
+                        className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-650 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center border border-blue-200/50 cursor-pointer"
+                      >
+                        🔍 Chuẩn hóa
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* LỊCH SỬ QUÉT GẦN NHẤT */}
+                  <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
+                    <h4 className="font-black text-[10px] uppercase tracking-widest text-[#0F1720]">Lịch sử quét gần nhất</h4>
+                    <div className="max-h-90 overflow-y-auto space-y-3 pr-1">
+                      {scanHistory.map((h) => {
+                        const isDuplicated = h.result === 'DUPLICATE_IGNORED';
+                        return (
+                          <div key={h.id} className="p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-2xl relative transition-all">
+                            <div className="flex justify-between items-start">
+                              <span className="font-mono text-xs font-black text-slate-800">{h.assetCode}</span>
+                              <span className="text-[10px] text-slate-400">{h.scannedAt}</span>
+                            </div>
+                            <p className="text-[11px] font-bold text-slate-600 mt-1 truncate max-w-[200px]" title={h.assetName}>
+                              {h.assetName}
+                            </p>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                h.result === 'Khớp (Tự động)' || h.result === 'MATCH_AUTO_SAVED'
+                                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                  : isDuplicated
+                                  ? 'bg-slate-100 text-slate-500 border border-slate-250'
+                                  : 'bg-amber-50 text-amber-600 border border-amber-200'
+                              }`}>
+                                {h.result === 'Khớp (Tự động)' || h.result === 'MATCH_AUTO_SAVED' ? 'Khớp (Tự động)' : isDuplicated ? 'Bỏ qua (Trùng)' : h.result}
+                              </span>
+                              {!isDuplicated && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUndoTargetItem(findItemForLog(h.rawLog) || { id: h.rawLog.inventoryItemId || h.rawLog.inventorySessionDetailId || h.id });
+                                    setUndoReason('');
+                                    setShowUndoModal(true);
+                                  }}
+                                  className="text-[10px] font-black uppercase text-rose-600 hover:text-rose-700 transition"
+                                >
+                                  Hoàn tác
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {scanHistory.length === 0 && (
+                        <div className="p-6 text-center text-slate-400 text-xs italic">
+                          Chưa có lượt quét nào trong phiên.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* CỘT PHẢI: CHI TIẾT ĐỐI SOÁT */}
+                <div className="lg:col-span-2">
+                  {selectedItemForCheck ? (
+                    <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
+                      <div className="flex justify-between items-start border-b pb-4 border-slate-100">
+                        <div>
+                          <h3 className="text-md font-black uppercase tracking-widest text-[#0F1720]">Bàn đối soát tài sản</h3>
+                          <p className="text-xs text-slate-500 font-bold mt-1">
+                            Mã TS: <span className="font-mono text-slate-800 mr-4">{selectedItemForCheck.assetCode || selectedItemForCheck.asset?.assetCode}</span>
+                            Tên: <span className="text-slate-800">{activeSession ? selectedItemForCheck.assetName : selectedItemForCheck.asset?.assetName}</span>
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedItemForCheck(null)}
+                          className="text-slate-400 hover:text-slate-600 font-bold text-xs"
+                        >
+                          ✕ Đóng
+                        </button>
+                      </div>
+
+                      {/* SIDE BY SIDE TABLE */}
+                      <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                        <table className="w-full text-xs text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <th className="p-4 font-bold text-slate-500 w-1/3">Trường thông tin</th>
+                              <th className="p-4 font-bold text-slate-600 w-1/3">Sổ sách gốc</th>
+                              <th className="p-4 font-bold text-[#0F1720] w-1/3">Thực tế quét</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-150">
+                            <tr className={selectedItemForCheck.expectedLocation !== checkForm.actualLocation ? 'bg-amber-50/40' : ''}>
+                              <td className="p-4 font-bold text-slate-500">Vị trí</td>
+                              <td className="p-4 font-semibold text-slate-600">
+                                {selectedItemForCheck.expectedLocation || selectedItemForCheck.bookLocationName || selectedItemForCheck.asset?.locationName || 'Trong kho'}
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.actualLocation}
+                                  onChange={e => setCheckForm({ ...checkForm, actualLocation: e.target.value })}
+                                />
+                              </td>
+                            </tr>
+
+                            <tr className={selectedItemForCheck.asset?.currentUserName !== checkForm.actualUserName ? 'bg-amber-50/40' : ''}>
+                              <td className="p-4 font-bold text-slate-500">Người sử dụng</td>
+                              <td className="p-4 font-semibold text-slate-600">
+                                {selectedItemForCheck.asset?.currentUserName || 'Chưa bàn giao'}
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.actualUserName}
+                                  onChange={e => setCheckForm({ ...checkForm, actualUserName: e.target.value })}
+                                />
+                              </td>
+                            </tr>
+
+                            <tr className={selectedItemForCheck.asset?.serialNumber !== checkForm.actualSerialNumber ? 'bg-amber-50/40' : ''}>
+                              <td className="p-4 font-bold text-slate-500">Số Serial</td>
+                              <td className="p-4 font-semibold text-slate-600">
+                                {selectedItemForCheck.asset?.serialNumber || 'N/A'}
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.actualSerialNumber}
+                                  onChange={e => setCheckForm({ ...checkForm, actualSerialNumber: e.target.value })}
+                                />
+                              </td>
+                            </tr>
+
+                            <tr className={selectedItemForCheck.expectedStatus !== checkForm.actualStatus ? 'bg-amber-50/40' : ''}>
+                              <td className="p-4 font-bold text-slate-500">Trạng thái sử dụng</td>
+                              <td className="p-4 font-semibold text-slate-600">
+                                {selectedItemForCheck.expectedStatus === 'IN_STOCK' ? 'Trong kho' : 'Đang sử dụng'}
+                              </td>
+                              <td className="p-3">
+                                <select
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.actualStatus}
+                                  onChange={e => setCheckForm({ ...checkForm, actualStatus: e.target.value })}
+                                >
+                                  <option value="IN_STOCK">Trong kho</option>
+                                  <option value="ASSIGNED">Đang sử dụng</option>
+                                  <option value="UNDER_REPAIR">Đang sửa</option>
+                                  <option value="DAMAGED">Báo hỏng</option>
+                                </select>
+                              </td>
+                            </tr>
+
+                            <tr>
+                              <td className="p-4 font-bold text-slate-500">Ngoại hình vật lý</td>
+                              <td className="p-4 font-semibold text-slate-400">N/A</td>
+                              <td className="p-3">
+                                <select
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.appearance}
+                                  onChange={e => setCheckForm({ ...checkForm, appearance: e.target.value })}
+                                >
+                                  <option value="GOOD">Tốt, như mới</option>
+                                  <option value="NORMAL">Bình thường, trầy xước</option>
+                                  <option value="BAD">Hỏng hóc, nứt vỡ</option>
+                                </select>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+
+                      {/* ACTION BUTTONS ROW */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <button
+                          type="button"
+                          onClick={() => handleKeepBookValues(selectedItemForCheck)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                        >
+                          Giữ nguyên sổ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMarkAsLost(selectedItemForCheck)}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-650 py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                        >
+                          Báo mất tài sản
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleProposeAdjustment(selectedItemForCheck)}
+                          className="bg-blue-50 hover:bg-blue-100 text-blue-650 py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                        >
+                          Đề xuất cập nhật sổ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleCheckItem('CHECKED')}
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all col-span-2 md:col-span-1 shadow-md shadow-emerald-200"
+                        >
+                          Ghi nhận thực tế
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecheckTargetItem(selectedItemForCheck);
+                            setRecheckReason('');
+                            setShowRecheckModal(true);
+                          }}
+                          className="bg-amber-50 hover:bg-amber-100 text-amber-650 py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all col-span-2 md:col-span-3 border border-amber-250"
+                        >
+                          Gửi yêu cầu kiểm tra lại
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="h-full min-h-[350px] bg-slate-50 border border-slate-200 rounded-3xl flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
+                      {successFlashItem ? (
+                        <div className="space-y-4">
+                          <div className="w-16 h-16 bg-emerald-100 border border-emerald-300 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+                            <Check className="h-8 w-8" />
+                          </div>
+                          <h3 className="font-black text-emerald-700 text-base uppercase tracking-wider">
+                            Quét thành công!
+                          </h3>
+                          <div className="bg-white p-4 rounded-2xl border border-slate-200 max-w-sm mx-auto shadow-sm">
+                            <p className="font-mono text-xs font-black text-slate-800">
+                              {successFlashItem.assetCode || successFlashItem.asset?.assetCode}
+                            </p>
+                            <p className="text-xs text-slate-500 font-bold mt-1">
+                              {activeSession ? successFlashItem.assetName : successFlashItem.asset?.assetName}
+                            </p>
+                            <span className="mt-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
+                              Tự động khớp & lưu sổ sách
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full space-y-6">
+                          <ClipboardList className="h-12 w-12 text-slate-350 mx-auto" />
+                          <div className="space-y-2">
+                            <h3 className="font-black text-slate-700 text-sm uppercase tracking-wider">
+                              Tiến độ kiểm kê
+                            </h3>
+                            <p className="text-slate-400 text-xs">
+                              Quét Barcode/QR hoặc nhập mã bên trái để đối soát nhanh.
+                            </p>
+                          </div>
+
+                          {/* PROGRESS BAR & STATS GAUGE */}
+                          <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4 max-w-md mx-auto shadow-sm">
+                            <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                              <span>Tiến trình</span>
+                              <span>
+                                {stats.checked}/{stats.total} ({stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0}%)
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                              <div
+                                className="bg-primary-600 h-full rounded-full transition-all duration-500"
+                                style={{ width: `${stats.total > 0 ? (stats.checked / stats.total) * 100 : 0}%` }}
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 border-t pt-4 border-slate-100">
+                              <div className="text-center">
+                                <span className="block text-[10px] font-bold text-slate-400 uppercase">Tốc độ quét</span>
+                                <span className="text-lg font-black text-[#0F1720] flex items-center justify-center gap-1 mt-1">
+                                  ⚡ {getScanSpeed()}{' '}
+                                  <span className="text-[10px] text-slate-400 font-bold">TS/giờ</span>
+                                </span>
+                              </div>
+                              <div className="text-center">
+                                <span className="block text-[10px] font-bold text-slate-400 uppercase">Sai lệch vị trí</span>
+                                <span className="text-lg font-black text-amber-600 mt-1 block">
+                                  {stats.wrongLocation}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}

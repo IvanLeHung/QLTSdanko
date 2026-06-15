@@ -2552,6 +2552,169 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────
+// POST BATCH SAVE ONLY (CHỈ LƯU THỰC TẾ - KHÔNG XÁC NHẬN)
+// ──────────────────────────────────────────────────────────────
+router.post('/batch-save', authenticateToken, async (req: any, res) => {
+  const { mode, inventoryCheckId, sessionId, batchId, savedItems } = req.body;
+  const username = req.user?.username || 'system';
+
+  const checkIdInt = inventoryCheckId ? Number(inventoryCheckId) : null;
+  const sessIdInt = sessionId ? Number(sessionId) : null;
+
+  if (!savedItems || !Array.isArray(savedItems) || savedItems.length === 0) {
+    return res.status(400).json({ message: 'Danh sách tài sản cần lưu là bắt buộc' });
+  }
+
+  try {
+    const savedList: { itemId: number }[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (const itemConf of savedItems) {
+        const itemId = Number(itemConf.id);
+
+        if (sessIdInt) {
+          const detail = await tx.inventoryDetail.findUnique({
+            where: { id: itemId },
+            include: { asset: true }
+          });
+          if (!detail) throw new Error(`Không tìm thấy dòng chi tiết kiểm kê ID: ${itemId}`);
+
+          await tx.inventoryDetail.update({
+            where: { id: itemId },
+            data: {
+              actualLocationName: itemConf.actualLocation || detail.actualLocationName,
+              actualUserName: itemConf.actualUser || detail.actualUserName,
+              actualDepartmentName: itemConf.actualDepartment || detail.actualDepartmentName,
+              actualProjectName: itemConf.actualProject || detail.actualProjectName,
+              note: itemConf.note || detail.note,
+              checkStatus: 'ACTUAL_UPDATED',
+              batchId: batchId || detail.batchId
+            }
+          });
+
+          await tx.auditLog.create({
+            data: {
+              entityType: 'INVENTORY_DETAIL',
+              entityId: detail.id,
+              action: 'ACTUAL_SAVE',
+              details: `Lưu thực tế lô ${batchId}. Vị trí [${itemConf.actualLocation}], Người [${itemConf.actualUser}], PB [${itemConf.actualDepartment}], DA [${itemConf.actualProject}]`,
+              performedBy: username
+            }
+          });
+
+          savedList.push({ itemId });
+
+        } else if (checkIdInt) {
+          const item = await tx.inventoryItem.findUnique({
+            where: { id: itemId },
+            include: { asset: true }
+          });
+          if (!item) throw new Error(`Không tìm thấy dòng tài sản kiểm kê ID: ${itemId}`);
+
+          await tx.inventoryItem.update({
+            where: { id: itemId },
+            data: {
+              actualLocation: itemConf.actualLocation || item.actualLocation,
+              actualUserName: itemConf.actualUser || item.actualUserName,
+              actualDepartment: itemConf.actualDepartment || item.actualDepartment,
+              actualProject: itemConf.actualProject || item.actualProject,
+              actualStatus: itemConf.actualStatus || item.actualStatus,
+              quality: itemConf.quality || item.quality,
+              note: itemConf.note || item.note,
+              checkStatus: 'ACTUAL_UPDATED',
+              actualSerialNumber: itemConf.serial || item.actualSerialNumber,
+              batchId: batchId || item.batchId
+            }
+          });
+
+          await tx.auditLog.create({
+            data: {
+              entityType: 'INVENTORY_ITEM',
+              entityId: item.id,
+              action: 'ACTUAL_SAVE',
+              details: `Lưu thực tế lô ${batchId}. Vị trí [${itemConf.actualLocation}], Người [${itemConf.actualUser}], PB [${itemConf.actualDepartment}], DA [${itemConf.actualProject}]`,
+              performedBy: username
+            }
+          });
+
+          savedList.push({ itemId });
+        }
+      }
+    });
+
+    res.json({ success: true, savedItems: savedList });
+  } catch (error: any) {
+    console.error('Lỗi batch-save:', error);
+    res.status(400).json({ message: error.message || 'Lỗi lưu dữ liệu thực tế' });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+// POST BATCH PROPOSE BOOK UPDATE (ĐỀ XUẤT CẬP NHẬT SỔ)
+// ──────────────────────────────────────────────────────────────
+router.post('/batch-propose-book-update', authenticateToken, async (req: any, res) => {
+  const { inventoryCheckId, sessionId, batchId, assetId, itemId, fields } = req.body;
+  // fields: Array of { fieldName, oldValue, newValue, reason }
+  const username = req.user?.username || 'system';
+  const checkIdInt = inventoryCheckId ? Number(inventoryCheckId) : null;
+  const sessIdInt = sessionId ? Number(sessionId) : null;
+  const assetIdInt = assetId ? Number(assetId) : null;
+
+  if (!assetIdInt) {
+    return res.status(400).json({ message: 'assetId là bắt buộc' });
+  }
+  if (!fields || !Array.isArray(fields) || fields.length === 0) {
+    return res.status(400).json({ message: 'Danh sách trường đề xuất cập nhật là bắt buộc' });
+  }
+
+  try {
+    // Delete any existing PENDING_APPROVAL proposals for same asset+batch to avoid duplicates
+    await prisma.assetUpdateProposal.deleteMany({
+      where: {
+        assetId: assetIdInt,
+        batchId,
+        status: 'PENDING_APPROVAL'
+      }
+    });
+
+    const proposals = await Promise.all(
+      fields.map((field: { fieldName: string; oldValue: string; newValue: string; reason?: string }) =>
+        prisma.assetUpdateProposal.create({
+          data: {
+            assetId: assetIdInt,
+            inventoryCheckId: checkIdInt,
+            sessionId: sessIdInt,
+            batchId,
+            fieldName: field.fieldName,
+            oldValue: field.oldValue || '',
+            newValue: field.newValue || '',
+            reason: field.reason || 'Sai lệch phát hiện trong đợt kiểm kê lô',
+            source: 'BATCH_REVIEW',
+            status: 'PENDING_APPROVAL',
+            createdBy: username
+          }
+        })
+      )
+    );
+
+    await prisma.auditLog.create({
+      data: {
+        entityType: 'ASSET',
+        entityId: assetIdInt,
+        action: 'PROPOSE_BOOK_UPDATE',
+        details: `Đề xuất cập nhật sổ từ lô ${batchId}. Các trường: ${fields.map((f: any) => f.fieldName).join(', ')}`,
+        performedBy: username
+      }
+    });
+
+    res.json({ success: true, proposals: proposals.length });
+  } catch (error: any) {
+    console.error('Lỗi batch-propose-book-update:', error);
+    res.status(400).json({ message: error.message || 'Lỗi tạo đề xuất cập nhật sổ' });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
 // POST BATCH UNDO (HOÀN TÁC CÁC MÃ ĐÃ XÁC NHẬN KIỂM TRONG LÔ)
 // ──────────────────────────────────────────────────────────────
 router.post('/batch-undo', authenticateToken, async (req: any, res) => {

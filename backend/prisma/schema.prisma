@@ -251,6 +251,7 @@ model Asset {
   lostLogs                LostReportLog[]
   histories               AssetHistory[]
   normalizationSuggestions AssetNormalizationSuggestion[]
+  updateProposals          AssetUpdateProposal[]
 
   @@index([assetCode])
   @@index([serialNumber])
@@ -1401,6 +1402,31 @@ model RecheckRequest {
   requestedAt      DateTime  @default(now())
   approvedBy       String?
   approvedAt       DateTime?
+}
+
+model AssetUpdateProposal {
+  id               Int      @id @default(autoincrement())
+  assetId          Int
+  inventoryCheckId Int?
+  sessionId        Int?
+  batchId          String?
+  fieldName        String   // locationName, currentUserName, departmentName, projectName, serialNumber, status
+  oldValue         String?
+  newValue         String?
+  reason           String?
+  source           String   @default("BATCH_REVIEW") // BATCH_REVIEW, MANUAL
+  status           String   @default("PENDING_APPROVAL") // PENDING_APPROVAL, APPROVED, REJECTED
+  createdBy        String?
+  createdAt        DateTime @default(now())
+  reviewedBy       String?
+  reviewedAt       DateTime?
+  reviewNote       String?
+
+  asset            Asset    @relation(fields: [assetId], references: [id])
+
+  @@index([assetId])
+  @@index([status])
+  @@index([inventoryCheckId])
 }
 
 model BatchScanJob {
