@@ -910,7 +910,7 @@ router.get('/invoices/:id', authenticateToken, async (req: AuthRequest, res) => 
 router.put('/invoices/:id', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
-    const { invoiceNo, invoiceDate, supplierName, supplierTaxCode, totalAmount, totalAssets } = req.body;
+    const { invoiceNo, invoiceDate, supplierName, supplierTaxCode, totalAmount, totalAssets, note } = req.body;
 
     const invoice = await prisma.assetInvoiceBatch.findUnique({ where: { id } });
     if (!invoice) {
@@ -926,7 +926,8 @@ router.put('/invoices/:id', authenticateToken, requirePermission('ASSET_UPDATE')
           supplierName: supplierName !== undefined ? supplierName : invoice.supplierName,
           supplierTaxCode: supplierTaxCode !== undefined ? supplierTaxCode : invoice.supplierTaxCode,
           totalAmount: totalAmount !== undefined ? parseFloat(totalAmount) : invoice.totalAmount,
-          totalAssets: totalAssets !== undefined ? parseInt(totalAssets) : invoice.totalAssets
+          totalAssets: totalAssets !== undefined ? parseInt(totalAssets) : invoice.totalAssets,
+          note: note !== undefined ? note : invoice.note
         }
       });
 

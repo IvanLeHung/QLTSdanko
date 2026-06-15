@@ -690,6 +690,7 @@ model AssetInvoiceBatch {
   warehouseId     Int?
   totalAmount     Float?
   fileUrl         String?
+  note            String?
   status          String             @default("DRAFT") // DRAFT | VALIDATED | POSTED | CANCELLED
   totalLines      Int                @default(0)
   totalAssets     Int                @default(0)

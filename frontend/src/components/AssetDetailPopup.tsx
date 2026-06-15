@@ -885,12 +885,20 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                               <span className="text-slate-800 text-sm truncate block" title={asset.invoiceBatch.supplierName}>{asset.invoiceBatch.supplierName || 'N/A'}</span>
                             </div>
                             <div>
+                              <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Mã số thuế NCC</span>
+                              <span className="text-slate-800 text-sm block">{asset.invoiceBatch.supplierTaxCode || 'N/A'}</span>
+                            </div>
+                            <div>
                               <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Giá trị trước VAT</span>
                               <span className="text-slate-850 text-sm">
                                 {hasPermission('ASSET_VIEW_PRICE') && asset.purchasePriceExVat !== null
                                   ? `${asset.purchasePriceExVat.toLocaleString()} ₫`
                                   : '*****'}
                               </span>
+                            </div>
+                            <div className="md:col-span-3">
+                              <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ghi chú hóa đơn</span>
+                              <span className="text-slate-800 text-sm font-medium leading-relaxed block">{asset.invoiceBatch.note || 'Không có ghi chú.'}</span>
                             </div>
                           </div>
 
@@ -1704,7 +1712,8 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
     supplierName: '',
     supplierTaxCode: '',
     totalAmount: '',
-    totalAssets: ''
+    totalAssets: '',
+    note: ''
   });
   const [saving, setSaving] = useState(false);
   const [addQuantityAsset, setAddQuantityAsset] = useState<any>(null);
@@ -1788,7 +1797,8 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
       supplierName: invoice?.supplierName || '',
       supplierTaxCode: invoice?.supplierTaxCode || '',
       totalAmount: invoice?.totalAmount?.toString() || '0',
-      totalAssets: invoice?.totalAssets?.toString() || '0'
+      totalAssets: invoice?.totalAssets?.toString() || '0',
+      note: invoice?.note || ''
     });
     setIsEditing(true);
   };
@@ -1806,7 +1816,8 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
         supplierName: editForm.supplierName,
         supplierTaxCode: editForm.supplierTaxCode,
         totalAmount: parseFloat(editForm.totalAmount),
-        totalAssets: parseInt(editForm.totalAssets)
+        totalAssets: parseInt(editForm.totalAssets),
+        note: editForm.note
       });
       toast.success("Cập nhật thông tin hóa đơn thành công!");
       setIsEditing(false);
@@ -1923,7 +1934,16 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
                       onChange={e => setEditForm({ ...editForm, totalAssets: e.target.value })}
                     />
                   </div>
-                  <div className="flex items-end gap-2 text-xs font-black">
+                  <div className="col-span-2 md:col-span-4 space-y-1">
+                    <label className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block">Ghi chú hóa đơn</label>
+                    <textarea
+                      rows={2}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2 text-xs font-bold text-slate-800 focus:outline-none focus:border-primary-500 resize-none font-medium"
+                      value={editForm.note}
+                      onChange={e => setEditForm({ ...editForm, note: e.target.value })}
+                    />
+                  </div>
+                  <div className="col-span-2 md:col-span-4 flex justify-end gap-2 text-xs font-black pt-2 border-t border-slate-100">
                     <button
                       type="button"
                       disabled={saving}
@@ -2004,6 +2024,10 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
                   ) : (
                     <span className="text-slate-400 italic font-bold">Chưa đính kèm tệp tin</span>
                   )}
+                </div>
+                <div className="col-span-2 md:col-span-4 border-t border-slate-100 pt-3">
+                  <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ghi chú hóa đơn</span>
+                  <span className="text-slate-800 font-bold text-sm block leading-relaxed">{invoice.note || 'Không có ghi chú.'}</span>
                 </div>
               </div>
             )}

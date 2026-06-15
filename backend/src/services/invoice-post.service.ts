@@ -119,6 +119,7 @@ export class InvoicePostService {
           warehouseId: invoice.warehouseId ? parseInt(String(invoice.warehouseId)) : null,
           totalAmount: invoice.totalAmount ? parseFloat(String(invoice.totalAmount)) : null,
           fileUrl: invoice.fileUrl || null,
+          note: invoice.note || null,
           status: 'POSTED',
           totalLines: lines.length,
           totalAssets: lines.reduce((sum, l) => sum + l.quantity, 0),
