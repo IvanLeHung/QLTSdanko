@@ -251,6 +251,11 @@ model Asset {
   lostLogs                LostReportLog[]
   histories               AssetHistory[]
   normalizationSuggestions AssetNormalizationSuggestion[]
+
+  @@index([assetCode])
+  @@index([serialNumber])
+  @@index([locationName])
+  @@index([currentUserName])
 }
 
 model CreationBatch {
@@ -338,6 +343,10 @@ model InventoryItem {
   physicalDetailsJson String?
   asset               Asset          @relation(fields: [assetId], references: [id])
   inventoryCheck      InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+
+  @@index([inventoryCheckId])
+  @@index([assetCode])
+  @@index([checkStatus])
 }
 
 model InventorySession {
@@ -388,6 +397,9 @@ model InventoryDetail {
   createdAt          DateTime          @default(now())
   session            InventorySession  @relation(fields: [sessionId], references: [id])
   asset              Asset?            @relation(fields: [assetId], references: [id])
+
+  @@index([sessionId])
+  @@index([assetCode])
 }
 
 

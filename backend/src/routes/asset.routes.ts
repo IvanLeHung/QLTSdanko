@@ -1756,23 +1756,97 @@ router.get('/export-liquidated', authenticateToken, requirePermission('ASSET_VIE
   }
 });
 
-router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
-  const asset = await prisma.asset.findUnique({
-    where: { id: Number(req.params.id) },
-    include: {
-      assignments: { orderBy: { createdAt: 'desc' } },
-      damageReports: { include: { damageReport: true } },
-      lostReports: { orderBy: { createdAt: 'desc' } },
-      liquidations: { include: { liquidationRecord: true } },
-      events: { orderBy: { eventDate: 'desc' } },
-      editLogs: { orderBy: { createdAt: 'desc' } },
-      repairTickets: { orderBy: { createdAt: 'desc' } },
-      repairLogs: { orderBy: { createdAt: 'desc' } },
-      histories: { orderBy: { eventTime: 'desc' } },
-      invoiceBatch: true,
-      invoiceLine: true
+router.get('/barcode/:barcode', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
+  try {
+    const barcode = req.params.barcode as string;
+    const asset = await prisma.asset.findFirst({
+      where: {
+        isDeleted: false,
+        OR: [
+          { assetCode: barcode },
+          { serialNumber: barcode }
+        ]
+      },
+      include: {
+        assignments: { orderBy: { createdAt: 'desc' } },
+        damageReports: { include: { damageReport: true } },
+        lostReports: { orderBy: { createdAt: 'desc' } },
+        liquidations: { include: { liquidationRecord: true } },
+        events: { orderBy: { eventDate: 'desc' } },
+        editLogs: { orderBy: { createdAt: 'desc' } },
+        repairTickets: { orderBy: { createdAt: 'desc' } },
+        repairLogs: { orderBy: { createdAt: 'desc' } },
+        histories: { orderBy: { eventTime: 'desc' } },
+        invoiceBatch: true,
+        invoiceLine: true
+      }
+    });
+
+    if (!asset) return res.status(404).json({ message: 'Không tìm thấy tài sản với mã hoặc serial này' });
+
+    // Hide price if no ASSET_VIEW_PRICE
+    if (!req.user?.roles?.includes('SUPER_ADMIN') && !req.user?.permissions?.includes('ASSET_VIEW_PRICE')) {
+      asset.purchasePriceExVat = null;
     }
-  });
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { entityType: 'ASSET', entityId: asset.id },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    res.json({ ...asset, auditLogs });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
+  const idParam = req.params.id as string;
+  let asset = null;
+
+  if (!isNaN(Number(idParam))) {
+    asset = await prisma.asset.findUnique({
+      where: { id: Number(idParam) },
+      include: {
+        assignments: { orderBy: { createdAt: 'desc' } },
+        damageReports: { include: { damageReport: true } },
+        lostReports: { orderBy: { createdAt: 'desc' } },
+        liquidations: { include: { liquidationRecord: true } },
+        events: { orderBy: { eventDate: 'desc' } },
+        editLogs: { orderBy: { createdAt: 'desc' } },
+        repairTickets: { orderBy: { createdAt: 'desc' } },
+        repairLogs: { orderBy: { createdAt: 'desc' } },
+        histories: { orderBy: { eventTime: 'desc' } },
+        invoiceBatch: true,
+        invoiceLine: true
+      }
+    });
+  }
+
+  if (!asset) {
+    asset = await prisma.asset.findFirst({
+      where: {
+        isDeleted: false,
+        OR: [
+          { assetCode: idParam },
+          { serialNumber: idParam }
+        ]
+      },
+      include: {
+        assignments: { orderBy: { createdAt: 'desc' } },
+        damageReports: { include: { damageReport: true } },
+        lostReports: { orderBy: { createdAt: 'desc' } },
+        liquidations: { include: { liquidationRecord: true } },
+        events: { orderBy: { eventDate: 'desc' } },
+        editLogs: { orderBy: { createdAt: 'desc' } },
+        repairTickets: { orderBy: { createdAt: 'desc' } },
+        repairLogs: { orderBy: { createdAt: 'desc' } },
+        histories: { orderBy: { eventTime: 'desc' } },
+        invoiceBatch: true,
+        invoiceLine: true
+      }
+    });
+  }
 
   if (!asset) return res.status(404).json({ message: 'Asset not found' });
 

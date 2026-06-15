@@ -134,6 +134,207 @@ router.delete('/sessions/:sessionId', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/sessions/:sessionId/barcode/:barcode', authenticateToken, async (req, res) => {
+  const sessionId = Number(req.params.sessionId);
+  const barcode = req.params.barcode as string;
+
+  try {
+    const details = await prisma.inventoryDetail.findMany({
+      where: {
+        sessionId,
+        OR: [
+          { assetCode: barcode },
+          { serialNumber: barcode },
+          { asset: { serialNumber: barcode } }
+        ]
+      },
+      include: { asset: true }
+    });
+
+    if (details.length === 0) {
+      return res.status(404).json({ message: 'Không tìm thấy tài sản trong phiên kiểm kê này' });
+    }
+    if (details.length > 1) {
+      return res.status(300).json({ message: 'Trùng mã tài sản hoặc serial', items: details });
+    }
+
+    res.json(details[0]);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/sessions/:sessionId/fast-scan', authenticateToken, async (req: AuthRequest, res) => {
+  const sessionId = Number(req.params.sessionId);
+  const { barcode } = req.body;
+  const checkedBy = req.user?.fullName || req.user?.username || 'system';
+
+  if (!barcode) {
+    return res.status(400).json({ message: 'Barcode is required' });
+  }
+
+  try {
+    const details = await prisma.inventoryDetail.findMany({
+      where: {
+        sessionId,
+        OR: [
+          { assetCode: barcode },
+          { serialNumber: barcode },
+          { asset: { serialNumber: barcode } }
+        ]
+      },
+      include: { asset: true }
+    });
+
+    if (details.length === 0) {
+      const globalAsset = await prisma.asset.findFirst({
+        where: {
+          isDeleted: false,
+          OR: [
+            { assetCode: barcode },
+            { serialNumber: barcode }
+          ]
+        }
+      });
+
+      if (globalAsset) {
+        return res.json({
+          success: false,
+          action: 'OUT_OF_SCOPE',
+          message: 'Tài sản tồn tại trên hệ thống nhưng không thuộc phạm vi của phiên kiểm kê này.',
+          reason: ['Tài sản ngoài phạm vi phiên kiểm kê'],
+          asset: globalAsset
+        });
+      }
+
+      return res.json({
+        success: false,
+        action: 'NOT_FOUND',
+        message: `Không tìm thấy tài sản với mã hoặc serial "${barcode}" trên hệ thống.`,
+        reason: ['Tài sản không tồn tại']
+      });
+    }
+
+    if (details.length > 1) {
+      return res.json({
+        success: false,
+        action: 'DUPLICATE_CODE',
+        message: 'Trùng mã tài sản hoặc serial. Vui lòng chọn tài sản cụ thể.',
+        reason: ['Trùng mã/serial kiểm kê'],
+        items: details
+      });
+    }
+
+    const detail = details[0];
+
+    if (detail.checkedAt) {
+      return res.json({
+        success: false,
+        action: 'ALREADY_CHECKED',
+        message: `Tài sản này đã được kiểm kê trước đó.`,
+        reason: ['Đã kiểm kê trước đó'],
+        item: detail,
+        asset: detail.asset
+      });
+    }
+
+    const expectedStatus = detail.asset?.status || 'ASSIGNED';
+
+    if (expectedStatus === 'DAMAGED' || expectedStatus === 'LOST' || expectedStatus === 'LIQUIDATED') {
+      return res.json({
+        success: false,
+        action: 'NEED_REVIEW',
+        message: `Trạng thái sổ sách của tài sản là "${expectedStatus}". Cần người dùng kiểm tra chi tiết.`,
+        reason: [`Trạng thái bất thường: ${expectedStatus}`],
+        item: detail,
+        asset: detail.asset,
+        comparison: {
+          status: 'DIFFERENT',
+          location: 'MATCH',
+          user: 'MATCH',
+          serial: 'MATCH'
+        }
+      });
+    }
+
+    const visitSession = await prisma.inventorySession.findUnique({
+      where: { id: sessionId }
+    });
+
+    const comparison = {
+      status: 'MATCH',
+      location: 'MATCH',
+      user: 'MATCH',
+      serial: 'MATCH'
+    };
+    const reasons: string[] = [];
+
+    if (visitSession?.locationName && detail.bookLocationName && visitSession.locationName !== detail.bookLocationName) {
+      comparison.location = 'DIFFERENT';
+      reasons.push(`Vị trí sổ sách (${detail.bookLocationName}) khác vị trí phiên kiểm kê (${visitSession.locationName})`);
+    }
+
+    if (visitSession?.departmentName && detail.bookDepartmentName && visitSession.departmentName !== detail.bookDepartmentName) {
+      comparison.user = 'DIFFERENT';
+      reasons.push(`Bộ phận sổ sách (${detail.bookDepartmentName}) khác bộ phận phiên kiểm kê (${visitSession.departmentName})`);
+    }
+
+    if (reasons.length > 0) {
+      return res.json({
+        success: false,
+        action: 'NEED_REVIEW',
+        message: 'Có sự sai lệch thông tin vị trí hoặc bộ phận so với sổ sách.',
+        reason: reasons,
+        item: detail,
+        asset: detail.asset,
+        comparison
+      });
+    }
+
+    const updated = await prisma.inventoryDetail.update({
+      where: { id: detail.id },
+      data: {
+        actualLocationName: detail.bookLocationName || visitSession?.locationName || '',
+        actualUserName: detail.bookUserName || '',
+        actualDepartmentName: detail.bookDepartmentName || visitSession?.departmentName || '',
+        resultStatus: 'MATCH',
+        checkedAt: new Date()
+      }
+    });
+
+    if (detail.assetId) {
+      await prisma.asset.update({
+        where: { id: detail.assetId },
+        data: {
+          lastInventoryDate: new Date(),
+          lastInventoryStatus: 'MATCH'
+        }
+      });
+      await prisma.auditLog.create({
+        data: {
+          entityType: 'ASSET',
+          entityId: detail.assetId,
+          action: 'FAST_SCAN_CHECK',
+          details: `Tự động kiểm kê (Fast Scan) khớp hoàn toàn.`,
+          performedBy: req.user?.username || 'system'
+        }
+      });
+    }
+
+    return res.json({
+      success: true,
+      action: 'MATCH_AUTO_SAVED',
+      message: `Tự động kiểm kê thành công mã tài sản: ${detail.assetCode}`,
+      item: updated,
+      asset: detail.asset,
+      comparison
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 
 router.get('/sessions/:sessionId/report', authenticateToken, async (req, res) => {
   try {
@@ -164,6 +365,191 @@ router.post('/item/:id/check', authenticateToken, async (req: AuthRequest, res) 
     res.json(item);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+});
+
+router.get('/check/:inventoryCheckId/barcode/:barcode', authenticateToken, async (req, res) => {
+  const inventoryCheckId = Number(req.params.inventoryCheckId);
+  const barcode = req.params.barcode as string;
+
+  try {
+    const items = await prisma.inventoryItem.findMany({
+      where: {
+        inventoryCheckId,
+        OR: [
+          { assetCode: barcode },
+          { asset: { serialNumber: barcode } }
+        ]
+      },
+      include: { asset: true }
+    });
+
+    if (items.length === 0) {
+      return res.status(404).json({ message: 'Không tìm thấy tài sản trong kỳ kiểm kê này' });
+    }
+    if (items.length > 1) {
+      return res.status(300).json({ message: 'Trùng mã tài sản hoặc serial', items });
+    }
+
+    res.json(items[0]);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/check/:inventoryCheckId/fast-scan', authenticateToken, async (req: AuthRequest, res) => {
+  const inventoryCheckId = Number(req.params.inventoryCheckId);
+  const { barcode } = req.body;
+  const checkedBy = req.user?.fullName || req.user?.username || 'system';
+
+  if (!barcode) {
+    return res.status(400).json({ message: 'Barcode is required' });
+  }
+
+  try {
+    const items = await prisma.inventoryItem.findMany({
+      where: {
+        inventoryCheckId,
+        OR: [
+          { assetCode: barcode },
+          { asset: { serialNumber: barcode } }
+        ]
+      },
+      include: { asset: true }
+    });
+
+    if (items.length === 0) {
+      const globalAsset = await prisma.asset.findFirst({
+        where: {
+          isDeleted: false,
+          OR: [
+            { assetCode: barcode },
+            { serialNumber: barcode }
+          ]
+        }
+      });
+
+      if (globalAsset) {
+        return res.json({
+          success: false,
+          action: 'OUT_OF_SCOPE',
+          message: 'Tài sản tồn tại trên hệ thống nhưng không thuộc phạm vi của kỳ kiểm kê này.',
+          reason: ['Tài sản ngoài phạm vi kỳ kiểm kê'],
+          asset: globalAsset
+        });
+      }
+
+      return res.json({
+        success: false,
+        action: 'NOT_FOUND',
+        message: `Không tìm thấy tài sản với mã hoặc serial "${barcode}" trên hệ thống.`,
+        reason: ['Tài sản không tồn tại']
+      });
+    }
+
+    if (items.length > 1) {
+      return res.json({
+        success: false,
+        action: 'DUPLICATE_CODE',
+        message: 'Trùng mã tài sản hoặc serial. Vui lòng chọn tài sản cụ thể.',
+        reason: ['Trùng mã/serial kiểm kê'],
+        items: items
+      });
+    }
+
+    const item = items[0];
+
+    if (item.checkStatus === 'CHECKED') {
+      return res.json({
+        success: false,
+        action: 'ALREADY_CHECKED',
+        message: `Tài sản này đã được kiểm kê trước đó.`,
+        reason: ['Đã kiểm kê trước đó'],
+        item: item,
+        asset: item.asset
+      });
+    }
+
+    const expectedStatus = item.expectedStatus || 'IN_STOCK';
+    const expectedLocation = item.expectedLocation || '';
+    const expectedUser = item.asset?.currentUserName || '';
+    const expectedSerial = item.asset?.serialNumber || '';
+
+    if (expectedStatus === 'DAMAGED' || expectedStatus === 'LOST' || expectedStatus === 'LIQUIDATED') {
+      return res.json({
+        success: false,
+        action: 'NEED_REVIEW',
+        message: `Trạng thái sổ sách của tài sản là "${expectedStatus}". Cần người dùng kiểm tra chi tiết.`,
+        reason: [`Trạng thái bất thường: ${expectedStatus}`],
+        item: item,
+        asset: item.asset,
+        comparison: {
+          status: 'DIFFERENT',
+          location: 'MATCH',
+          user: 'MATCH',
+          serial: 'MATCH'
+        }
+      });
+    }
+
+    const comparison = {
+      status: 'MATCH',
+      location: 'MATCH',
+      user: 'MATCH',
+      serial: 'MATCH'
+    };
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedItem = await tx.inventoryItem.update({
+        where: { id: item.id },
+        data: {
+          actualStatus: expectedStatus,
+          actualLocation: expectedLocation,
+          quality: 'GOOD',
+          result: 'MATCHED',
+          checkStatus: 'CHECKED',
+          checkedAt: new Date(),
+          checkedBy,
+          actualUserName: expectedUser,
+          actualSerialNumber: expectedSerial,
+          checkCondition: 'FOUND'
+        }
+      });
+
+      if (item.assetId) {
+        await tx.asset.update({
+          where: { id: item.assetId },
+          data: {
+            lastInventoryDate: new Date(),
+            lastInventoryStatus: 'MATCHED'
+          }
+        });
+
+        await tx.auditLog.create({
+          data: {
+            entityType: 'ASSET',
+            entityId: item.assetId,
+            action: 'FAST_SCAN_CHECK',
+            details: `Tự động kiểm kê (Fast Scan) khớp hoàn toàn.`,
+            performedBy: req.user?.username || 'system'
+          }
+        });
+      }
+
+      return updatedItem;
+    });
+
+    return res.json({
+      success: true,
+      action: 'MATCH_AUTO_SAVED',
+      message: `Tự động kiểm kê thành công mã tài sản: ${item.assetCode}`,
+      item: updated,
+      asset: item.asset,
+      comparison
+    });
+
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 });
 
