@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
 import { toast } from 'react-toastify';
@@ -12,6 +12,7 @@ export const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const { login } = useAuth();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
   // Forgot password form states
   const [isForgotView, setIsForgotView] = useState(false);
@@ -28,7 +29,7 @@ export const Login: React.FC = () => {
       if (res.data.user.mustChangePassword) {
         navigate('/force-change-password');
       } else {
-        navigate('/dashboard');
+        navigate(searchParams.get('redirect') || '/dashboard');
       }
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Đăng nhập thất bại");

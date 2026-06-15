@@ -39,6 +39,10 @@ import { ToolApprovals } from './pages/ToolApprovals';
 import { ToolInvoiceDetail } from './pages/ToolInvoiceDetail';
 import { ToolHandoverDetail } from './pages/ToolHandoverDetail';
 import { ToolHistory } from './pages/ToolHistory';
+import { ToolChildDetail } from './pages/ToolChildDetail';
+import { CCDCChildDashboard } from './pages/CCDCChildDashboard';
+import { AISmartDashboard } from './pages/AISmartDashboard';
+import { EnterpriseDashboard } from './pages/EnterpriseDashboard';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();
@@ -74,6 +78,9 @@ function App() {
           <Route path="/tools" element={<PrivateRoute><ToolList /></PrivateRoute>} />
           <Route path="/tools/new" element={<PrivateRoute><CreateTool /></PrivateRoute>} />
           <Route path="/tools/history" element={<PrivateRoute><ToolHistory /></PrivateRoute>} />
+          <Route path="/tools/child-dashboard" element={<PrivateRoute><CCDCChildDashboard /></PrivateRoute>} />
+          <Route path="/ai-insights" element={<PrivateRoute><AISmartDashboard /></PrivateRoute>} />
+          <Route path="/enterprise-dashboard" element={<PrivateRoute><EnterpriseDashboard /></PrivateRoute>} />
           <Route path="/tools/import" element={<PrivateRoute><ImportTools /></PrivateRoute>} />
           <Route path="/tools/import-invoice" element={<PrivateRoute><ImportToolsInvoice /></PrivateRoute>} />
           <Route path="/tools/inventory" element={<PrivateRoute><ToolInventoryList /></PrivateRoute>} />
@@ -81,6 +88,7 @@ function App() {
           <Route path="/tools/approvals" element={<PrivateRoute><ToolApprovals /></PrivateRoute>} />
           <Route path="/tools/invoices/:id" element={<PrivateRoute><ToolInvoiceDetail /></PrivateRoute>} />
           <Route path="/tools/handover/:id" element={<PrivateRoute><ToolHandoverDetail /></PrivateRoute>} />
+          <Route path="/ccdc-child/:childId" element={<PrivateRoute><ToolChildDetail /></PrivateRoute>} />
           <Route path="/tools/:id" element={<PrivateRoute><ToolDetail /></PrivateRoute>} />
           
           <Route path="/settings/classification" element={<PrivateRoute><ClassificationSettings /></PrivateRoute>} />

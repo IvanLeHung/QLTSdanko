@@ -2,6 +2,7 @@ import { Router } from 'express';
 import prisma from '../utils/prisma';
 import { AssetService } from '../services/asset.service';
 import { AuditService } from '../services/audit.service';
+import { SmartAIService } from '../services/smart-ai.service';
 import { authenticateToken, AuthRequest, requirePermission } from '../middleware/auth.middleware';
 import multer from 'multer';
 import fs from 'fs';
@@ -1798,6 +1799,16 @@ router.get('/barcode/:barcode', authenticateToken, requirePermission('ASSET_VIEW
     res.json({ ...asset, auditLogs });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/:id/health', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
+  try {
+    const id = parseInt(req.params.id as string, 10);
+    const result = await SmartAIService.assetHealth(id);
+    res.json(result);
+  } catch (err: any) {
+    res.status(400).json({ message: err.message });
   }
 });
 

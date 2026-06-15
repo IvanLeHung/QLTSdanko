@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
+import { CCDCChildItemsPanel } from '../components/CCDCChildItemsPanel';
 import { toast } from 'react-toastify';
 import { 
   ArrowLeft, 
@@ -42,7 +43,7 @@ export const ToolDetail: React.FC = () => {
 
   const [tool, setTool] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'info' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'inventoryPhotos' | 'lifecycle' | 'history' | 'documents' | 'analytics'>('info');
+  const [activeTab, setActiveTab] = useState<'info' | 'childItems' | 'stocks' | 'batches' | 'transactions' | 'assignments' | 'repairs' | 'lost' | 'inventory' | 'inventoryPhotos' | 'lifecycle' | 'history' | 'documents' | 'analytics'>('info');
   const [transactionMenuOpen, setTransactionMenuOpen] = useState(false);
   const [showEditModal, setShowEditModal] = useState(false);
   const [editForm, setEditForm] = useState<any>({});
@@ -745,6 +746,13 @@ export const ToolDetail: React.FC = () => {
               Tổng quan
             </button>
 
+            <button
+              onClick={() => setActiveTab('childItems')}
+              className={`px-5 py-4 border-b-2 font-black transition-all shrink-0 ${activeTab === 'childItems' ? 'border-primary-600 text-primary-700 bg-white' : 'border-transparent hover:text-slate-900 hover:bg-slate-100/50'}`}
+            >
+              Danh sách mã con
+            </button>
+
             {isQuantityMode ? (
               <>
                 <button 
@@ -1326,6 +1334,10 @@ export const ToolDetail: React.FC = () => {
             )}
 
             {/* TAB: STOCKS (QUANTITY ONLY) */}
+            {activeTab === 'childItems' && (
+              <CCDCChildItemsPanel parentTool={tool} />
+            )}
+
             {activeTab === 'stocks' && isQuantityMode && (() => {
               // Pre-compute totals for the summary
               const totals = (tool.stocks || []).reduce((acc: any, s: any) => {

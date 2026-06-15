@@ -234,10 +234,12 @@ model Asset {
   technicalSpecsJson      String?
   creationBatch           CreationBatch?      @relation(fields: [creationBatchId], references: [id])
   invoiceBatchId          Int?
+  organizationUnitId      Int?
   invoiceLineId           Int?
   originalInvoiceItemName String?
   invoiceBatch            AssetInvoiceBatch?  @relation(fields: [invoiceBatchId], references: [id])
   invoiceLine             AssetInvoiceLine?   @relation(fields: [invoiceLineId], references: [id])
+  organizationUnit        OrganizationUnit?   @relation(fields: [organizationUnitId], references: [id])
   assignments             AssetAssignment[]
   editLogs                AssetEditLog[]
   events                  AssetEvent[]
@@ -252,11 +254,203 @@ model Asset {
   histories               AssetHistory[]
   normalizationSuggestions AssetNormalizationSuggestion[]
   updateProposals          AssetUpdateProposal[]
+  financeProfile           AssetFinanceProfile?
 
   @@index([assetCode])
   @@index([serialNumber])
   @@index([locationName])
   @@index([currentUserName])
+  @@index([organizationUnitId])
+}
+
+model OrganizationUnit {
+  id        Int      @id @default(autoincrement())
+  parentId  Int?
+  type      String
+  name      String
+  code      String
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  parent    OrganizationUnit? @relation("OrgTree", fields: [parentId], references: [id])
+  children  OrganizationUnit[] @relation("OrgTree")
+  assets    Asset[]
+  tools     ToolEquipment[]
+  childItems CCDCChildItem[]
+
+  @@unique([type, code])
+  @@index([parentId])
+  @@index([type])
+  @@index([status])
+}
+
+model AssetFinanceProfile {
+  id                      Int      @id @default(autoincrement())
+  assetId                 Int      @unique
+  originalValue           Float    @default(0)
+  purchaseDate            DateTime?
+  depreciationMethod      String?
+  usefulLife              Int?
+  accumulatedDepreciation Float    @default(0)
+  remainingValue          Float    @default(0)
+  costCenter              String?
+  syncedAt                DateTime?
+  asset                   Asset    @relation(fields: [assetId], references: [id])
+
+  @@index([costCenter])
+}
+
+model PurchaseRequest {
+  id          Int      @id @default(autoincrement())
+  requestNo   String   @unique
+  requestType String   @default("ASSET")
+  title       String
+  description String?
+  quantity    Int      @default(1)
+  estimatedValue Float @default(0)
+  status      String   @default("PENDING")
+  requestedBy String?
+  requestedAt DateTime @default(now())
+  approvedBy  String?
+  approvedAt  DateTime?
+  orders      PurchaseOrder[]
+
+  @@index([status])
+  @@index([requestType])
+}
+
+model PurchaseOrder {
+  id                Int      @id @default(autoincrement())
+  poNo              String   @unique
+  requestId         Int?
+  supplierName      String?
+  totalValue        Float    @default(0)
+  status            String   @default("DRAFT")
+  createdBy         String?
+  createdAt         DateTime @default(now())
+  purchaseRequest   PurchaseRequest? @relation(fields: [requestId], references: [id])
+  receipts          GoodsReceipt[]
+
+  @@index([requestId])
+  @@index([status])
+}
+
+model GoodsReceipt {
+  id          Int      @id @default(autoincrement())
+  receiptNo   String   @unique
+  poId        Int?
+  itemType    String   @default("ASSET")
+  itemName    String
+  quantity    Int      @default(1)
+  unitValue   Float    @default(0)
+  status      String   @default("POSTED")
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  generatedAssetId Int?
+  generatedToolId  Int?
+  purchaseOrder PurchaseOrder? @relation(fields: [poId], references: [id])
+
+  @@index([poId])
+  @@index([itemType])
+}
+
+model OfflineSyncLog {
+  id             Int      @id @default(autoincrement())
+  deviceId       String
+  userId         Int?
+  action         String
+  payload        String
+  syncStatus     String   @default("PENDING")
+  conflictPolicy String   @default("CLIENT_REVIEW")
+  createdAt      DateTime @default(now())
+  syncedAt       DateTime?
+
+  @@index([deviceId])
+  @@index([userId])
+  @@index([syncStatus])
+}
+
+model DigitalSignature {
+  id             Int      @id @default(autoincrement())
+  documentId     String
+  signedBy       String
+  signatureImage String
+  signedAt       DateTime @default(now())
+  deviceInfo     String?
+  lockedAt       DateTime?
+
+  @@index([documentId])
+  @@index([signedBy])
+}
+
+model AssetAnalyticsSnapshot {
+  id            Int      @id @default(autoincrement())
+  date          DateTime
+  companyId     Int?
+  assetCount    Int      @default(0)
+  assetValue    Float    @default(0)
+  activeCount   Int      @default(0)
+  lostCount     Int      @default(0)
+  repairCost    Float    @default(0)
+  inventoryRate Float    @default(0)
+  createdAt     DateTime @default(now())
+
+  @@unique([date, companyId])
+  @@index([date])
+  @@index([companyId])
+}
+
+model IntegrationConfig {
+  id        Int      @id @default(autoincrement())
+  type      String
+  endpoint  String
+  authType  String?
+  status    String   @default("ACTIVE")
+  createdAt DateTime @default(now())
+  logs      IntegrationLog[]
+
+  @@index([type])
+  @@index([status])
+}
+
+model IntegrationLog {
+  id            Int      @id @default(autoincrement())
+  integrationId Int?
+  direction     String   @default("OUTBOUND")
+  status        String
+  message       String?
+  payload       String?
+  createdAt     DateTime @default(now())
+  integration   IntegrationConfig? @relation(fields: [integrationId], references: [id])
+
+  @@index([integrationId])
+  @@index([status])
+}
+
+model Notification {
+  id        Int      @id @default(autoincrement())
+  userId    Int?
+  title     String
+  message   String
+  type      String
+  channel   String   @default("IN_APP")
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([readAt])
+}
+
+model ExportLog {
+  id          Int      @id @default(autoincrement())
+  exportedBy  String
+  exportType  String
+  rowCount    Int      @default(0)
+  filtersJson String?
+  createdAt   DateTime @default(now())
+
+  @@index([exportedBy])
+  @@index([exportType])
 }
 
 model CreationBatch {
@@ -882,10 +1076,12 @@ model ToolEquipment {
   customFieldsJson     String?                // Custom attributes JSON
   
   invoiceBatchId          Int?
+  organizationUnitId      Int?
   invoiceLineId           Int?
   originalInvoiceItemName String?
   invoiceBatch            ToolInvoiceBatch?  @relation(fields: [invoiceBatchId], references: [id])
   invoiceLine             ToolInvoiceLine?   @relation(fields: [invoiceLineId], references: [id])
+  organizationUnit        OrganizationUnit?  @relation(fields: [organizationUnitId], references: [id])
   
   isDeleted        Boolean                @default(false)
   createdAt        DateTime               @default(now())
@@ -904,6 +1100,182 @@ model ToolEquipment {
   stocks           ToolStock[]
   batches          ToolBatch[]
   stockTransactions ToolStockTransaction[]
+  childItems       CCDCChildItem[]
+
+  @@index([organizationUnitId])
+}
+
+model CCDCChildItem {
+  id                     Int           @id @default(autoincrement())
+  parentCcdcId           Int
+  organizationUnitId     Int?
+  parentCode             String
+  childCode              String        @unique
+  quantity               Int           @default(1)
+  lotNumber              String?
+  color                  String?
+  size                   String?
+  specification          String?
+  description            String?
+  serialNumber           String?
+  location               String?
+  department             String?
+  user                   String?
+  childStatus            String        @default("AVAILABLE")
+  inventoryStatus        String        @default("PENDING")
+  condition              String?
+  note                   String?
+  hasHandover            Boolean       @default(false)
+  hasTransfer            Boolean       @default(false)
+  isPrinted              Boolean       @default(false)
+  printedAt              DateTime?
+  printedBy              String?
+  lastInventoryAt        DateTime?
+  lastInventoryBy        String?
+  lastInventorySessionId String?
+  cancelledAt            DateTime?
+  cancelledBy            String?
+  cancelledReason        String?
+  deletedAt              DateTime?
+  deletedBy              String?
+  createdBy              String?
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  parent                 ToolEquipment @relation(fields: [parentCcdcId], references: [id])
+  organizationUnit       OrganizationUnit? @relation(fields: [organizationUnitId], references: [id])
+  repairs                CCDCChildRepair[]
+  attachments            CCDCChildAttachment[]
+  approvalRequests       CCDCApprovalRequest[]
+  inventoryScans         CCDCChildInventoryScan[]
+  alerts                 CCDCAlert[]
+
+  @@index([parentCcdcId])
+  @@index([organizationUnitId])
+  @@index([parentCode])
+  @@index([childStatus])
+  @@index([inventoryStatus])
+  @@index([location])
+  @@index([department])
+  @@index([user])
+  @@index([lotNumber])
+}
+
+model CCDCChildRepair {
+  id                Int           @id @default(autoincrement())
+  childId           Int
+  repairCode        String        @unique
+  vendorName        String?
+  estimatedCost     Float?        @default(0)
+  actualCost        Float?        @default(0)
+  damageDescription String?
+  repairDescription String?
+  expectedReturnDate DateTime?
+  startDate         DateTime      @default(now())
+  completedDate     DateTime?
+  status            String        @default("IN_PROGRESS")
+  createdBy         String?
+  createdAt         DateTime      @default(now())
+  child             CCDCChildItem @relation(fields: [childId], references: [id])
+
+  @@index([childId])
+  @@index([status])
+  @@index([expectedReturnDate])
+}
+
+model CCDCChildAttachment {
+  id         Int           @id @default(autoincrement())
+  childId    Int
+  fileName   String
+  fileUrl    String
+  fileSize   Int?
+  mimeType   String?
+  fileType   String?
+  category   String        @default("OTHER")
+  uploadedBy String?
+  uploadedAt DateTime      @default(now())
+  child      CCDCChildItem @relation(fields: [childId], references: [id])
+
+  @@index([childId])
+  @@index([category])
+}
+
+model CCDCApprovalRequest {
+  id           Int      @id @default(autoincrement())
+  childId      Int
+  parentId     Int
+  requestType  String
+  oldData      String?
+  newData      String?
+  reason       String
+  status       String   @default("PENDING")
+  requestedBy  String
+  requestedAt  DateTime @default(now())
+  approvedBy   String?
+  approvedAt   DateTime?
+  rejectedBy   String?
+  rejectedAt   DateTime?
+  rejectReason String?
+  child        CCDCChildItem @relation(fields: [childId], references: [id])
+
+  @@index([childId])
+  @@index([parentId])
+  @@index([requestType])
+  @@index([status])
+  @@index([requestedAt])
+}
+
+model CCDCChildInventoryBatch {
+  id             Int      @id @default(autoincrement())
+  batchId        String   @unique
+  scopeJson      String?
+  status         String   @default("SCANNED")
+  totalScanned   Int      @default(0)
+  processedCount Int      @default(0)
+  confirmedCount Int      @default(0)
+  reviewCount    Int      @default(0)
+  createdBy      String
+  createdAt      DateTime @default(now())
+  processedAt    DateTime?
+  confirmedAt    DateTime?
+  scans          CCDCChildInventoryScan[]
+}
+
+model CCDCChildInventoryScan {
+  id            Int      @id @default(autoincrement())
+  batchId       String
+  childId       Int?
+  childCode     String?
+  barcode       String
+  scanStatus    String   @default("SCANNED")
+  note          String?
+  scannedBy     String
+  scannedAt     DateTime @default(now())
+  confirmedAt   DateTime?
+  batch         CCDCChildInventoryBatch @relation(fields: [batchId], references: [batchId], onDelete: Cascade)
+  child         CCDCChildItem? @relation(fields: [childId], references: [id])
+
+  @@index([batchId])
+  @@index([childId])
+  @@index([barcode])
+  @@index([scanStatus])
+}
+
+model CCDCAlert {
+  id         Int       @id @default(autoincrement())
+  childId    Int?
+  alertType  String
+  severity   String    @default("MEDIUM")
+  message    String
+  status     String    @default("OPEN")
+  createdAt  DateTime  @default(now())
+  resolvedAt DateTime?
+  resolvedBy String?
+  child      CCDCChildItem? @relation(fields: [childId], references: [id])
+
+  @@index([childId])
+  @@index([alertType])
+  @@index([status])
+  @@index([createdAt])
 }
 
 model ToolAssignment {
@@ -1316,6 +1688,7 @@ model ToolInvoiceLine {
 
 model AssetNormalizationJob {
   id          Int                          @id @default(autoincrement())
+  type        String                       @default("ASSET")
   status      String                       @default("PENDING") // PENDING, RUNNING, COMPLETED, FAILED
   progress    Int                          @default(0) // 0 to 100
   totalIssues Int                          @default(0)
@@ -1331,6 +1704,7 @@ model AssetNormalizationSuggestion {
   jobId           Int
   job             AssetNormalizationJob @relation(fields: [jobId], references: [id], onDelete: Cascade)
   assetId         Int
+  ccdcChildId     Int?
   asset           Asset                 @relation(fields: [assetId], references: [id], onDelete: Cascade)
   assetCode       String
   assetName       String
@@ -1342,6 +1716,88 @@ model AssetNormalizationSuggestion {
   source          String?               // SYSTEM_RULE, CUSTODIAN_HEURISTICS, DEPARTMENT_MAPPING, CATEGORY_MAPPING
   status          String                @default("PENDING") // PENDING, APPROVED, REJECTED, EDITED
   reason          String?
+  approvedBy      String?
+  approvedAt      DateTime?
+}
+
+model DuplicateSuggestion {
+  id              Int      @id @default(autoincrement())
+  itemAType       String   @default("ASSET")
+  itemAId         Int
+  itemBType       String   @default("ASSET")
+  itemBId         Int
+  similarityScore Float
+  reason          String?
+  status          String   @default("PENDING")
+  createdAt       DateTime @default(now())
+
+  @@index([status])
+  @@index([similarityScore])
+}
+
+model AssetAnomaly {
+  id        Int      @id @default(autoincrement())
+  assetId   Int?
+  childId   Int?
+  type      String
+  severity  String   @default("MEDIUM")
+  message   String
+  status    String   @default("OPEN")
+  createdAt DateTime @default(now())
+
+  @@index([assetId])
+  @@index([childId])
+  @@index([type])
+  @@index([status])
+}
+
+model AutomationRule {
+  id        Int      @id @default(autoincrement())
+  trigger   String
+  condition String?
+  action    String
+  enabled   Boolean  @default(true)
+  createdBy String?
+  createdAt DateTime @default(now())
+  tasks     AutomationTask[]
+
+  @@index([trigger])
+  @@index([enabled])
+}
+
+model AutomationTask {
+  id          Int      @id @default(autoincrement())
+  ruleId      Int?
+  title       String
+  description String?
+  status      String   @default("OPEN")
+  priority    String   @default("MEDIUM")
+  entityType  String?
+  entityId    Int?
+  assignedTo  String?
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+  rule        AutomationRule? @relation(fields: [ruleId], references: [id])
+
+  @@index([status])
+  @@index([entityType, entityId])
+}
+
+model AssetLifecyclePrediction {
+  id                   Int      @id @default(autoincrement())
+  assetId              Int?
+  toolId               Int?
+  childId              Int?
+  healthScore          Int
+  riskLevel            String
+  recommendation       String
+  predictedReplaceDate DateTime?
+  calculatedAt         DateTime @default(now())
+
+  @@index([assetId])
+  @@index([toolId])
+  @@index([childId])
+  @@index([riskLevel])
 }
 
 model AssetNormalizationHistory {

@@ -37,7 +37,9 @@ const navSections = [
   {
     title: '',
     items: [
-      { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, requiredPermission: 'REPORT_VIEW' }
+      { name: 'Dashboard', path: '/dashboard', icon: LayoutDashboard, requiredPermission: 'REPORT_VIEW' },
+      { name: 'Enterprise Dashboard', path: '/enterprise-dashboard', icon: Building2, requiredPermission: 'REPORT_VIEW' },
+      { name: 'AI Insights', path: '/ai-insights', icon: AlertTriangle, requiredPermission: 'REPORT_VIEW' }
     ]
   },
   {
@@ -59,6 +61,7 @@ const navSections = [
     title: 'Công cụ dụng cụ',
     items: [
       { name: 'Công cụ dụng cụ', path: '/tools', icon: Hammer, requiredPermission: 'TOOL_VIEW' },
+      { name: 'Dashboard CCDC mã con', path: '/tools/child-dashboard', icon: LayoutDashboard, requiredPermission: 'TOOL_VIEW' },
       { name: 'Cấp mới / nhập lô', path: '/tools/new', icon: PlusCircle, requiredPermission: 'TOOL_VIEW' },
       { name: 'Bàn giao / Điều chuyển', path: '/tools?workflow=handover', icon: UserPlus, requiredPermission: 'TOOL_VIEW' },
       { name: 'Báo hỏng / Sửa chữa', path: '/tools?status=DAMAGED', icon: Wrench, requiredPermission: 'TOOL_VIEW' },
