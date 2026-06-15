@@ -334,6 +334,21 @@ export const InventoryDetail: React.FC = () => {
   const [allCategories, setAllCategories] = useState<any[]>([]);
   const [categories, setCategories] = useState<any[]>([]);
 
+  // Phase 2: Unified Scanner & Discrepancy states
+  const [isScopeLocked, setIsScopeLocked] = useState(false);
+  const [scanScopeCity, setScanScopeCity] = useState('');
+  const [scanScopeLocation, setScanScopeLocation] = useState('');
+  const [scanScopeProject, setScanScopeProject] = useState('');
+  const [scanScopeDepartment, setScanScopeDepartment] = useState('');
+  const [scanScopeUser, setScanScopeUser] = useState('');
+  const [showUndoModal, setShowUndoModal] = useState(false);
+  const [undoTargetItem, setUndoTargetItem] = useState<any>(null);
+  const [undoReason, setUndoReason] = useState('');
+  const [showRecheckModal, setShowRecheckModal] = useState(false);
+  const [recheckTargetItem, setRecheckTargetItem] = useState<any>(null);
+  const [recheckReason, setRecheckReason] = useState('');
+  const [successFlashItem, setSuccessFlashItem] = useState<any>(null);
+
   // Multi-conditional Filter states
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
   const [sessionFilters, setSessionFilters] = useState<any>({
@@ -1226,6 +1241,267 @@ export const InventoryDetail: React.FC = () => {
     }));
   };
 
+  // Unified scan logs fetcher
+  const fetchScanLogs = async () => {
+    try {
+      const params: any = {};
+      if (activeSession) {
+        params.sessionId = activeSession.id;
+      } else if (session) {
+        params.inventoryCheckId = session.id;
+      } else {
+        return;
+      }
+
+      const res = await api.get('/inventory/scan-logs', { params });
+      const logs = res.data || [];
+      
+      const formatted = logs.map((log: any) => {
+        let assetName = 'Tài sản';
+        if (activeSession) {
+          const matchingDetail = activeSession.details?.find((d: any) => d.assetId === log.assetId);
+          if (matchingDetail) assetName = matchingDetail.assetName;
+        } else if (session) {
+          const matchingItem = session.items?.find((i: any) => i.assetId === log.assetId);
+          if (matchingItem) assetName = matchingItem.asset?.assetName || matchingItem.assetName || 'Tài sản';
+        }
+
+        return {
+          id: String(log.id),
+          assetCode: log.assetCode || log.barcode,
+          assetName: assetName,
+          actualLocation: '',
+          actualUserName: '',
+          result: log.action || log.result,
+          scannedAt: new Date(log.scannedAt).toLocaleTimeString('vi-VN'),
+          rawLog: log
+        };
+      });
+      setScanHistory(formatted);
+    } catch (err) {
+      console.error('Lỗi tải lịch sử quét:', err);
+    }
+  };
+
+  const findItemForLog = (rawLog: any) => {
+    if (!rawLog) return null;
+    if (activeSession) {
+      return activeSession.details?.find((d: any) => d.id === rawLog.inventorySessionDetailId) || null;
+    } else {
+      return session?.items?.find((i: any) => i.id === rawLog.inventoryItemId) || null;
+    }
+  };
+
+  const getScanSpeed = () => {
+    if (!scanHistory || scanHistory.length === 0) return 0;
+    const validScans = scanHistory.filter(h => h.result !== 'DUPLICATE_IGNORED');
+    if (validScans.length < 2) return validScans.length;
+    try {
+      const times = validScans.map(h => {
+        const parts = h.scannedAt.split(':');
+        const d = new Date();
+        d.setHours(Number(parts[0] || 0), Number(parts[1] || 0), Number(parts[2] || 0));
+        return d.getTime();
+      });
+      const minTime = Math.min(...times);
+      const maxTime = Math.max(...times);
+      const diffHours = (maxTime - minTime) / 3600000;
+      if (diffHours < 0.05) {
+        return Math.round(validScans.length * 20); // Extrapolate standard speed on start
+      }
+      return Math.round(validScans.length / diffHours);
+    } catch (e) {
+      return validScans.length;
+    }
+  };
+
+  const handleConfirmUndo = async () => {
+    if (!undoTargetItem || !undoReason.trim()) return;
+    setSubmitting(true);
+    try {
+      const url = activeSession
+        ? `/inventory/session-details/${undoTargetItem.id}/undo`
+        : `/inventory/item/${undoTargetItem.id}/undo`;
+
+      await api.post(url, { reason: undoReason });
+      toast.success('Hoàn tác lượt quét thành công!');
+      setShowUndoModal(false);
+      setUndoTargetItem(null);
+      setUndoReason('');
+      setSelectedItemForCheck(null);
+      await fetchDetail();
+      await fetchScanLogs();
+      
+      // Auto-refocus scan input
+      setTimeout(() => {
+        scanInputRef.current?.focus();
+      }, 100);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi khi thực hiện hoàn tác');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleConfirmRecheck = async () => {
+    if (!recheckTargetItem || !recheckReason.trim()) return;
+    setSubmitting(true);
+    try {
+      const payload: any = {
+        reason: recheckReason
+      };
+      if (activeSession) {
+        payload.inventorySessionDetailId = recheckTargetItem.id;
+      } else {
+        payload.inventoryItemId = recheckTargetItem.id;
+      }
+
+      await api.post('/inventory/recheck-request', payload);
+      toast.success('Gửi yêu cầu kiểm tra lại thành công! Trạng thái: Chờ duyệt');
+      setShowRecheckModal(false);
+      setRecheckTargetItem(null);
+      setRecheckReason('');
+      setSelectedItemForCheck(null);
+      await fetchDetail();
+      
+      // Auto-refocus scan input
+      setTimeout(() => {
+        scanInputRef.current?.focus();
+      }, 100);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi gửi yêu cầu kiểm tra lại');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleKeepBookValues = async (item: any) => {
+    setSubmitting(true);
+    try {
+      const payload = {
+        actualLocation: item.expectedLocation || item.bookLocationName || item.asset?.locationName || 'Trong kho',
+        actualUserName: item.asset?.currentUserName || '',
+        actualSerialNumber: item.asset?.serialNumber || '',
+        actualStatus: item.expectedStatus || 'IN_STOCK',
+        appearance: 'GOOD',
+        checkCondition: 'FOUND'
+      };
+
+      const url = activeSession
+        ? `/inventory/sessions/${activeSession.id}/check`
+        : `/inventory/check/${session.id}/check`;
+
+      await api.post(url, {
+        itemId: item.id,
+        ...payload,
+        status: 'CHECKED'
+      });
+
+      toast.success('Đã xác nhận giữ nguyên sổ sách!');
+      setSelectedItemForCheck(null);
+      setSuccessFlashItem(item);
+      setTimeout(() => setSuccessFlashItem(null), 3000);
+      await fetchDetail();
+      await fetchScanLogs();
+
+      // Auto-refocus scan input
+      setTimeout(() => {
+        scanInputRef.current?.focus();
+      }, 100);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi khi lưu thông tin');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleMarkAsLost = async (item: any) => {
+    setSubmitting(true);
+    try {
+      const payload = {
+        actualLocation: item.expectedLocation || item.bookLocationName || item.asset?.locationName || 'Trong kho',
+        actualUserName: item.asset?.currentUserName || '',
+        actualSerialNumber: item.asset?.serialNumber || '',
+        actualStatus: 'DAMAGED',
+        appearance: 'BAD',
+        checkCondition: 'MISSING'
+      };
+
+      const url = activeSession
+        ? `/inventory/sessions/${activeSession.id}/check`
+        : `/inventory/check/${session.id}/check`;
+
+      await api.post(url, {
+        itemId: item.id,
+        ...payload,
+        status: 'CHECKED'
+      });
+
+      toast.success('Đã ghi nhận báo mất tài sản!');
+      setSelectedItemForCheck(null);
+      await fetchDetail();
+      await fetchScanLogs();
+
+      // Auto-refocus scan input
+      setTimeout(() => {
+        scanInputRef.current?.focus();
+      }, 100);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Lỗi khi lưu thông tin báo mất');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleProposeAdjustment = async (item: any) => {
+    setSubmitting(true);
+    try {
+      const assetId = item.assetId || item.asset?.id;
+      if (!assetId) {
+        throw new Error('Không tìm thấy Asset ID tương ứng để đề xuất');
+      }
+
+      await api.post('/inventory/normalize/suggest', {
+        assetId: Number(assetId),
+        suggestedName: item.asset?.assetName || item.assetName || '',
+        suggestedSerial: checkForm.actualSerialNumber || '',
+        suggestedLocation: checkForm.actualLocation || '',
+        suggestedUser: checkForm.actualUserName || '',
+        note: 'Đề xuất cập nhật từ bàn đối soát kiểm kê'
+      });
+
+      toast.success('Đã gửi đề xuất cập nhật sổ sách thành công!');
+      
+      const url = activeSession
+        ? `/inventory/sessions/${activeSession.id}/check`
+        : `/inventory/check/${session.id}/check`;
+
+      await api.post(url, {
+        itemId: item.id,
+        actualLocation: checkForm.actualLocation,
+        actualUserName: checkForm.actualUserName,
+        actualSerialNumber: checkForm.actualSerialNumber,
+        actualStatus: checkForm.actualStatus,
+        appearance: checkForm.appearance,
+        checkCondition: checkForm.checkCondition,
+        status: 'CHECKED'
+      });
+
+      setSelectedItemForCheck(null);
+      await fetchDetail();
+      await fetchScanLogs();
+
+      // Auto-refocus scan input
+      setTimeout(() => {
+        scanInputRef.current?.focus();
+      }, 100);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || err.message || 'Lỗi khi gửi đề xuất điều chỉnh');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   const handleScanSubmit = async (e?: React.FormEvent, customCode?: string) => {
     if (e) e.preventDefault();
     const barcodeToQuery = (customCode || scanCodeInput).trim();
@@ -1233,16 +1509,24 @@ export const InventoryDetail: React.FC = () => {
 
     try {
       setSubmitting(true);
-      const url = activeSession 
-        ? `/inventory/sessions/${activeSession.id}/fast-scan`
-        : `/inventory/check/${session.id}/fast-scan`;
-
-      const response = await api.post(url, {
+      
+      const payload = {
+        mode: activeSession ? 'SESSION' : 'CHECK',
+        inventoryCheckId: activeSession ? undefined : String(session.id),
+        sessionId: activeSession ? String(activeSession.id) : undefined,
         barcode: barcodeToQuery,
-        scannedAt: new Date().toISOString(),
-        scanSource: 'MANUAL'
-      });
+        scanSource: 'MANUAL',
+        scope: {
+          city: scanScopeCity || undefined,
+          location: scanScopeLocation || undefined,
+          project: scanScopeProject || undefined,
+          department: scanScopeDepartment || undefined,
+          user: scanScopeUser || undefined,
+          isScopeLocked
+        }
+      };
 
+      const response = await api.post('/inventory/fast-scan', payload);
       const data = response.data;
       const action = data.action;
       const item = data.item || data.items?.[0] || null;
@@ -1251,40 +1535,56 @@ export const InventoryDetail: React.FC = () => {
       // Reset scan input
       setScanCodeInput('');
 
+      if (action === 'DUPLICATE_IGNORED') {
+        toast.info('Đã bỏ qua mã quét trùng');
+        // Auto-refocus scan input
+        setTimeout(() => {
+          scanInputRef.current?.focus();
+        }, 100);
+        return;
+      }
+
       if (action === 'MATCH_AUTO_SAVED') {
         playBeep('success');
         toast.success(data.message || 'Tự động kiểm kê thành công!');
         
-        // Add to history
-        const newHistoryItem = {
-          id: Date.now().toString(),
-          assetCode: asset?.assetCode || item?.assetCode || barcodeToQuery,
-          assetName: asset?.assetName || item?.assetName || 'Tài sản',
-          actualLocation: item?.actualLocation || item?.actualLocationName || 'Đúng vị trí',
-          actualUserName: item?.actualUserName || 'Đúng người dùng',
-          result: 'Khớp (Tự động)',
-          scannedAt: new Date().toLocaleTimeString('vi-VN')
-        };
-        setScanHistory(prev => [newHistoryItem, ...prev]);
+        await fetchDetail();
+        await fetchScanLogs();
 
-        // Keep form empty
-        setSelectedItemForCheck(null);
-        fetchDetail(); // Reload table counts/list
+        setSuccessFlashItem(item);
+        setTimeout(() => setSuccessFlashItem(null), 3000);
 
-        // Focus back to input
         setTimeout(() => {
           scanInputRef.current?.focus();
         }, 100);
 
-      } else if (action === 'NEED_REVIEW') {
+      } else if (
+        action === 'NEED_REVIEW' || 
+        action === 'MISMATCH_LOCATION' || 
+        action === 'MISMATCH_USER' || 
+        action === 'MISMATCH_SERIAL' ||
+        action === 'ALREADY_CHECKED'
+      ) {
         playBeep('warning');
-        toast.warn('Thông tin tài sản lệch sổ sách. Vui lòng đối soát thủ công.');
-        openCheckModal(item);
+        if (action === 'ALREADY_CHECKED') {
+          toast.info(data.message || 'Tài sản này đã được kiểm kê trước đó.');
+        } else {
+          toast.warn('Thông tin tài sản lệch sổ sách. Vui lòng đối soát thủ công.');
+        }
         
-      } else if (action === 'ALREADY_CHECKED') {
-        playBeep('warning');
-        toast.info(data.message || 'Tài sản này đã được kiểm kê trước đó.');
-        openCheckModal(item);
+        setSelectedItemForCheck(item);
+        setCheckForm({
+          checkCondition: item.checkCondition || 'FOUND',
+          actualStatus: item.actualStatus || item.expectedStatus || 'IN_STOCK',
+          actualLocation: item.actualLocation || item.expectedLocation || item.bookLocationName || item.asset?.locationName || '',
+          actualUserName: item.actualUserName || item.asset?.currentUserName || '',
+          actualSerialNumber: item.actualSerialNumber || item.asset?.serialNumber || '',
+          appearance: item.appearance || 'GOOD',
+          operation: item.operation || 'NORMAL',
+          wearRate: item.wearRate || 0,
+          photos: item.photos || [],
+          note: item.note || ''
+        });
 
       } else if (action === 'OUT_OF_SCOPE') {
         playBeep('warning');
@@ -2236,6 +2536,100 @@ export const InventoryDetail: React.FC = () => {
                       </p>
                     </form>
 
+                    {/* Scope Lock & Selectors */}
+                    <div className="bg-slate-50 p-4 rounded-2xl border border-slate-200 space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-bold text-slate-700">Phạm vi kiểm kê</span>
+                        <label className="flex items-center gap-1.5 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={isScopeLocked}
+                            onChange={(e) => setIsScopeLocked(e.target.checked)}
+                            className="rounded text-primary-600 focus:ring-primary-500 w-3.5 h-3.5"
+                          />
+                          <span className="text-[11px] font-bold text-slate-600">Khóa phạm vi 🔒</span>
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Thành phố</label>
+                          <select
+                            value={scanScopeCity}
+                            onChange={(e) => setScanScopeCity(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                          >
+                            <option value="">Tất cả</option>
+                            {reviewCities.map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Vị trí</label>
+                          <select
+                            value={scanScopeLocation}
+                            onChange={(e) => setScanScopeLocation(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                          >
+                            <option value="">Tất cả</option>
+                            {reviewLocations.map(l => <option key={l} value={l}>{l}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Dự án</label>
+                          <select
+                            value={scanScopeProject}
+                            onChange={(e) => setScanScopeProject(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                          >
+                            <option value="">Tất cả</option>
+                            {reviewProjects.map(p => <option key={p} value={p}>{p}</option>)}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Phòng ban</label>
+                          <select
+                            value={scanScopeDepartment}
+                            onChange={(e) => setScanScopeDepartment(e.target.value)}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                          >
+                            <option value="">Tất cả</option>
+                            {reviewDepartments.map(d => <option key={d} value={d}>{d}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[9px] font-bold text-slate-400 block mb-0.5">Người sử dụng</label>
+                        <input
+                          type="text"
+                          value={scanScopeUser}
+                          onChange={(e) => setScanScopeUser(e.target.value)}
+                          placeholder="Nhập tên người dùng..."
+                          className="w-full bg-white border border-slate-200 rounded-xl px-2 py-1.5 text-[11px] font-medium text-slate-700 outline-none"
+                        />
+                      </div>
+                    </div>
+
+                    {/* Stats Dashboard Indicators */}
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="bg-emerald-50 border border-emerald-150 p-2.5 rounded-2xl text-center">
+                        <span className="block text-[8px] font-black text-emerald-600 uppercase tracking-wider">Đã quét</span>
+                        <span className="text-xs font-black text-emerald-700 mt-0.5 block">
+                          {stats.checked}/{stats.total}
+                        </span>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-150 p-2.5 rounded-2xl text-center">
+                        <span className="block text-[8px] font-black text-amber-600 uppercase tracking-wider">Sai lệch</span>
+                        <span className="text-xs font-black text-amber-700 mt-0.5 block">
+                          {activeSession ? (activeSession.details?.filter((i: any) => i.checkedAt && i.resultStatus !== 'MATCH').length || 0) : (session?.items?.filter((i: any) => i.checkStatus === 'CHECKED' && i.result !== 'MATCHED').length || 0)}
+                        </span>
+                      </div>
+                      <div className="bg-slate-100 border border-slate-250 p-2.5 rounded-2xl text-center">
+                        <span className="block text-[8px] font-black text-slate-500 uppercase tracking-wider">Ngoài sổ</span>
+                        <span className="text-xs font-black text-slate-700 mt-0.5 block">
+                          {discoveredAssets.length}
+                        </span>
+                      </div>
+                    </div>
+
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -2257,42 +2651,50 @@ export const InventoryDetail: React.FC = () => {
                   {/* LỊCH SỬ QUÉT GẦN NHẤT */}
                   <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
                     <h4 className="font-black text-[10px] uppercase tracking-widest text-[#0F1720]">Lịch sử quét gần nhất</h4>
-                    <div className="max-h-60 overflow-y-auto border border-slate-100 rounded-2xl">
-                      <table className="w-full text-left border-collapse text-xs">
-                        <thead>
-                          <tr className="bg-slate-50 font-bold text-slate-400 text-[10px] uppercase tracking-wider border-b">
-                            <th className="p-3 w-10 text-center">STT</th>
-                            <th className="p-3">Mã TS</th>
-                            <th className="p-3">Tên tài sản</th>
-                            <th className="p-3">Kết quả</th>
-                            <th className="p-3 text-right">Giờ</th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-slate-50 font-semibold text-slate-650">
-                          {scanHistory.map((h, i) => (
-                            <tr key={h.id} className="hover:bg-slate-50/50">
-                              <td className="p-3 text-center text-slate-400">{i + 1}</td>
-                              <td className="p-3 font-mono font-bold text-slate-700">{h.assetCode}</td>
-                              <td className="p-3 truncate max-w-[120px]" title={h.assetName}>{h.assetName}</td>
-                              <td className="p-3">
-                                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                  h.result.includes('Khớp') ? 'bg-emerald-50 text-emerald-605 border border-emerald-200' : 'bg-amber-50 text-amber-605 border border-amber-200'
-                                }`}>
-                                  {h.result}
-                                </span>
-                              </td>
-                              <td className="p-3 text-right text-slate-400 font-medium">{h.scannedAt}</td>
-                            </tr>
-                          ))}
-                          {scanHistory.length === 0 && (
-                            <tr>
-                              <td colSpan={5} className="p-6 text-center text-slate-400 italic">
-                                Chưa quét tài sản nào.
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
+                    <div className="max-h-90 overflow-y-auto space-y-3 pr-1">
+                      {scanHistory.map((h) => {
+                        const isDuplicated = h.result === 'DUPLICATE_IGNORED';
+                        return (
+                          <div key={h.id} className="p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-2xl relative transition-all">
+                            <div className="flex justify-between items-start">
+                              <span className="font-mono text-xs font-black text-slate-800">{h.assetCode}</span>
+                              <span className="text-[10px] text-slate-400">{h.scannedAt}</span>
+                            </div>
+                            <p className="text-[11px] font-bold text-slate-600 mt-1 truncate max-w-[200px]" title={h.assetName}>
+                              {h.assetName}
+                            </p>
+                            <div className="flex items-center justify-between mt-2">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                                h.result === 'Khớp (Tự động)' || h.result === 'MATCH_AUTO_SAVED'
+                                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
+                                  : isDuplicated
+                                  ? 'bg-slate-100 text-slate-500 border border-slate-250'
+                                  : 'bg-amber-50 text-amber-600 border border-amber-200'
+                              }`}>
+                                {h.result === 'Khớp (Tự động)' || h.result === 'MATCH_AUTO_SAVED' ? 'Khớp (Tự động)' : isDuplicated ? 'Bỏ qua (Trùng)' : h.result}
+                              </span>
+                              {!isDuplicated && (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setUndoTargetItem(findItemForLog(h.rawLog) || { id: h.rawLog.inventoryItemId || h.rawLog.inventorySessionDetailId || h.id });
+                                    setUndoReason('');
+                                    setShowUndoModal(true);
+                                  }}
+                                  className="text-[10px] font-black uppercase text-rose-600 hover:text-rose-700 transition"
+                                >
+                                  Hoàn tác
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                      {scanHistory.length === 0 && (
+                        <div className="p-6 text-center text-slate-400 text-xs italic">
+                          Chưa có lượt quét nào trong phiên.
+                        </div>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -2303,16 +2705,9 @@ export const InventoryDetail: React.FC = () => {
                     <div className="bg-white p-8 rounded-3xl border border-slate-200/80 shadow-sm space-y-6">
                       <div className="flex justify-between items-start border-b pb-4 border-slate-100">
                         <div>
-                          <div className="flex items-center gap-3">
-                            <h3 className="text-md font-black uppercase tracking-widest text-[#0F1720]">Phiếu kiểm kê thực tế</h3>
-                            <span className={`px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest border ${
-                              getCheckStatusBadge(selectedItemForCheck, checkForm).bg
-                            }`}>
-                              {getCheckStatusBadge(selectedItemForCheck, checkForm).text}
-                            </span>
-                          </div>
+                          <h3 className="text-md font-black uppercase tracking-widest text-[#0F1720]">Bàn đối soát tài sản</h3>
                           <p className="text-xs text-slate-500 font-bold mt-1">
-                            Mã TS: <span className="font-mono text-slate-800 mr-4">{selectedItemForCheck.assetCode}</span>
+                            Mã TS: <span className="font-mono text-slate-800 mr-4">{selectedItemForCheck.assetCode || selectedItemForCheck.asset?.assetCode}</span>
                             Tên: <span className="text-slate-800">{activeSession ? selectedItemForCheck.assetName : selectedItemForCheck.asset?.assetName}</span>
                           </p>
                         </div>
@@ -2325,251 +2720,217 @@ export const InventoryDetail: React.FC = () => {
                         </button>
                       </div>
 
-                      {/* Warnings if differences exist */}
-                      {getAutoWarnings(selectedItemForCheck, checkForm).length > 0 && (
-                        <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl flex items-start gap-3">
-                          <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-                          <div className="text-xs font-semibold text-amber-700 space-y-1">
-                            {getAutoWarnings(selectedItemForCheck, checkForm).map((w, idx) => (
-                              <p key={idx}>{w}</p>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Form inputs */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        {/* Expected Fields */}
-                        <div className="space-y-4 bg-slate-50/50 p-5 rounded-2xl border border-slate-150">
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-slate-400">Sổ sách gốc</h4>
-                          <div className="space-y-3 text-xs font-semibold text-slate-600">
-                            <div>
-                              <span className="text-slate-400">Trạng thái:</span>{' '}
-                              <span className="font-bold text-slate-800">
-                                {selectedItemForCheck.expectedStatus === 'IN_STOCK' ? 'Trong kho' : 'Đang sử dụng'}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400">Vị trí:</span>{' '}
-                              <span className="font-bold text-slate-800">
-                                {selectedItemForCheck.expectedLocation || selectedItemForCheck.asset?.locationName || 'Trong kho'}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400">Người dùng:</span>{' '}
-                              <span className="font-bold text-slate-800">
-                                {selectedItemForCheck.asset?.currentUserName || 'Chưa cấp phát'}
-                              </span>
-                            </div>
-                            <div>
-                              <span className="text-slate-400">Serial:</span>{' '}
-                              <span className="font-mono text-slate-800">
-                                {selectedItemForCheck.asset?.serialNumber || 'N/A'}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        {/* Actual Inputs */}
-                        <div className="space-y-4">
-                          <h4 className="text-[10px] font-black uppercase tracking-widest text-[#0F1720]">Thực tế kiểm tra</h4>
-                          
-                          <div className="space-y-3">
-                            <div className="grid grid-cols-2 gap-3">
-                              <div className="space-y-1">
-                                <label className="text-[11px] font-bold text-slate-500">Tình trạng kiểm kê *</label>
-                                <select
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
-                                  value={checkForm.checkCondition}
-                                  onChange={e => setCheckForm({ ...checkForm, checkCondition: e.target.value })}
-                                >
-                                  <option value="FOUND">Đã tìm thấy (FOUND)</option>
-                                  <option value="MISSING">Báo mất/Không thấy (MISSING)</option>
-                                </select>
-                              </div>
-
-                              <div className="space-y-1">
-                                <label className="text-[11px] font-bold text-slate-500">Trạng thái sử dụng *</label>
-                                <select
-                                  disabled={checkForm.checkCondition === 'MISSING'}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
-                                  value={checkForm.actualStatus}
-                                  onChange={e => setCheckForm({ ...checkForm, actualStatus: e.target.value })}
-                                >
-                                  <option value="IN_STOCK">Trong kho (IN_STOCK)</option>
-                                  <option value="ASSIGNED">Đang sử dụng (ASSIGNED)</option>
-                                  <option value="UNDER_REPAIR">Đang sửa (UNDER_REPAIR)</option>
-                                  <option value="DAMAGED">Báo hỏng (DAMAGED)</option>
-                                </select>
-                              </div>
-                            </div>
-
-                            <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500">Người sử dụng thực tế</label>
-                              <div className="relative">
+                      {/* SIDE BY SIDE TABLE */}
+                      <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+                        <table className="w-full text-xs text-left border-collapse">
+                          <thead>
+                            <tr className="bg-slate-50 border-b border-slate-200">
+                              <th className="p-4 font-bold text-slate-500 w-1/3">Trường thông tin</th>
+                              <th className="p-4 font-bold text-slate-600 w-1/3">Sổ sách gốc</th>
+                              <th className="p-4 font-bold text-[#0F1720] w-1/3">Thực tế quét</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-150">
+                            <tr className={selectedItemForCheck.expectedLocation !== checkForm.actualLocation ? 'bg-amber-50/40' : ''}>
+                              <td className="p-4 font-bold text-slate-500">Vị trí</td>
+                              <td className="p-4 font-semibold text-slate-600">
+                                {selectedItemForCheck.expectedLocation || selectedItemForCheck.bookLocationName || selectedItemForCheck.asset?.locationName || 'Trong kho'}
+                              </td>
+                              <td className="p-3">
                                 <input
                                   type="text"
-                                  disabled={checkForm.checkCondition === 'MISSING'}
-                                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.actualLocation}
+                                  onChange={e => setCheckForm({ ...checkForm, actualLocation: e.target.value })}
+                                />
+                              </td>
+                            </tr>
+
+                            <tr className={selectedItemForCheck.asset?.currentUserName !== checkForm.actualUserName ? 'bg-amber-50/40' : ''}>
+                              <td className="p-4 font-bold text-slate-500">Người sử dụng</td>
+                              <td className="p-4 font-semibold text-slate-600">
+                                {selectedItemForCheck.asset?.currentUserName || 'Chưa bàn giao'}
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
                                   value={checkForm.actualUserName}
                                   onChange={e => setCheckForm({ ...checkForm, actualUserName: e.target.value })}
                                 />
-                              </div>
-                            </div>
+                              </td>
+                            </tr>
 
-                            <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500">Vị trí phòng/bàn thực tế</label>
-                              <input
-                                type="text"
-                                disabled={checkForm.checkCondition === 'MISSING'}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
-                                value={checkForm.actualLocation}
-                                onChange={e => setCheckForm({ ...checkForm, actualLocation: e.target.value })}
-                              />
-                            </div>
+                            <tr className={selectedItemForCheck.asset?.serialNumber !== checkForm.actualSerialNumber ? 'bg-amber-50/40' : ''}>
+                              <td className="p-4 font-bold text-slate-500">Số Serial</td>
+                              <td className="p-4 font-semibold text-slate-600">
+                                {selectedItemForCheck.asset?.serialNumber || 'N/A'}
+                              </td>
+                              <td className="p-3">
+                                <input
+                                  type="text"
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.actualSerialNumber}
+                                  onChange={e => setCheckForm({ ...checkForm, actualSerialNumber: e.target.value })}
+                                />
+                              </td>
+                            </tr>
 
-                            <div className="space-y-1">
-                              <label className="text-[11px] font-bold text-slate-500">Số Serial thực tế</label>
-                              <input
-                                type="text"
-                                disabled={checkForm.checkCondition === 'MISSING'}
-                                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-800 outline-none"
-                                value={checkForm.actualSerialNumber}
-                                onChange={e => setCheckForm({ ...checkForm, actualSerialNumber: e.target.value })}
-                              />
-                            </div>
-                          </div>
-                        </div>
+                            <tr className={selectedItemForCheck.expectedStatus !== checkForm.actualStatus ? 'bg-amber-50/40' : ''}>
+                              <td className="p-4 font-bold text-slate-500">Trạng thái sử dụng</td>
+                              <td className="p-4 font-semibold text-slate-600">
+                                {selectedItemForCheck.expectedStatus === 'IN_STOCK' ? 'Trong kho' : 'Đang sử dụng'}
+                              </td>
+                              <td className="p-3">
+                                <select
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.actualStatus}
+                                  onChange={e => setCheckForm({ ...checkForm, actualStatus: e.target.value })}
+                                >
+                                  <option value="IN_STOCK">Trong kho</option>
+                                  <option value="ASSIGNED">Đang sử dụng</option>
+                                  <option value="UNDER_REPAIR">Đang sửa</option>
+                                  <option value="DAMAGED">Báo hỏng</option>
+                                </select>
+                              </td>
+                            </tr>
+
+                            <tr>
+                              <td className="p-4 font-bold text-slate-500">Ngoại hình vật lý</td>
+                              <td className="p-4 font-semibold text-slate-400">N/A</td>
+                              <td className="p-3">
+                                <select
+                                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none focus:border-primary-500 transition-all"
+                                  value={checkForm.appearance}
+                                  onChange={e => setCheckForm({ ...checkForm, appearance: e.target.value })}
+                                >
+                                  <option value="GOOD">Tốt, như mới</option>
+                                  <option value="NORMAL">Bình thường, trầy xước</option>
+                                  <option value="BAD">Hỏng hóc, nứt vỡ</option>
+                                </select>
+                              </td>
+                            </tr>
+                          </tbody>
+                        </table>
                       </div>
 
-                      {/* PHYSICAL EVALUATION */}
-                      <div className="border-t pt-4 border-slate-100 space-y-4">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-[#0F1720]">Đánh giá vật lý & hao mòn</h4>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-500">Ngoại hình vật lý *</label>
-                            <select
-                              disabled={checkForm.checkCondition === 'MISSING'}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
-                              value={checkForm.appearance}
-                              onChange={e => setCheckForm({ ...checkForm, appearance: e.target.value })}
-                            >
-                              <option value="GOOD">Tốt, như mới (GOOD)</option>
-                              <option value="NORMAL">Bình thường, trầy nhẹ (NORMAL)</option>
-                              <option value="BAD">Hỏng hóc, nứt vỡ (BAD)</option>
-                            </select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <label className="text-[11px] font-bold text-slate-500">Khả năng hoạt động *</label>
-                            <select
-                              disabled={checkForm.checkCondition === 'MISSING'}
-                              className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-800 outline-none"
-                              value={checkForm.operation}
-                              onChange={e => setCheckForm({ ...checkForm, operation: e.target.value })}
-                            >
-                              <option value="NORMAL">Hoạt động bình thường (NORMAL)</option>
-                              <option value="FAULTY">Hoạt động chập chờn (FAULTY)</option>
-                              <option value="BROKEN">Hỏng hoàn toàn (BROKEN)</option>
-                            </select>
-                          </div>
-
-                          <div className="space-y-1">
-                            <div className="flex justify-between items-center">
-                              <label className="text-[11px] font-bold text-slate-500">Hao mòn đánh giá</label>
-                              <span className="text-xs font-black text-slate-700">{checkForm.wearRate}%</span>
-                            </div>
-                            <input
-                              type="range"
-                              disabled={checkForm.checkCondition === 'MISSING'}
-                              min="0"
-                              max="100"
-                              step="5"
-                              value={checkForm.wearRate}
-                              onChange={e => setCheckForm({ ...checkForm, wearRate: Number(e.target.value) })}
-                              className="w-full h-2 bg-slate-100 rounded-lg appearance-none cursor-pointer accent-primary-600"
-                            />
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* PHOTOS UPLOAD */}
-                      <div className="border-t pt-4 border-slate-100 space-y-3">
-                        <h4 className="text-[10px] font-black uppercase tracking-widest text-[#0F1720]">Tải ảnh bằng chứng</h4>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                          {[
-                            { key: 'LABEL', label: 'Ảnh Tem QR/Asset' },
-                            { key: 'SERIAL', label: 'Ảnh Số Serial' },
-                            { key: 'CONDITION', label: 'Ảnh Hiện trạng máy' },
-                            { key: 'ERROR', label: 'Ảnh Chi tiết lỗi/hỏng' }
-                          ].map(cat => {
-                            const pUrls = getPhotosByCategory(cat.key);
-                            return (
-                              <div key={cat.key} className="p-3 border border-slate-150 rounded-2xl bg-slate-50/30 flex flex-col items-center justify-between min-h-[130px] text-center">
-                                <span className="font-bold text-[9px] text-slate-500 uppercase leading-tight">{cat.label}</span>
-                                <div className="flex flex-wrap gap-1 justify-center max-w-full my-1">
-                                  {pUrls.map((url, i) => (
-                                    <div key={i} className="relative w-8 h-8 border rounded-lg overflow-hidden group">
-                                      <img src={url} alt={cat.label} className="w-full h-full object-cover" loading="lazy" />
-                                      <button
-                                        type="button"
-                                        onClick={() => removePhotoByCategory(cat.key, url)}
-                                        className="absolute inset-0 bg-rose-600/85 flex items-center justify-center text-white opacity-0 group-hover:opacity-100 transition-opacity"
-                                      >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                                <label className="w-full py-1.5 bg-white border border-slate-200 border-dashed rounded-xl flex items-center justify-center text-slate-400 hover:text-primary-655 hover:border-primary-500 transition-all cursor-pointer text-[9px] font-bold">
-                                  <input 
-                                    type="file" 
-                                    className="hidden" 
-                                    onChange={e => handleFileChange(e, cat.key)} 
-                                    accept="image/*"
-                                    disabled={checkForm.checkCondition === 'MISSING'}
-                                  />
-                                  Tải lên
-                                </label>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-
-                      {/* SUBMIT BUTTONS */}
-                      <div className="flex justify-end gap-3 border-t pt-4 border-slate-100">
+                      {/* ACTION BUTTONS ROW */}
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                         <button
                           type="button"
-                          onClick={() => handleCheckItem('PENDING')}
-                          disabled={submitting}
-                          className="px-5 py-2.5 bg-slate-150 text-slate-600 hover:bg-slate-200 rounded-xl font-bold text-xs uppercase tracking-wider disabled:opacity-50 transition"
+                          onClick={() => handleKeepBookValues(selectedItemForCheck)}
+                          className="bg-slate-100 hover:bg-slate-200 text-slate-700 py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
                         >
-                          Lưu nháp
+                          Giữ nguyên sổ
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleMarkAsLost(selectedItemForCheck)}
+                          className="bg-rose-50 hover:bg-rose-100 text-rose-650 py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                        >
+                          Báo mất tài sản
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => handleProposeAdjustment(selectedItemForCheck)}
+                          className="bg-blue-50 hover:bg-blue-100 text-blue-650 py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all"
+                        >
+                          Đề xuất cập nhật sổ
                         </button>
                         <button
                           type="button"
                           onClick={() => handleCheckItem('CHECKED')}
-                          disabled={submitting}
-                          className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-emerald-105 disabled:opacity-50 transition"
+                          className="bg-emerald-600 hover:bg-emerald-700 text-white py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all col-span-2 md:col-span-1 shadow-md shadow-emerald-200"
                         >
-                          Hoàn tất kiểm kê
+                          Ghi nhận thực tế
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setRecheckTargetItem(selectedItemForCheck);
+                            setRecheckReason('');
+                            setShowRecheckModal(true);
+                          }}
+                          className="bg-amber-50 hover:bg-amber-100 text-amber-650 py-3 px-4 rounded-xl text-[11px] font-bold uppercase tracking-wider transition-all col-span-2 md:col-span-3 border border-amber-250"
+                        >
+                          Gửi yêu cầu kiểm tra lại
                         </button>
                       </div>
                     </div>
                   ) : (
-                    <div className="h-full min-h-[350px] bg-slate-50 border-2 border-dashed border-slate-200 rounded-3xl flex flex-col items-center justify-center p-10 text-center">
-                      <ClipboardList className="h-14 w-14 text-slate-350 mb-4 animate-pulse" />
-                      <h3 className="font-black text-slate-700 text-sm uppercase tracking-wider">Bàn kiểm kê rỗng</h3>
-                      <p className="text-slate-400 text-xs mt-2 max-w-sm">
-                        Chưa có tài sản được chọn. Vui lòng quét mã QR/Barcode bên trái để bắt đầu kiểm kê.
-                      </p>
+                    <div className="h-full min-h-[350px] bg-slate-50 border border-slate-200 rounded-3xl flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
+                      {successFlashItem ? (
+                        <div className="space-y-4">
+                          <div className="w-16 h-16 bg-emerald-100 border border-emerald-300 rounded-full flex items-center justify-center mx-auto text-emerald-600">
+                            <Check className="h-8 w-8" />
+                          </div>
+                          <h3 className="font-black text-emerald-700 text-base uppercase tracking-wider">
+                            Quét thành công!
+                          </h3>
+                          <div className="bg-white p-4 rounded-2xl border border-slate-200 max-w-sm mx-auto shadow-sm">
+                            <p className="font-mono text-xs font-black text-slate-800">
+                              {successFlashItem.assetCode || successFlashItem.asset?.assetCode}
+                            </p>
+                            <p className="text-xs text-slate-500 font-bold mt-1">
+                              {activeSession ? successFlashItem.assetName : successFlashItem.asset?.assetName}
+                            </p>
+                            <span className="mt-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
+                              Tự động khớp & lưu sổ sách
+                            </span>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="w-full space-y-6">
+                          <ClipboardList className="h-12 w-12 text-slate-350 mx-auto" />
+                          <div className="space-y-2">
+                            <h3 className="font-black text-slate-700 text-sm uppercase tracking-wider">
+                              Tiến độ kiểm kê
+                            </h3>
+                            <p className="text-slate-400 text-xs">
+                              Quét Barcode/QR hoặc nhập mã bên trái để đối soát nhanh.
+                            </p>
+                          </div>
+
+                          {/* PROGRESS BAR & STATS GAUGE */}
+                          <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4 max-w-md mx-auto shadow-sm">
+                            <div className="flex justify-between items-center text-xs font-bold text-slate-600">
+                              <span>Tiến trình</span>
+                              <span>
+                                {stats.checked}/{stats.total} ({stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0}%)
+                              </span>
+                            </div>
+                            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                              <div
+                                className="bg-primary-600 h-full rounded-full transition-all duration-500"
+                                style={{ width: `${stats.total > 0 ? (stats.checked / stats.total) * 100 : 0}%` }}
+                              />
+                            </div>
+
+                            <div className="grid grid-cols-2 gap-4 border-t pt-4 border-slate-100">
+                              <div className="text-center">
+                                <span className="block text-[10px] font-bold text-slate-400 uppercase">Tốc độ quét</span>
+                                <span className="text-lg font-black text-[#0F1720] flex items-center justify-center gap-1 mt-1">
+                                  ⚡ {getScanSpeed()}{' '}
+                                  <span className="text-[10px] text-slate-400 font-bold">TS/giờ</span>
+                                </span>
+                              </div>
+                              <div className="text-center">
+                                <span className="block text-[10px] font-bold text-slate-400 uppercase">Sai lệch vị trí</span>
+                                <span className="text-lg font-black text-amber-600 mt-1 block">
+                                  {stats.wrongLocation}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
               </div>
             </div>
           )}
+
 
           {/* Hộp lọc và tìm kiếm danh sách dưới */}
           <div className="p-8 border-b border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-6">
@@ -3731,6 +4092,100 @@ export const InventoryDetail: React.FC = () => {
                 placeholder="Nhập ghi chú chi tiết về tình trạng thực tế..."
                 value={checkForm.note}
                 onChange={e => setCheckForm({...checkForm, note: e.target.value})}
+              />
+            </div>
+          </div>
+        </BaseModal>
+      )}
+
+      {/* UNDO SCAN MODAL */}
+      {showUndoModal && (
+        <BaseModal
+          isOpen={showUndoModal}
+          onClose={() => setShowUndoModal(false)}
+          size="confirm"
+          title={
+            <div>
+              <h2 className="text-lg font-black uppercase tracking-widest text-slate-900">Hoàn tác lượt quét</h2>
+              <p className="text-[10px] text-slate-500 font-bold">Hoàn tác bản ghi kiểm kê thuộc kỳ/phiên hiện tại</p>
+            </div>
+          }
+          footer={
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowUndoModal(false)}
+                className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleConfirmUndo}
+                disabled={submitting || !undoReason.trim()}
+                className="px-5 py-2.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider disabled:opacity-50"
+              >
+                Xác nhận hoàn tác
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 font-semibold">
+              ⚠️ Thao tác này sẽ hoàn tác lượt quét hiện tại của tài sản và ghi lại nhật ký kiểm toán (audit log).
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500">Lý do hoàn tác *</label>
+              <textarea
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-primary-500 focus:bg-white h-24 resize-none"
+                placeholder="Nhập lý do hoàn tác quét bắt buộc..."
+                value={undoReason}
+                onChange={(e) => setUndoReason(e.target.value)}
+              />
+            </div>
+          </div>
+        </BaseModal>
+      )}
+
+      {/* RECHECK REQUEST MODAL */}
+      {showRecheckModal && (
+        <BaseModal
+          isOpen={showRecheckModal}
+          onClose={() => setShowRecheckModal(false)}
+          size="confirm"
+          title={
+            <div>
+              <h2 className="text-lg font-black uppercase tracking-widest text-slate-900">Yêu cầu kiểm tra lại</h2>
+              <p className="text-[10px] text-slate-500 font-bold">Gửi đề xuất kiểm tra thực tế lần 2 cho quản trị viên</p>
+            </div>
+          }
+          footer={
+            <div className="flex gap-2">
+              <button
+                onClick={() => setShowRecheckModal(false)}
+                className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 font-bold text-xs uppercase tracking-wider"
+              >
+                Hủy
+              </button>
+              <button
+                onClick={handleConfirmRecheck}
+                disabled={submitting || !recheckReason.trim()}
+                className="px-5 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-bold text-xs uppercase tracking-wider disabled:opacity-50"
+              >
+                Gửi yêu cầu
+              </button>
+            </div>
+          }
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700 font-semibold">
+              ℹ️ Đề xuất sẽ được gửi lên dưới trạng thái chờ duyệt (PENDING_APPROVAL) và không thay đổi trạng thái tài sản cho đến khi được duyệt.
+            </div>
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-500">Lý do yêu cầu kiểm tra lại *</label>
+              <textarea
+                className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 outline-none focus:border-primary-500 focus:bg-white h-24 resize-none"
+                placeholder="Nhập lý do gửi yêu cầu kiểm tra lại..."
+                value={recheckReason}
+                onChange={(e) => setRecheckReason(e.target.value)}
               />
             </div>
           </div>

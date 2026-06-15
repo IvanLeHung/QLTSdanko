@@ -1352,6 +1352,40 @@ model AssetNormalizationRule {
   @@unique([fieldName, oldValue])
 }
 
+model InventoryScanLog {
+  id                 Int      @id @default(autoincrement())
+  assetId            Int?
+  assetCode          String?
+  barcode            String
+  inventoryCheckId   Int?
+  sessionId          Int?
+  action             String
+  result             String?
+  reason             String?
+  scannedBy          String
+  scannedAt          DateTime @default(now())
+  deviceInfo         String?
+  isDuplicateIgnored Boolean  @default(false)
+
+  @@index([inventoryCheckId])
+  @@index([sessionId])
+  @@index([barcode, scannedBy, scannedAt])
+}
+
+model RecheckRequest {
+  id               Int       @id @default(autoincrement())
+  itemId           Int?
+  detailId         Int?
+  inventoryCheckId Int?
+  sessionId        Int?
+  reason           String
+  status           String    @default("PENDING_APPROVAL")
+  requestedBy      String
+  requestedAt      DateTime  @default(now())
+  approvedBy       String?
+  approvedAt       DateTime?
+}
+
 
 
 
