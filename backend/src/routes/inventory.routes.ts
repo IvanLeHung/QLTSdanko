@@ -1605,8 +1605,17 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
             }
           });
 
+          await prisma.inventoryDetail.update({
+            where: { id: detail.id },
+            data: {
+              batchId,
+              checkStatus: 'MATCH_PENDING_CONFIRM',
+              resultStatus: 'MATCH'
+            }
+          });
+
           autoSaved++;
-          autoSavedItems.push({ id: detail.id, barcode, assetName: asset.assetName, checkStatus: 'PENDING' });
+          autoSavedItems.push({ id: detail.id, barcode, assetName: asset.assetName, checkStatus: 'MATCH_PENDING_CONFIRM' });
         } else {
           await prisma.inventoryScanLog.create({
             data: {
@@ -1622,8 +1631,22 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               batchId
             }
           });
+
+          let dbResultStatus = 'NEED_REVIEW';
+          if (discrepancyAction === 'MISMATCH_LOCATION') dbResultStatus = 'WRONG_LOCATION';
+          else if (discrepancyAction === 'MISMATCH_USER') dbResultStatus = 'WRONG_USER';
+
+          await prisma.inventoryDetail.update({
+            where: { id: detail.id },
+            data: {
+              batchId,
+              checkStatus: 'NEED_REVIEW',
+              resultStatus: dbResultStatus
+            }
+          });
+
           needReview++;
-          reviewItems.push({ id: detail.id, barcode, assetName: asset.assetName, reason: discrepancyAction, checkStatus: 'PENDING' });
+          reviewItems.push({ id: detail.id, barcode, assetName: asset.assetName, reason: discrepancyAction, checkStatus: 'NEED_REVIEW' });
         }
       } 
       // 3. Mode CHECK (Main inventory campaign)
@@ -1764,8 +1787,18 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
             }
           });
 
+          await prisma.inventoryItem.update({
+            where: { id: item.id },
+            data: {
+              batchId,
+              checkStatus: 'MATCH_PENDING_CONFIRM',
+              result: 'MATCHED',
+              resultStatus: 'MATCH'
+            }
+          });
+
           autoSaved++;
-          autoSavedItems.push({ id: item.id, barcode, assetName: asset.assetName, checkStatus: 'PENDING' });
+          autoSavedItems.push({ id: item.id, barcode, assetName: asset.assetName, checkStatus: 'MATCH_PENDING_CONFIRM' });
         } else {
           await prisma.inventoryScanLog.create({
             data: {
@@ -1781,8 +1814,23 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
               batchId
             }
           });
+
+          let dbResultStatus = 'NEED_REVIEW';
+          if (discrepancyAction === 'MISMATCH_LOCATION') dbResultStatus = 'WRONG_LOCATION';
+          else if (discrepancyAction === 'MISMATCH_USER') dbResultStatus = 'WRONG_USER';
+
+          await prisma.inventoryItem.update({
+            where: { id: item.id },
+            data: {
+              batchId,
+              checkStatus: 'NEED_REVIEW',
+              result: dbResultStatus,
+              resultStatus: dbResultStatus
+            }
+          });
+
           needReview++;
-          reviewItems.push({ id: item.id, barcode, assetName: asset.assetName, reason: discrepancyAction, checkStatus: 'PENDING' });
+          reviewItems.push({ id: item.id, barcode, assetName: asset.assetName, reason: discrepancyAction, checkStatus: 'NEED_REVIEW' });
         }
       }
     } catch (itemErr: any) {
@@ -1902,7 +1950,15 @@ router.get('/pending-batches', authenticateToken, async (req: any, res) => {
         const groupType = log.result;
 
         if (groupType === 'OUT_OF_BOOK') {
-          outOfBookItems.push({ barcode, assetName: 'Tài sản ngoài sổ', status: 'NOT_FOUND' });
+          outOfBookItems.push({ barcode, assetName: 'Tài sản ngoài sổ', status: 'NOT_FOUND', outOfBookStatus: 'PENDING' });
+          continue;
+        }
+        if (groupType === 'OUT_OF_BOOK_IGNORED') {
+          // Hide from review items as per requirement!
+          continue;
+        }
+        if (groupType === 'OUT_OF_BOOK_REGISTERED') {
+          outOfBookItems.push({ barcode, assetName: 'Tài sản ngoài sổ (Đã đăng ký)', status: 'REGISTERED', outOfBookStatus: 'REGISTERED' });
           continue;
         }
 
@@ -1930,26 +1986,29 @@ router.get('/pending-batches', authenticateToken, async (req: any, res) => {
               expectedStatus: detail.asset?.status || 'N/A',
               expectedSerial: detail.serialNumber || detail.asset?.serialNumber || 'N/A',
               expectedDepartment: detail.bookDepartmentName || detail.asset?.departmentName || 'N/A',
+              expectedProject: detail.asset?.projectName || 'N/A',
               actualLocation: detail.actualLocationName || '',
               actualUser: detail.actualUserName || '',
               actualDepartment: detail.actualDepartmentName || '',
+              actualProject: detail.actualProjectName || '',
               actualStatus: detail.resultStatus || '',
-              checkStatus: detail.checkedAt ? 'CHECKED' : 'PENDING',
+              checkStatus: detail.checkStatus || 'PENDING',
               checkedAt: detail.checkedAt,
-              checkedBy: '',
+              checkedBy: detail.checkedBy || '',
               resultStatus: detail.resultStatus,
+              batchId: detail.batchId,
+              outOfBookStatus: detail.outOfBookStatus,
               reason: log.reason,
               undoDeadline: detail.checkedAt ? new Date(new Date(detail.checkedAt).getTime() + 30 * 60000).toISOString() : null
             };
 
-            if (detail.checkedAt) {
+            if (detail.checkStatus === 'CHECKED') {
               alreadyCheckedItems.push(itemObj);
-            } else if (groupType === 'MATCH_PENDING_CONFIRM') {
+            } else if (detail.checkStatus === 'MATCH_PENDING_CONFIRM') {
               matchPendingItems.push(itemObj);
-            } else if (groupType === 'NEED_REVIEW') {
-              reviewItems.push(itemObj);
             } else {
-              failedItems.push({ barcode, assetName: itemObj.assetName, reason: log.reason || 'Lỗi phân loại hoặc ngoài phạm vi' });
+              // Both NEED_REVIEW and ACTUAL_UPDATED go to reviewItems
+              reviewItems.push(itemObj);
             }
           } else {
             failedItems.push({ barcode, assetName: 'Không xác định', reason: 'Không tìm thấy dòng thông tin trong phiên' });
@@ -1977,26 +2036,29 @@ router.get('/pending-batches', authenticateToken, async (req: any, res) => {
               expectedStatus: item.expectedStatus || item.asset?.status || 'N/A',
               expectedSerial: item.actualSerialNumber || item.asset?.serialNumber || 'N/A',
               expectedDepartment: item.asset?.departmentName || 'N/A',
+              expectedProject: item.asset?.projectName || 'N/A',
               actualLocation: item.actualLocation || '',
               actualUser: item.actualUserName || '',
-              actualDepartment: item.asset?.departmentName || '',
+              actualDepartment: item.actualDepartment || '',
+              actualProject: item.actualProject || '',
               actualStatus: item.actualStatus || '',
-              checkStatus: item.checkStatus,
+              checkStatus: item.checkStatus || 'PENDING',
               checkedAt: item.checkedAt,
-              checkedBy: item.checkedBy,
+              checkedBy: item.checkedBy || '',
               resultStatus: item.result,
+              batchId: item.batchId,
+              outOfBookStatus: item.outOfBookStatus,
               reason: log.reason,
               undoDeadline: item.checkedAt ? new Date(new Date(item.checkedAt).getTime() + 30 * 60000).toISOString() : null
             };
 
             if (item.checkStatus === 'CHECKED') {
               alreadyCheckedItems.push(itemObj);
-            } else if (groupType === 'MATCH_PENDING_CONFIRM') {
+            } else if (item.checkStatus === 'MATCH_PENDING_CONFIRM') {
               matchPendingItems.push(itemObj);
-            } else if (groupType === 'NEED_REVIEW') {
-              reviewItems.push(itemObj);
             } else {
-              failedItems.push({ barcode, assetName: itemObj.assetName, reason: log.reason || 'Lỗi phân loại hoặc ngoài phạm vi' });
+              // Both NEED_REVIEW and ACTUAL_UPDATED go to reviewItems
+              reviewItems.push(itemObj);
             }
           } else {
             failedItems.push({ barcode, assetName: 'Không xác định', reason: 'Không tìm thấy dòng thông tin trong kỳ' });
@@ -2022,6 +2084,158 @@ router.get('/pending-batches', authenticateToken, async (req: any, res) => {
   } catch (error: any) {
     console.error('Lỗi pending-batches:', error);
     res.status(500).json({ message: error.message || 'Lỗi hệ thống' });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+// POST BATCH ADJUST (ĐIỀU CHỈNH THÔNG TIN THỰC TẾ TRƯỚC KHI XÁC NHẬN)
+// ──────────────────────────────────────────────────────────────
+router.post('/batch-adjust', authenticateToken, async (req: any, res) => {
+  const { mode, itemId, actualLocation, actualProject, actualDepartment, actualUser, actualSerial, actualStatus, condition, note } = req.body;
+  const username = req.user?.username || 'system';
+
+  if (!itemId) {
+    return res.status(400).json({ message: 'itemId là bắt buộc' });
+  }
+
+  const idInt = Number(itemId);
+
+  try {
+    if (mode === 'SESSION') {
+      const detail = await prisma.inventoryDetail.findUnique({
+        where: { id: idInt },
+        include: { asset: true }
+      });
+
+      if (!detail) {
+        return res.status(404).json({ message: 'Không tìm thấy dòng chi tiết kiểm kê' });
+      }
+
+      const asset = detail.asset;
+      const bookLocation = detail.bookLocationName || asset?.locationName || '';
+      const bookUser = detail.bookUserName || asset?.currentUserName || '';
+      const bookDept = detail.bookDepartmentName || asset?.departmentName || '';
+      const bookProject = asset?.projectName || '';
+      const bookSerial = detail.serialNumber || asset?.serialNumber || '';
+      const bookStatus = asset?.status || 'GOOD';
+
+      // Check if adjusted actual values match expected book values exactly
+      let matchesExpected = true;
+      if ((actualLocation || '') !== bookLocation) matchesExpected = false;
+      if ((actualUser || '') !== bookUser) matchesExpected = false;
+      if ((actualDepartment || '') !== bookDept) matchesExpected = false;
+      if ((actualProject || '') !== bookProject) matchesExpected = false;
+      if ((actualSerial || '') !== bookSerial) matchesExpected = false;
+      if ((actualStatus || '') !== bookStatus) matchesExpected = false;
+      if (condition === 'DAMAGED' || condition === 'LOST') matchesExpected = false;
+
+      const newStatus = matchesExpected ? 'MATCH_PENDING_CONFIRM' : 'ACTUAL_UPDATED';
+      const resultStatus = matchesExpected ? 'MATCH' : 'MISMATCH';
+
+      // Record logs details
+      const oldVals = `Vị trí: ${detail.actualLocationName || ''}, Người: ${detail.actualUserName || ''}, PB: ${detail.actualDepartmentName || ''}, DA: ${detail.actualProjectName || ''}, Serial: ${detail.serialNumber || ''}, TT: ${detail.resultStatus || ''}`;
+      const newVals = `Vị trí: ${actualLocation || ''}, Người: ${actualUser || ''}, PB: ${actualDepartment || ''}, DA: ${actualProject || ''}, Serial: ${actualSerial || ''}, TT: ${actualStatus || ''}`;
+
+      await prisma.inventoryDetail.update({
+        where: { id: idInt },
+        data: {
+          actualLocationName: actualLocation || '',
+          actualUserName: actualUser || '',
+          actualDepartmentName: actualDepartment || '',
+          actualProjectName: actualProject || '',
+          resultStatus: actualStatus || resultStatus,
+          checkStatus: newStatus,
+          note: note || ''
+        }
+      });
+
+      await prisma.inventoryScanLog.create({
+        data: {
+          assetId: detail.assetId,
+          assetCode: detail.assetCode,
+          barcode: detail.assetCode || '',
+          inventoryCheckId: null,
+          sessionId: detail.sessionId,
+          action: 'ADJUST_ACTUAL',
+          result: newStatus,
+          reason: `Thay đổi thực tế. Trước: [${oldVals}] -> Sau: [${newVals}]`,
+          scannedBy: username,
+          batchId: detail.batchId
+        }
+      });
+
+      res.json({ success: true, checkStatus: newStatus });
+    } else {
+      // CHECK mode
+      const item = await prisma.inventoryItem.findUnique({
+        where: { id: idInt },
+        include: { asset: true }
+      });
+
+      if (!item) {
+        return res.status(404).json({ message: 'Không tìm thấy dòng tài sản kiểm kê' });
+      }
+
+      const asset = item.asset;
+      const bookLocation = item.expectedLocation || asset?.locationName || '';
+      const bookUser = asset?.currentUserName || '';
+      const bookDept = asset?.departmentName || '';
+      const bookProject = asset?.projectName || '';
+      const bookSerial = asset?.serialNumber || '';
+      const bookStatus = item.expectedStatus || asset?.status || 'GOOD';
+
+      let matchesExpected = true;
+      if ((actualLocation || '') !== bookLocation) matchesExpected = false;
+      if ((actualUser || '') !== bookUser) matchesExpected = false;
+      if ((actualDepartment || '') !== bookDept) matchesExpected = false;
+      if ((actualProject || '') !== bookProject) matchesExpected = false;
+      if ((actualSerial || '') !== bookSerial) matchesExpected = false;
+      if ((actualStatus || '') !== bookStatus) matchesExpected = false;
+      if (condition === 'DAMAGED' || condition === 'LOST') matchesExpected = false;
+
+      const newStatus = matchesExpected ? 'MATCH_PENDING_CONFIRM' : 'ACTUAL_UPDATED';
+      const result = matchesExpected ? 'MATCHED' : 'NEED_REVIEW';
+
+      const oldVals = `Vị trí: ${item.actualLocation || ''}, Người: ${item.actualUserName || ''}, PB: ${item.actualDepartment || ''}, DA: ${item.actualProject || ''}, Serial: ${item.actualSerialNumber || ''}, TT: ${item.actualStatus || ''}`;
+      const newVals = `Vị trí: ${actualLocation || ''}, Người: ${actualUser || ''}, PB: ${actualDepartment || ''}, DA: ${actualProject || ''}, Serial: ${actualSerial || ''}, TT: ${actualStatus || ''}`;
+
+      await prisma.inventoryItem.update({
+        where: { id: idInt },
+        data: {
+          actualLocation: actualLocation || '',
+          actualUserName: actualUser || '',
+          actualDepartment: actualDepartment || '',
+          actualProject: actualProject || '',
+          actualStatus: actualStatus || '',
+          checkStatus: newStatus,
+          result: result,
+          resultStatus: result,
+          checkCondition: condition || 'FOUND',
+          actualSerialNumber: actualSerial || '',
+          note: note || ''
+        }
+      });
+
+      await prisma.inventoryScanLog.create({
+        data: {
+          assetId: item.assetId,
+          assetCode: item.assetCode,
+          barcode: item.assetCode || '',
+          inventoryCheckId: item.inventoryCheckId,
+          sessionId: null,
+          action: 'ADJUST_ACTUAL',
+          result: newStatus,
+          reason: `Thay đổi thực tế. Trước: [${oldVals}] -> Sau: [${newVals}]`,
+          scannedBy: username,
+          batchId: item.batchId
+        }
+      });
+
+      res.json({ success: true, checkStatus: newStatus });
+    }
+  } catch (error: any) {
+    console.error('Lỗi batch-adjust:', error);
+    res.status(400).json({ message: error.message || 'Lỗi điều chỉnh thực tế' });
   }
 });
 
@@ -2060,13 +2274,14 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
             },
             include: { asset: true }
           });
-          if (detail && !detail.checkedAt) {
+          if (detail && detail.checkStatus !== 'CHECKED') {
             itemsToConfirm.push({
               id: detail.id,
               assetCode: detail.assetCode,
               actualLocation: detail.bookLocationName || detail.asset?.locationName || 'Trong kho',
               actualUser: detail.bookUserName || detail.asset?.currentUserName || 'N/A',
               actualDepartment: detail.bookDepartmentName || detail.asset?.departmentName || '',
+              actualProject: detail.asset?.projectName || '',
               actualStatus: detail.asset?.status || 'GOOD',
               quality: 'GOOD',
               checkCondition: 'FOUND',
@@ -2092,6 +2307,7 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
               actualLocation: item.expectedLocation || item.asset?.locationName || 'Trong kho',
               actualUser: item.asset?.currentUserName || 'N/A',
               actualDepartment: item.asset?.departmentName || '',
+              actualProject: item.asset?.projectName || '',
               actualStatus: item.expectedStatus || item.asset?.status || 'GOOD',
               quality: 'GOOD',
               checkCondition: 'FOUND',
@@ -2128,30 +2344,49 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
             throw new Error(`Tài sản ngoài sổ (không có liên kết gốc) không được phép xác nhận kiểm kê trực tiếp.`);
           }
 
-          const isOverride = !!detail.checkedAt;
+          const isOverride = detail.checkStatus === 'CHECKED';
           const confirmedAt = new Date();
 
-          let resultStatus: 'MATCH' | 'MISMATCH' = 'MATCH';
-          if (
-            (itemConf.actualLocation && detail.bookLocationName && itemConf.actualLocation !== detail.bookLocationName) ||
-            (itemConf.actualUser && detail.bookUserName && itemConf.actualUser !== detail.bookUserName) ||
-            (itemConf.actualStatus && detail.asset?.status && itemConf.actualStatus !== detail.asset.status)
-          ) {
-            resultStatus = 'MISMATCH';
-          }
+          const asset = detail.asset!;
+          const bookLocation = detail.bookLocationName || asset.locationName || '';
+          const bookUser = detail.bookUserName || asset.currentUserName || '';
+          const bookDept = detail.bookDepartmentName || asset.departmentName || '';
+          const bookProject = asset.projectName || '';
+          const bookSerial = detail.serialNumber || asset.serialNumber || '';
+          const bookStatus = asset.status || 'GOOD';
+
+          const actualLoc = itemConf.actualLocation !== undefined ? itemConf.actualLocation : (detail.actualLocationName || bookLocation);
+          const actualUsr = itemConf.actualUser !== undefined ? itemConf.actualUser : (detail.actualUserName || bookUser);
+          const actualDep = itemConf.actualDepartment !== undefined ? itemConf.actualDepartment : (detail.actualDepartmentName || bookDept);
+          const actualProj = itemConf.actualProject !== undefined ? itemConf.actualProject : (detail.actualProjectName || bookProject);
+          const actualSer = itemConf.serial !== undefined ? itemConf.serial : (detail.serialNumber || bookSerial);
+          const actualStat = itemConf.actualStatus !== undefined ? itemConf.actualStatus : (detail.resultStatus || bookStatus);
+
+          let matchesExpected = true;
+          if (actualLoc !== bookLocation) matchesExpected = false;
+          if (actualUsr !== bookUser) matchesExpected = false;
+          if (actualDep !== bookDept) matchesExpected = false;
+          if (actualProj !== bookProject) matchesExpected = false;
+          if (actualSer !== bookSerial) matchesExpected = false;
+          if (actualStat !== bookStatus) matchesExpected = false;
+          if (itemConf.quality === 'DAMAGED' || itemConf.quality === 'LOST') matchesExpected = false;
+
+          const resultStatus = matchesExpected ? 'MATCH' : 'MISMATCH';
+          const confirmAction = isOverride ? 'OVERRIDE_CHECKED' : (confirmMatchOnly ? 'BULK_CONFIRM' : 'CONFIRM');
 
           await tx.inventoryDetail.update({
             where: { id: itemId },
             data: {
-              actualLocationName: itemConf.actualLocation || detail.bookLocationName || '',
-              actualUserName: itemConf.actualUser || detail.bookUserName || '',
-              actualDepartmentName: itemConf.actualDepartment || detail.bookDepartmentName || '',
-              // InventoryDetail has no actualStatus/quality columns; use note for status tracking
-              // actualStatus stored via resultStatus logic above
-              note: itemConf.note || '',
-              resultStatus,
+              actualLocationName: actualLoc,
+              actualUserName: actualUsr,
+              actualDepartmentName: actualDep,
+              actualProjectName: actualProj,
+              note: itemConf.note || detail.note || '',
+              resultStatus: actualStat || resultStatus,
+              checkStatus: 'CHECKED',
               checkedAt: confirmedAt,
-              // InventoryDetail has no checkedBy column; tracked via auditLog
+              checkedBy: username,
+              batchId: batchId || detail.batchId
             }
           });
 
@@ -2159,7 +2394,7 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
             where: { id: detail.assetId },
             data: {
               lastInventoryDate: confirmedAt,
-              lastInventoryStatus: resultStatus === 'MATCH' ? 'MATCH' : 'MISMATCH'
+              lastInventoryStatus: resultStatus
             }
           });
 
@@ -2167,8 +2402,8 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
             data: {
               entityType: 'ASSET',
               entityId: detail.assetId,
-              action: isOverride ? 'OVERRIDE_CHECKED' : 'FAST_SCAN_CHECK',
-              details: `Xác nhận kiểm kê lô ${batchId}. Trạng thái: ${resultStatus}.`,
+              action: confirmAction,
+              details: `Xác nhận kiểm kê lô ${batchId}. Trạng thái: ${resultStatus}. Thực tế: Vị trí [${actualLoc}], Người [${actualUsr}], PB [${actualDep}], DA [${actualProj}], Serial [${actualSer}], TT [${actualStat}]`,
               performedBy: username
             }
           });
@@ -2180,10 +2415,11 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
               barcode: detail.assetCode || '',
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: isOverride ? 'OVERRIDE_CHECKED' : 'FAST_SCAN_CHECK',
+              action: confirmAction,
               result: resultStatus === 'MATCH' ? 'MATCHED' : 'MISMATCH',
+              reason: `Xác nhận thực tế. Vị trí [${actualLoc}], Người [${actualUsr}], PB [${actualDep}], DA [${actualProj}], Serial [${actualSer}], TT [${actualStat}]`,
               scannedBy: username,
-              batchId
+              batchId: batchId || detail.batchId
             }
           });
 
@@ -2211,35 +2447,64 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
           const isOverride = item.checkStatus === 'CHECKED';
           const confirmedAt = new Date();
 
-          let result: 'MATCHED' | 'MISSING' | 'DAMAGED' | 'WRONG_LOCATION' | 'WRONG_STATUS' | 'WRONG_USER' = 'MATCHED';
           const asset = item.asset!;
+          const bookLocation = item.expectedLocation || asset.locationName || '';
+          const bookUser = asset.currentUserName || '';
+          const bookDept = asset.departmentName || '';
+          const bookProject = asset.projectName || '';
+          const bookSerial = asset.serialNumber || '';
+          const bookStatus = item.expectedStatus || asset.status || 'GOOD';
 
-          if (itemConf.checkCondition === 'MISSING' || itemConf.actualStatus === 'LOST') {
+          const actualLoc = itemConf.actualLocation !== undefined ? itemConf.actualLocation : (item.actualLocation || bookLocation);
+          const actualUsr = itemConf.actualUser !== undefined ? itemConf.actualUser : (item.actualUserName || bookUser);
+          const actualDep = itemConf.actualDepartment !== undefined ? itemConf.actualDepartment : (item.actualDepartment || bookDept);
+          const actualProj = itemConf.actualProject !== undefined ? itemConf.actualProject : (item.actualProject || bookProject);
+          const actualSer = itemConf.serial !== undefined ? itemConf.serial : (item.actualSerialNumber || bookSerial);
+          const actualStat = itemConf.actualStatus !== undefined ? itemConf.actualStatus : (item.actualStatus || bookStatus);
+          const quality = itemConf.quality || item.quality || 'GOOD';
+
+          let matchesExpected = true;
+          if (actualLoc !== bookLocation) matchesExpected = false;
+          if (actualUsr !== bookUser) matchesExpected = false;
+          if (actualDep !== bookDept) matchesExpected = false;
+          if (actualProj !== bookProject) matchesExpected = false;
+          if (actualSer !== bookSerial) matchesExpected = false;
+          if (actualStat !== bookStatus) matchesExpected = false;
+          if (quality === 'DAMAGED' || actualStat === 'LOST') matchesExpected = false;
+
+          let result: 'MATCHED' | 'MISSING' | 'DAMAGED' | 'WRONG_LOCATION' | 'WRONG_STATUS' | 'WRONG_USER' = 'MATCHED';
+          if (itemConf.checkCondition === 'MISSING' || actualStat === 'LOST') {
             result = 'MISSING';
-          } else if (itemConf.quality === 'DAMAGED' || itemConf.actualStatus === 'DAMAGED') {
+          } else if (quality === 'DAMAGED' || actualStat === 'DAMAGED') {
             result = 'DAMAGED';
-          } else if (itemConf.actualLocation && item.expectedLocation && itemConf.actualLocation !== item.expectedLocation) {
+          } else if (actualLoc !== bookLocation) {
             result = 'WRONG_LOCATION';
-          } else if (itemConf.actualStatus && item.expectedStatus && itemConf.actualStatus !== item.expectedStatus) {
+          } else if (actualStat !== bookStatus) {
             result = 'WRONG_STATUS';
-          } else if (itemConf.actualUser && asset.currentUserName && itemConf.actualUser !== asset.currentUserName) {
+          } else if (actualUsr !== bookUser) {
             result = 'WRONG_USER';
           }
+
+          const confirmAction = isOverride ? 'OVERRIDE_CHECKED' : (confirmMatchOnly ? 'BULK_CONFIRM' : 'CONFIRM');
 
           await tx.inventoryItem.update({
             where: { id: itemId },
             data: {
-              actualLocation: itemConf.actualLocation || item.expectedLocation || '',
-              actualUserName: itemConf.actualUser || asset.currentUserName || '',
-              actualStatus: itemConf.actualStatus || item.expectedStatus || 'GOOD',
-              quality: itemConf.quality || 'GOOD',
-              note: itemConf.note || '',
+              actualLocation: actualLoc,
+              actualUserName: actualUsr,
+              actualDepartment: actualDep,
+              actualProject: actualProj,
+              actualStatus: actualStat,
+              quality: quality,
+              note: itemConf.note || item.note || '',
               checkStatus: 'CHECKED',
               checkedAt: confirmedAt,
               checkedBy: username,
               result,
-              checkCondition: itemConf.checkCondition || 'FOUND',
-              actualSerialNumber: itemConf.serial || item.actualSerialNumber || ''
+              resultStatus: result,
+              checkCondition: itemConf.checkCondition || item.checkCondition || 'FOUND',
+              actualSerialNumber: actualSer,
+              batchId: batchId || item.batchId
             }
           });
 
@@ -2255,8 +2520,8 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
             data: {
               entityType: 'ASSET',
               entityId: item.assetId,
-              action: isOverride ? 'OVERRIDE_CHECKED' : 'FAST_SCAN_CHECK',
-              details: `Xác nhận kiểm kê lô ${batchId}. Kết quả: ${result}.`,
+              action: confirmAction,
+              details: `Xác nhận kiểm kê lô ${batchId}. Kết quả: ${result}. Thực tế: Vị trí [${actualLoc}], Người [${actualUsr}], PB [${actualDep}], DA [${actualProj}], Serial [${actualSer}], TT [${actualStat}]`,
               performedBy: username
             }
           });
@@ -2268,10 +2533,11 @@ router.post('/batch-confirm', authenticateToken, async (req: any, res) => {
               barcode: item.assetCode || '',
               inventoryCheckId: checkIdInt,
               sessionId: sessIdInt,
-              action: isOverride ? 'OVERRIDE_CHECKED' : 'FAST_SCAN_CHECK',
+              action: confirmAction,
               result,
+              reason: `Xác nhận thực tế. Vị trí [${actualLoc}], Người [${actualUsr}], PB [${actualDep}], DA [${actualProj}], Serial [${actualSer}], TT [${actualStat}]`,
               scannedBy: username,
-              batchId
+              batchId: batchId || item.batchId
             }
           });
 
@@ -2319,7 +2585,7 @@ router.post('/batch-undo', authenticateToken, async (req: any, res) => {
         });
 
         if (detail) {
-          if (!detail.checkedAt) {
+          if (detail.checkStatus !== 'CHECKED' || !detail.checkedAt) {
             throw new Error(`Tài sản ${detail.assetCode} chưa được kiểm kê, không thể hoàn tác.`);
           }
 
@@ -2329,17 +2595,55 @@ router.post('/batch-undo', authenticateToken, async (req: any, res) => {
             throw new Error(`Quá hạn 30 phút để hoàn tác tài sản ${detail.assetCode}`);
           }
 
-          await tx.inventoryDetail.update({
-            where: { id: itemId },
-            data: {
-              actualLocationName: '',
-              actualUserName: '',
-              actualDepartmentName: '',
-              note: null,
-              resultStatus: 'MATCH',
-              checkedAt: null
+          const lastLog = await tx.inventoryScanLog.findFirst({
+            where: {
+              assetId: detail.assetId,
+              sessionId: detail.sessionId,
+              batchId: batchId || detail.batchId || undefined
+            },
+            orderBy: { scannedAt: 'desc' }
+          });
+
+          let prevStatus = 'MATCH_PENDING_CONFIRM';
+          if (lastLog) {
+            if (lastLog.action === 'ADJUST_ACTUAL' || lastLog.result === 'NEED_REVIEW' || lastLog.result === 'ACTUAL_UPDATED') {
+              prevStatus = 'NEED_REVIEW';
+            }
+          }
+
+          const hasAdjust = await tx.inventoryScanLog.findFirst({
+            where: {
+              assetId: detail.assetId,
+              sessionId: detail.sessionId,
+              action: 'ADJUST_ACTUAL'
             }
           });
+
+          if (!hasAdjust) {
+            await tx.inventoryDetail.update({
+              where: { id: itemId },
+              data: {
+                actualLocationName: '',
+                actualUserName: '',
+                actualDepartmentName: '',
+                actualProjectName: '',
+                note: null,
+                resultStatus: 'MATCH',
+                checkedAt: null,
+                checkedBy: null,
+                checkStatus: prevStatus
+              }
+            });
+          } else {
+            await tx.inventoryDetail.update({
+              where: { id: itemId },
+              data: {
+                checkedAt: null,
+                checkedBy: null,
+                checkStatus: 'NEED_REVIEW'
+              }
+            });
+          }
 
           const nextRecentLog = await tx.inventoryScanLog.findFirst({
             where: {
@@ -2375,9 +2679,10 @@ router.post('/batch-undo', authenticateToken, async (req: any, res) => {
               barcode: detail.assetCode || '',
               sessionId: detail.sessionId,
               action: 'UNDO_CHECKED',
-              result: 'PENDING',
+              result: prevStatus === 'MATCH_PENDING_CONFIRM' ? 'MATCH_PENDING_CONFIRM' : 'NEED_REVIEW',
+              reason: `Hoàn tác xác nhận kiểm kê. Quay lại trạng thái chờ rà soát.`,
               scannedBy: username,
-              batchId
+              batchId: batchId || detail.batchId
             }
           });
 
@@ -2401,22 +2706,58 @@ router.post('/batch-undo', authenticateToken, async (req: any, res) => {
             throw new Error(`Quá hạn 30 phút để hoàn tác tài sản ${item.assetCode}`);
           }
 
-          await tx.inventoryItem.update({
-            where: { id: itemId },
-            data: {
-              actualLocation: '',
-              actualUserName: '',
-              actualStatus: '',
-              quality: 'GOOD',
-              note: '',
-              checkStatus: 'PENDING',
-              checkedAt: null,
-              checkedBy: null,
-              result: 'MATCHED',
-              checkCondition: 'FOUND',
-              actualSerialNumber: ''
+          const lastLog = await tx.inventoryScanLog.findFirst({
+            where: {
+              assetId: item.assetId,
+              inventoryCheckId: item.inventoryCheckId,
+              batchId: batchId || item.batchId || undefined
+            },
+            orderBy: { scannedAt: 'desc' }
+          });
+
+          let prevStatus = 'MATCH_PENDING_CONFIRM';
+          if (lastLog) {
+            if (lastLog.action === 'ADJUST_ACTUAL' || lastLog.result === 'NEED_REVIEW' || lastLog.result === 'ACTUAL_UPDATED') {
+              prevStatus = 'NEED_REVIEW';
+            }
+          }
+
+          const hasAdjust = await tx.inventoryScanLog.findFirst({
+            where: {
+              assetId: item.assetId,
+              inventoryCheckId: item.inventoryCheckId,
+              action: 'ADJUST_ACTUAL'
             }
           });
+
+          if (!hasAdjust) {
+            await tx.inventoryItem.update({
+              where: { id: itemId },
+              data: {
+                actualLocation: '',
+                actualUserName: '',
+                actualStatus: '',
+                quality: 'GOOD',
+                note: '',
+                checkStatus: prevStatus,
+                checkedAt: null,
+                checkedBy: null,
+                result: 'MATCHED',
+                resultStatus: 'MATCH',
+                checkCondition: 'FOUND',
+                actualSerialNumber: ''
+              }
+            });
+          } else {
+            await tx.inventoryItem.update({
+              where: { id: itemId },
+              data: {
+                checkedAt: null,
+                checkedBy: null,
+                checkStatus: 'NEED_REVIEW'
+              }
+            });
+          }
 
           const nextRecentLog = await tx.inventoryScanLog.findFirst({
             where: {
@@ -2453,9 +2794,10 @@ router.post('/batch-undo', authenticateToken, async (req: any, res) => {
               inventoryCheckId: item.inventoryCheckId,
               sessionId: null,
               action: 'UNDO_CHECKED',
-              result: 'PENDING',
+              result: prevStatus === 'MATCH_PENDING_CONFIRM' ? 'MATCH_PENDING_CONFIRM' : 'NEED_REVIEW',
+              reason: `Hoàn tác xác nhận kiểm kê. Quay lại trạng thái chờ rà soát.`,
               scannedBy: username,
-              batchId
+              batchId: batchId || item.batchId
             }
           });
 
@@ -2476,22 +2818,143 @@ router.post('/batch-undo', authenticateToken, async (req: any, res) => {
 // ──────────────────────────────────────────────────────────────
 router.post('/batch-cancel', authenticateToken, async (req: any, res) => {
   const { batchId } = req.body;
+  const username = req.user?.username || 'system';
+  const role = req.user?.role || 'USER';
+
   if (!batchId) {
     return res.status(400).json({ message: 'batchId là bắt buộc' });
   }
 
   try {
-    await prisma.inventoryScanLog.deleteMany({
-      where: {
-        batchId,
-        action: 'SCANNED_PENDING_REVIEW'
+    // Check if there are any confirmed items in this batch
+    const confirmedDetailsCount = await prisma.inventoryDetail.count({
+      where: { batchId, checkStatus: 'CHECKED' }
+    });
+
+    const confirmedItemsCount = await prisma.inventoryItem.count({
+      where: { batchId, checkStatus: 'CHECKED' }
+    });
+
+    const totalConfirmed = confirmedDetailsCount + confirmedItemsCount;
+
+    if (totalConfirmed > 0 && role !== 'ADMIN' && role !== 'SUPERADMIN') {
+      return res.status(400).json({
+        message: `Lô đã có ${totalConfirmed} tài sản được xác nhận kiểm kê. Vui lòng hoàn tác (Undo) các tài sản này trước khi hủy lô, hoặc yêu cầu quản trị viên (Admin) xử lý.`
+      });
+    }
+
+    // Process deletion and reset in transaction
+    await prisma.$transaction(async (tx) => {
+      // 1. Reset InventoryDetail records associated with this batchId
+      await tx.inventoryDetail.updateMany({
+        where: { batchId },
+        data: {
+          batchId: null,
+          checkStatus: 'PENDING',
+          actualLocationName: '',
+          actualUserName: '',
+          actualDepartmentName: '',
+          actualProjectName: '',
+          resultStatus: 'MATCH',
+          checkedAt: null,
+          checkedBy: null,
+          note: null
+        }
+      });
+
+      // 2. Reset InventoryItem records associated with this batchId
+      await tx.inventoryItem.updateMany({
+        where: { batchId },
+        data: {
+          batchId: null,
+          checkStatus: 'PENDING',
+          actualLocation: '',
+          actualUserName: '',
+          actualStatus: '',
+          quality: 'GOOD',
+          note: '',
+          result: 'MATCHED',
+          resultStatus: 'MATCH',
+          checkCondition: 'FOUND',
+          actualSerialNumber: '',
+          checkedAt: null,
+          checkedBy: null
+        }
+      });
+
+      // 3. Delete scan logs for this batch
+      await tx.inventoryScanLog.deleteMany({
+        where: { batchId }
+      });
+
+      // 4. Create audit log if it was an admin bypass override
+      if (totalConfirmed > 0) {
+        await tx.auditLog.create({
+          data: {
+            entityType: 'INVENTORY_BATCH',
+            entityId: 0,
+            action: 'ADMIN_BYPASS_BATCH_CANCEL',
+            details: `Admin ${username} hủy cưỡng chế lô ${batchId} có ${totalConfirmed} tài sản đã xác nhận.`,
+            performedBy: username
+          }
+        });
       }
     });
 
-    res.json({ success: true, message: 'Đã hủy lô quét thành công' });
+    res.json({ success: true, message: 'Đã hủy lô quét và đặt lại trạng thái tài sản thành công' });
   } catch (error: any) {
     console.error('Lỗi batch-cancel:', error);
     res.status(400).json({ message: error.message || 'Lỗi hủy lô quét' });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+// POST BATCH CLASSIFY OUT OF BOOK (PHÂN LOẠI TÀI SẢN NGOÀI SỔ)
+// ──────────────────────────────────────────────────────────────
+router.post('/batch-classify-out-of-book', authenticateToken, async (req: any, res) => {
+  const { batchId, barcode, action } = req.body;
+  const username = req.user?.username || 'system';
+
+  if (!batchId || !barcode || !action) {
+    return res.status(400).json({ message: 'batchId, barcode và action là bắt buộc' });
+  }
+
+  if (action !== 'IGNORE' && action !== 'REGISTER') {
+    return res.status(400).json({ message: 'action chỉ nhận giá trị IGNORE hoặc REGISTER' });
+  }
+
+  try {
+    const newResultStatus = action === 'IGNORE' ? 'OUT_OF_BOOK_IGNORED' : 'OUT_OF_BOOK_REGISTERED';
+
+    await prisma.inventoryScanLog.updateMany({
+      where: {
+        batchId,
+        barcode,
+        result: 'OUT_OF_BOOK'
+      },
+      data: {
+        result: newResultStatus,
+        reason: `Phân loại tài sản ngoài sổ: ${action === 'IGNORE' ? 'Bỏ qua' : 'Đăng ký mới'} bởi ${username}`
+      }
+    });
+
+    await prisma.auditLog.create({
+      data: {
+        entityType: 'INVENTORY_BATCH',
+        entityId: 0,
+        action: `OUT_OF_BOOK_${action}`,
+        details: `Phân loại tài sản ngoài sổ ${barcode} trong lô ${batchId} là ${action}.`,
+        performedBy: username
+      }
+    });
+
+    res.json({
+      success: true,
+      message: `Đã phân loại tài sản ngoài sổ ${barcode} là ${action === 'IGNORE' ? 'Bỏ qua' : 'Đăng ký mới'}`
+    });
+  } catch (error: any) {
+    console.error('Lỗi batch-classify-out-of-book:', error);
+    res.status(400).json({ message: error.message || 'Lỗi phân loại tài sản ngoài sổ' });
   }
 });
 

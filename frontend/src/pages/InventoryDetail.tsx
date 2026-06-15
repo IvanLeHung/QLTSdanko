@@ -2120,6 +2120,7 @@ export const InventoryDetail: React.FC = () => {
           actualLocation: editData.actualLocation || item.expectedLocation || '',
           actualUser: editData.actualUser || item.expectedUser || '',
           actualDepartment: editData.actualDepartment || item.expectedDepartment || '',
+          actualProject: editData.actualProject || item.expectedProject || '',
           actualStatus: editData.actualStatus || item.expectedStatus || 'GOOD',
           quality: editData.quality || 'GOOD',
           checkCondition: editData.checkCondition || 'FOUND',
@@ -2194,6 +2195,7 @@ export const InventoryDetail: React.FC = () => {
           actualLocation: editData.actualLocation || item.expectedLocation || '',
           actualUser: editData.actualUser || item.expectedUser || '',
           actualDepartment: editData.actualDepartment || item.expectedDepartment || '',
+          actualProject: editData.actualProject || item.expectedProject || '',
           actualStatus: editData.actualStatus || item.expectedStatus || 'GOOD',
           quality: editData.quality || 'GOOD',
           checkCondition: editData.checkCondition || 'FOUND',
@@ -2430,6 +2432,7 @@ export const InventoryDetail: React.FC = () => {
     // Expected values
     const expLoc = item.expectedLocation || 'N/A';
     const expDept = item.expectedDepartment || 'N/A';
+    const expProj = item.expectedProject || 'N/A';
     const expUser = item.expectedUser || 'N/A';
     const expSerial = item.expectedSerial || 'N/A';
     const expStatus = item.expectedStatus || 'IN_STOCK';
@@ -2438,6 +2441,7 @@ export const InventoryDetail: React.FC = () => {
     // Actual values (fall back to expected if not edited)
     const actLoc = editData.actualLocation !== undefined ? editData.actualLocation : expLoc;
     const actDept = editData.actualDepartment !== undefined ? editData.actualDepartment : expDept;
+    const actProj = editData.actualProject !== undefined ? editData.actualProject : expProj;
     const actUser = editData.actualUser !== undefined ? editData.actualUser : expUser;
     const actSerial = editData.serial !== undefined ? editData.serial : expSerial;
     const actStatusRaw = editData.actualStatus !== undefined ? editData.actualStatus : expStatus;
@@ -2446,6 +2450,7 @@ export const InventoryDetail: React.FC = () => {
     // Mismatches
     const locMismatch = expLoc !== actLoc;
     const deptMismatch = expDept !== actDept;
+    const projMismatch = expProj !== actProj;
     const userMismatch = expUser !== actUser;
     const serialMismatch = expSerial !== actSerial;
     const statusMismatch = expStatus !== actStatusRaw;
@@ -2486,6 +2491,12 @@ export const InventoryDetail: React.FC = () => {
                 <td className="p-2">{expDept}</td>
                 <td className={`p-2 ${deptMismatch ? "text-amber-800 font-extrabold" : "text-slate-800"}`}>{actDept}</td>
                 <td className="p-2 text-center">{getResultCell(deptMismatch, "Lệch phòng ban")}</td>
+              </tr>
+              <tr className={projMismatch ? "bg-amber-50/20" : ""}>
+                <td className="p-2 pl-3 text-slate-400">Dự án</td>
+                <td className="p-2">{expProj}</td>
+                <td className={`p-2 ${projMismatch ? "text-amber-800 font-extrabold" : "text-slate-800"}`}>{actProj}</td>
+                <td className="p-2 text-center">{getResultCell(projMismatch, "Lệch dự án")}</td>
               </tr>
               <tr className={userMismatch ? "bg-amber-50/20" : ""}>
                 <td className="p-2 pl-3 text-slate-400">Người sử dụng</td>
@@ -2545,6 +2556,16 @@ export const InventoryDetail: React.FC = () => {
                 className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400"
                 value={editData.actualDepartment || ''}
                 onChange={e => updateItemEditData({ actualDepartment: e.target.value })}
+              />
+            </div>
+            <div className="space-y-1">
+              <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">Dự án thực tế</label>
+              <input
+                type="text"
+                placeholder={expProj}
+                className="w-full bg-white border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs font-bold text-slate-800 focus:outline-none focus:ring-1 focus:ring-slate-400"
+                value={editData.actualProject || ''}
+                onChange={e => updateItemEditData({ actualProject: e.target.value })}
               />
             </div>
             <div className="space-y-1">

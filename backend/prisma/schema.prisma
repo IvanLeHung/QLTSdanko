@@ -333,7 +333,7 @@ model InventoryItem {
   note             String?
   result              String?        // MATCHED, MISSING, EXTRA, DAMAGED, WRONG_LOCATION, NEED_REVIEW
   photos              String[]
-  checkStatus         String         @default("PENDING") // PENDING, CHECKED
+  checkStatus         String         @default("PENDING") // PENDING, CHECKED, SCANNED, MATCH_PENDING_CONFIRM, NEED_REVIEW, ACTUAL_UPDATED
   checkedAt           DateTime?
   checkedBy           String?
   actualUserName      String?
@@ -341,6 +341,13 @@ model InventoryItem {
   actualSerialNumber  String?
   checkCondition      String?        @default("FOUND")
   physicalDetailsJson String?
+  
+  actualProject       String?
+  actualDepartment    String?
+  batchId             String?
+  resultStatus        String?
+  outOfBookStatus     String?        // IGNORED, REGISTERED
+
   asset               Asset          @relation(fields: [assetId], references: [id])
   inventoryCheck      InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
 
@@ -395,11 +402,19 @@ model InventoryDetail {
   imageUrl           String?
   checkedAt          DateTime?
   createdAt          DateTime          @default(now())
+
+  actualProjectName  String?
+  checkStatus        String            @default("PENDING") // PENDING, CHECKED, SCANNED, MATCH_PENDING_CONFIRM, NEED_REVIEW, ACTUAL_UPDATED
+  checkedBy          String?
+  batchId            String?
+  outOfBookStatus    String?           // IGNORED, REGISTERED
+
   session            InventorySession  @relation(fields: [sessionId], references: [id])
   asset              Asset?            @relation(fields: [assetId], references: [id])
 
   @@index([sessionId])
   @@index([assetCode])
+  @@index([checkStatus])
 }
 
 
