@@ -43,16 +43,6 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
-router.get('/:id', authenticateToken, async (req, res) => {
-  try {
-    const detail = await InventoryService.getInventoryDetail(Number(req.params.id));
-    if (!detail) return res.status(404).json({ message: 'Session not found' });
-    res.json(detail);
-  } catch (error: any) {
-    res.status(500).json({ message: error.message });
-  }
-});
-
 router.get('/:id/sessions', authenticateToken, async (req, res) => {
   try {
     const sessions = await InventoryService.getInventorySessions(Number(req.params.id));
@@ -3647,6 +3637,19 @@ router.post('/recheck-request/:id/reject', authenticateToken, async (req: AuthRe
     res.json({ message: 'Đã từ chối yêu cầu kiểm kê lại', request: updated });
   } catch (error: any) {
     res.status(400).json({ message: error.message });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
+// GET INVENTORY DETAIL BY ID (Move to bottom to prevent route clashing)
+// ──────────────────────────────────────────────────────────────
+router.get('/:id', authenticateToken, async (req, res) => {
+  try {
+    const detail = await InventoryService.getInventoryDetail(Number(req.params.id));
+    if (!detail) return res.status(404).json({ message: 'Session not found' });
+    res.json(detail);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 });
 
