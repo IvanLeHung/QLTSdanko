@@ -2472,6 +2472,30 @@ router.post('/batch-undo', authenticateToken, async (req: any, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────
+// POST BATCH CANCEL (HỦY LÔ QUÉT - CHỈ XÓA PENDING LOGS)
+// ──────────────────────────────────────────────────────────────
+router.post('/batch-cancel', authenticateToken, async (req: any, res) => {
+  const { batchId } = req.body;
+  if (!batchId) {
+    return res.status(400).json({ message: 'batchId là bắt buộc' });
+  }
+
+  try {
+    await prisma.inventoryScanLog.deleteMany({
+      where: {
+        batchId,
+        action: 'SCANNED_PENDING_REVIEW'
+      }
+    });
+
+    res.json({ success: true, message: 'Đã hủy lô quét thành công' });
+  } catch (error: any) {
+    console.error('Lỗi batch-cancel:', error);
+    res.status(400).json({ message: error.message || 'Lỗi hủy lô quét' });
+  }
+});
+
+// ──────────────────────────────────────────────────────────────
 // GET RECENT SCAN LOGS (LAST 20 RECORDS)
 // ──────────────────────────────────────────────────────────────
 router.get('/scan-logs', authenticateToken, async (req, res) => {
