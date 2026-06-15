@@ -7376,6 +7376,11 @@ export const InventoryDetail: React.FC = () => {
                                     <span className="text-[9px] font-black text-amber-700 bg-amber-100/50 px-2 py-0.5 rounded border border-amber-200 uppercase tracking-wider">
                                       {item.reason}
                                     </span>
+                                    {item.checkStatus === 'ACTUAL_UPDATED' && (
+                                      <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 uppercase tracking-wider">
+                                        💾 Đã lưu thực tế
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
 
