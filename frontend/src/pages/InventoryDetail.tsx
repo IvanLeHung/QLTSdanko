@@ -349,6 +349,38 @@ export const InventoryDetail: React.FC = () => {
   const [recheckReason, setRecheckReason] = useState('');
   const [successFlashItem, setSuccessFlashItem] = useState<any>(null);
 
+  // Batch Scan Mode states
+  const [showBatchScanModal, setShowBatchScanModal] = useState(false);
+  const [showBatchResultModal, setShowBatchResultModal] = useState(false);
+  const [batchQueue, setBatchQueue] = useState<string[]>([]);
+  const [batchResult, setBatchResult] = useState<any>(null);
+  const [isBatchPaused, setIsBatchPaused] = useState(false);
+  const [batchScanInput, setBatchScanInput] = useState('');
+
+  // Load batch queue from localStorage when session/activeSession is loaded
+  useEffect(() => {
+    if (!session && !activeSession) return;
+    const key = `qlts_batch_scan_queue_${activeSession ? 'session_' + activeSession.id : 'check_' + session?.id}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      try {
+        setBatchQueue(JSON.parse(saved));
+      } catch (e) {
+        console.error('Lỗi phân tích cú pháp queue từ localStorage:', e);
+      }
+    } else {
+      setBatchQueue([]);
+    }
+  }, [session?.id, activeSession?.id]);
+
+  // Sync batch queue to localStorage
+  const updateBatchQueue = (newQueue: string[]) => {
+    setBatchQueue(newQueue);
+    if (!session && !activeSession) return;
+    const key = `qlts_batch_scan_queue_${activeSession ? 'session_' + activeSession.id : 'check_' + session?.id}`;
+    localStorage.setItem(key, JSON.stringify(newQueue));
+  };
+
   // Multi-conditional Filter states
   const [showAdvancedFilters, setShowAdvancedFilters] = useState<boolean>(false);
   const [sessionFilters, setSessionFilters] = useState<any>({
@@ -1911,6 +1943,144 @@ export const InventoryDetail: React.FC = () => {
     return warnings;
   };
 
+  const handleBatchScanSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!batchScanInput || !batchScanInput.trim()) return;
+    const barcode = batchScanInput.trim();
+    
+    // Add to queue
+    const newQueue = [...batchQueue, barcode];
+    updateBatchQueue(newQueue);
+    setBatchScanInput('');
+    playBeep('success');
+  };
+
+  const handleProcessBatch = async () => {
+    if (batchQueue.length === 0) {
+      toast.error("Hàng đợi quét đang trống");
+      return;
+    }
+    if (batchQueue.length > 500) {
+      toast.error("Hàng đợi vượt quá 500 mã. Vui lòng xóa bớt hoặc xử lý thành nhiều đợt để tránh nghẽn hệ thống.");
+      return;
+    }
+
+    setSubmitting(true);
+    try {
+      const response = await api.post('/inventory/batch-scan-process', {
+        mode: activeSession ? 'SESSION' : 'CHECK',
+        inventoryCheckId: session?.id,
+        sessionId: activeSession?.id,
+        barcodes: batchQueue,
+        scope: {
+          city: scanScopeCity,
+          location: scanScopeLocation,
+          project: scanScopeProject,
+          department: scanScopeDepartment,
+          user: scanScopeUser,
+          isScopeLocked
+        }
+      });
+
+      if (response.data && response.data.success) {
+        toast.success("Xử lý kiểm kê hàng loạt hoàn tất!");
+        
+        // Clear local queue and localStorage
+        updateBatchQueue([]);
+        
+        // Store result summary & detailed lists
+        setBatchResult(response.data);
+        setShowBatchScanModal(false);
+        setShowBatchResultModal(true);
+        
+        // Refresh session/check data
+        fetchDetail();
+        fetchScanLogs();
+      } else {
+        toast.error(response.data?.message || "Lỗi xử lý kiểm kê hàng loạt");
+      }
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err.response?.data?.message || "Lỗi kết nối đến máy chủ");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const downloadBatchReport = () => {
+    if (!batchResult) return;
+    const { summary, autoSavedItems, reviewItems, alreadyCheckedItems, outOfBookItems, failedItems, batchId } = batchResult;
+    
+    let text = `BÁO CÁO KẾT QUẢ KIỂM KÊ HÀNG LOẠT (BATCH REPORT)\n`;
+    text += `Mã lô xử lý: ${batchId || 'N/A'}\n`;
+    text += `Thời gian xuất: ${new Date().toLocaleString('vi-VN')}\n`;
+    text += `Kỳ kiểm kê: ${session?.inventoryName || 'N/A'} (${session?.inventoryCode || 'N/A'})\n`;
+    if (activeSession) {
+      text += `Phiên kiểm kê: ${activeSession.locationName || 'N/A'} (Người kiểm: ${activeSession.checkerName || 'N/A'})\n`;
+    }
+    text += `========================================================\n\n`;
+    text += `TỔNG HỢP SỐ LIỆU:\n`;
+    text += `- Tổng số mã đã quét: ${summary.totalScanned}\n`;
+    text += `- Số mã độc nhất: ${summary.uniqueBarcodes}\n`;
+    text += `- Số mã trùng lặp trong lô: ${summary.duplicatedInBatch}\n`;
+    text += `- Tự động hoàn tất (Khớp): ${summary.autoSaved}\n`;
+    text += `- Cần rà soát (Sai lệch): ${summary.needReview}\n`;
+    text += `- Đã kiểm kê trước đó: ${summary.alreadyChecked}\n`;
+    text += `- Ngoài phạm vi lọc: ${summary.outOfScope}\n`;
+    text += `- Tài sản ngoài sổ sách: ${summary.outOfBook}\n`;
+    text += `- Mã lỗi hệ thống: ${summary.failed}\n\n`;
+
+    text += `========================================================\n`;
+    text += `DANH SÁCH CHI TIẾT CÁC MỤC:\n\n`;
+
+    if (autoSavedItems?.length > 0) {
+      text += `1. DANH SÁCH TỰ ĐỘNG HOÀN TẤT (KHỚP HOÀN TOÀN) (${autoSavedItems.length}):\n`;
+      autoSavedItems.forEach((item: any, idx: number) => {
+        text += `   [${idx + 1}] Mã: ${item.barcode} | Tên: ${item.assetName || 'Tài sản'}\n`;
+      });
+      text += `\n`;
+    }
+
+    if (reviewItems?.length > 0) {
+      text += `2. DANH SÁCH CẦN RÀ SOÁT (SAI LỆCH VỊ TRÍ/NGƯỜI DÙNG/SERIAL) (${reviewItems.length}):\n`;
+      reviewItems.forEach((item: any, idx: number) => {
+        text += `   [${idx + 1}] Mã: ${item.barcode} | Tên: ${item.assetName || 'Tài sản'} | Lý do: ${item.reason}\n`;
+      });
+      text += `\n`;
+    }
+
+    if (alreadyCheckedItems?.length > 0) {
+      text += `3. DANH SÁCH ĐÃ KIỂM KÊ TRƯỚC ĐÓ (${alreadyCheckedItems.length}):\n`;
+      alreadyCheckedItems.forEach((item: any, idx: number) => {
+        text += `   [${idx + 1}] Mã: ${item.barcode} | Tên: ${item.assetName || 'Tài sản'}\n`;
+      });
+      text += `\n`;
+    }
+
+    if (outOfBookItems?.length > 0) {
+      text += `4. DANH SÁCH TÀI SẢN NGOÀI SỔ (CHƯA CÓ TRONG KỲ) (${outOfBookItems.length}):\n`;
+      outOfBookItems.forEach((item: any, idx: number) => {
+        text += `   [${idx + 1}] Mã: ${item.barcode} | Trạng thái: ${item.status || 'Chưa định nghĩa'}\n`;
+      });
+      text += `\n`;
+    }
+
+    if (failedItems?.length > 0) {
+      text += `5. DANH SÁCH MÃ LỖI XỬ LÝ / NGOÀI PHẠM VI (${failedItems.length}):\n`;
+      failedItems.forEach((item: any, idx: number) => {
+        text += `   [${idx + 1}] Mã: ${item.barcode} | Tên: ${item.assetName || 'Tài sản'} | Chi tiết: ${item.reason || item.detail}\n`;
+      });
+    }
+
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Bao_cao_kiem_ke_lo_${batchId || 'N/A'}.txt`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
 
   const handleCloseSession = async () => {
     if (!window.confirm("Bạn có chắc chắn muốn chốt đợt kiểm kê này? Dữ liệu sẽ không thể chỉnh sửa sau khi chốt.")) return;
@@ -2502,15 +2672,6 @@ export const InventoryDetail: React.FC = () => {
                   <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-4">
                     <div className="flex justify-between items-center">
                       <h3 className="font-black text-xs uppercase tracking-widest text-[#0F1720]">Bàn quét kiểm kê</h3>
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isFastScanMode}
-                          onChange={(e) => setIsFastScanMode(e.target.checked)}
-                          className="rounded text-primary-600 focus:ring-primary-500 w-4 h-4"
-                        />
-                        <span className="text-xs font-bold text-slate-600">Quét nhanh ⚡</span>
-                      </label>
                     </div>
 
                     <form onSubmit={handleScanSubmit} className="space-y-3">
@@ -2630,6 +2791,14 @@ export const InventoryDetail: React.FC = () => {
                       </div>
                     </div>
 
+                    <button
+                      type="button"
+                      onClick={() => setShowBatchScanModal(true)}
+                      className="w-full bg-slate-900 hover:bg-slate-800 text-white py-3 rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center justify-center border border-slate-900 shadow-md gap-2"
+                    >
+                      ⚡ Quét liên tục
+                    </button>
+
                     <div className="flex gap-2">
                       <button
                         type="button"
@@ -2643,7 +2812,7 @@ export const InventoryDetail: React.FC = () => {
                         onClick={() => setIsNormalizationOpen(true)}
                         className="flex-1 bg-blue-50 hover:bg-blue-100 text-blue-650 py-2.5 rounded-xl font-bold text-[10px] uppercase tracking-wider transition-all flex items-center justify-center border border-blue-200/50 cursor-pointer"
                       >
-                        🔍 Chuẩn hóa
+                        🔧 Chuẩn hóa
                       </button>
                     </div>
                   </div>
@@ -6183,6 +6352,231 @@ export const InventoryDetail: React.FC = () => {
           activeSessionId={session?.id}
           activeSessionName={session?.departmentName || session?.locationName ? `Phiên: ${session.departmentName || session.locationName}` : undefined}
         />
+      )}
+
+      {showBatchScanModal && (
+        <BaseModal
+          isOpen={showBatchScanModal}
+          onClose={() => setShowBatchScanModal(false)}
+          title={
+            <div className="flex items-center gap-2">
+              <span className="text-amber-500">⚡</span>
+              <span>QUÉT KIỂM KÊ LIÊN TỤC (BATCH SCAN MODE)</span>
+            </div>
+          }
+          size="form"
+        >
+          <div className="p-6 space-y-6">
+            <div className="bg-amber-50 border border-amber-200 p-4 rounded-2xl flex items-start gap-3">
+              <span className="text-amber-500 font-bold">⚠️</span>
+              <p className="text-xs text-amber-800 leading-relaxed font-semibold">
+                Chế độ quét tốc độ cao: Barcode/QR sau khi quét sẽ đưa vào hàng đợi lưu trữ cục bộ.
+                Hệ thống không đối soát dữ liệu ngay. Bấm <strong className="font-extrabold uppercase text-amber-900">"Hoàn tất & Xử lý"</strong> ở cuối buổi để đối chiếu và ghi nhận hàng loạt.
+              </p>
+            </div>
+
+            <form onSubmit={handleBatchScanSubmit} className="space-y-4">
+              <div>
+                <label className="text-xs font-black uppercase text-slate-700 block mb-1.5">Nhập hoặc quét mã tài sản:</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    autoFocus
+                    disabled={isBatchPaused}
+                    className={`w-full bg-slate-50 border border-slate-250 rounded-2xl px-4 py-4 text-base font-mono font-bold text-slate-800 outline-none focus:ring-4 transition-all ${
+                      isBatchPaused 
+                        ? 'bg-slate-200 border-slate-300 text-slate-450 cursor-not-allowed'
+                        : 'focus:ring-amber-50 focus:border-amber-500'
+                    }`}
+                    placeholder={isBatchPaused ? "Tạm dừng quét..." : "Quét mã QR / Barcode tại đây..."}
+                    value={batchScanInput}
+                    onChange={(e) => setBatchScanInput(e.target.value)}
+                  />
+                  {batchScanInput && (
+                    <button
+                      type="submit"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl px-4 py-2 text-xs font-black uppercase transition-all shadow"
+                    >
+                      Thêm
+                    </button>
+                  )}
+                </div>
+              </div>
+            </form>
+
+            {/* Statistics Row */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-slate-50 p-3 rounded-2xl border border-slate-200 text-center">
+                <span className="block text-[9px] font-black text-slate-500 uppercase">Đã quét</span>
+                <span className="text-lg font-black text-slate-800 block mt-0.5">{batchQueue.length}</span>
+              </div>
+              <div className="bg-amber-50 p-3 rounded-2xl border border-amber-200 text-center">
+                <span className="block text-[9px] font-black text-amber-600 uppercase">Trùng trong hàng đợi</span>
+                <span className="text-lg font-black text-amber-700 block mt-0.5">
+                  {batchQueue.length - new Set(batchQueue).size}
+                </span>
+              </div>
+              <div className="bg-rose-50 p-3 rounded-2xl border border-rose-200 text-center">
+                <span className="block text-[9px] font-black text-rose-600 uppercase">Mã trống / Lỗi</span>
+                <span className="text-lg font-black text-rose-700 block mt-0.5">
+                  {batchQueue.filter(b => !b || !b.trim()).length}
+                </span>
+              </div>
+            </div>
+
+            {/* Timeline scanned list */}
+            <div className="space-y-2">
+              <span className="text-xs font-black uppercase text-slate-700 block">Danh sách mã vừa quét (Lịch sử tạm):</span>
+              <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 max-h-48 overflow-y-auto space-y-2 font-mono text-xs">
+                {batchQueue.length === 0 ? (
+                  <p className="text-slate-400 font-bold text-center py-4 italic">Chưa có mã nào được quét</p>
+                ) : (
+                  batchQueue.slice().reverse().map((code, idx) => (
+                    <div key={idx} className="flex justify-between items-center py-1.5 border-b last:border-b-0 border-slate-200">
+                      <span className="font-bold text-slate-800">✓ {code}</span>
+                      <span className="text-[10px] text-slate-400 font-semibold">Mã thứ {batchQueue.length - idx}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+
+            {/* Actions Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-4 border-t border-slate-100">
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => updateBatchQueue(batchQueue.slice(0, -1))}
+                  disabled={batchQueue.length === 0}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-800 text-xs font-black uppercase tracking-wider rounded-xl transition-all border border-slate-200 cursor-pointer"
+                >
+                  Xóa cuối
+                </button>
+                <button
+                  type="button"
+                  onClick={() => updateBatchQueue([])}
+                  disabled={batchQueue.length === 0}
+                  className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 disabled:opacity-50 text-rose-650 text-xs font-black uppercase tracking-wider rounded-xl transition-all border border-rose-200 cursor-pointer"
+                >
+                  Xóa toàn bộ
+                </button>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsBatchPaused(!isBatchPaused)}
+                  className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-black uppercase tracking-wider rounded-xl transition-all border border-slate-200 cursor-pointer"
+                >
+                  {isBatchPaused ? '▶ Tiếp tục' : '⏸ Tạm dừng'}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBatchScanModal(false)}
+                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-350 text-slate-800 text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer"
+                >
+                  Đóng
+                </button>
+                <button
+                  type="button"
+                  onClick={handleProcessBatch}
+                  disabled={batchQueue.length === 0 || submitting}
+                  className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white text-xs font-black uppercase tracking-wider rounded-xl transition-all shadow-md flex items-center gap-1.5 cursor-pointer"
+                >
+                  {submitting ? 'Đang xử lý...' : '⚡ Hoàn tất & Xử lý'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </BaseModal>
+      )}
+
+      {showBatchResultModal && batchResult && (
+        <BaseModal
+          isOpen={showBatchResultModal}
+          onClose={() => setShowBatchResultModal(false)}
+          title="KẾT QUẢ KIỂM KÊ HÀNG LOẠT"
+          size="form"
+        >
+          <div className="p-6 space-y-6">
+            <div className="text-center space-y-1 py-2">
+              <span className="text-4xl">🎉</span>
+              <h3 className="text-base font-black uppercase text-slate-900 tracking-wider">Xử lý lô thành công!</h3>
+              <p className="text-[11px] text-slate-450 font-bold">Mã lô: {batchResult.batchId}</p>
+            </div>
+
+            {/* Numerical breakdown */}
+            <div className="grid grid-cols-3 gap-3">
+              <div className="bg-slate-50 border p-3 rounded-2xl text-center">
+                <span className="block text-[8px] font-black text-slate-500 uppercase tracking-wide">Tổng đã quét</span>
+                <span className="text-xl font-black text-slate-800 mt-0.5 block">{batchResult.summary.totalScanned}</span>
+              </div>
+              <div className="bg-emerald-50 border border-emerald-150 p-3 rounded-2xl text-center">
+                <span className="block text-[8px] font-black text-emerald-600 uppercase tracking-wide">Tự hoàn tất (khớp)</span>
+                <span className="text-xl font-black text-emerald-700 mt-0.5 block">{batchResult.summary.autoSaved}</span>
+              </div>
+              <div className="bg-amber-50 border border-amber-150 p-3 rounded-2xl text-center">
+                <span className="block text-[8px] font-black text-amber-600 uppercase tracking-wide">Cần rà soát (lệch)</span>
+                <span className="text-xl font-black text-amber-700 mt-0.5 block">{batchResult.summary.needReview}</span>
+              </div>
+              <div className="bg-blue-50 border border-blue-150 p-3 rounded-2xl text-center">
+                <span className="block text-[8px] font-black text-blue-600 uppercase tracking-wide">Đã kiểm trước đó</span>
+                <span className="text-xl font-black text-blue-700 mt-0.5 block">{batchResult.summary.alreadyChecked}</span>
+              </div>
+              <div className="bg-rose-50 border border-rose-150 p-3 rounded-2xl text-center">
+                <span className="block text-[8px] font-black text-rose-600 uppercase tracking-wide">Ngoài sổ (chưa có)</span>
+                <span className="text-xl font-black text-rose-700 mt-0.5 block">{batchResult.summary.outOfBook}</span>
+              </div>
+              <div className="bg-slate-100 border border-slate-250 p-3 rounded-2xl text-center">
+                <span className="block text-[8px] font-black text-slate-500 uppercase tracking-wide">Lỗi hệ thống / scope</span>
+                <span className="text-xl font-black text-slate-700 mt-0.5 block">
+                  {batchResult.summary.failed + batchResult.summary.outOfScope}
+                </span>
+              </div>
+            </div>
+
+            {/* Quick Actions Row */}
+            <div className="flex flex-wrap gap-2 justify-center py-2 border-y border-slate-100">
+              <button
+                type="button"
+                onClick={() => {
+                  setFilter('CHECKED');
+                  setShowBatchResultModal(false);
+                }}
+                className="px-3.5 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
+              >
+                Xem đã kiểm
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setFilter('PENDING');
+                  setShowBatchResultModal(false);
+                }}
+                className="px-3.5 py-2 bg-slate-900 text-white hover:bg-slate-800 rounded-xl text-xs font-black uppercase tracking-wider transition cursor-pointer"
+              >
+                Xem cần rà soát
+              </button>
+              <button
+                type="button"
+                onClick={downloadBatchReport}
+                className="px-3.5 py-2 bg-emerald-600 text-white hover:bg-emerald-700 rounded-xl text-xs font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer"
+              >
+                ⬇ Tải báo cáo lô
+              </button>
+            </div>
+
+            <div className="flex justify-end pt-2">
+              <button
+                type="button"
+                onClick={() => setShowBatchResultModal(false)}
+                className="px-5 py-2.5 bg-slate-200 hover:bg-slate-350 text-slate-800 text-xs font-black uppercase tracking-wider rounded-xl transition-all cursor-pointer shadow-sm"
+              >
+                Hoàn thành
+              </button>
+            </div>
+          </div>
+        </BaseModal>
       )}
       </div>
   );

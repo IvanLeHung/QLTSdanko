@@ -1366,6 +1366,7 @@ model InventoryScanLog {
   scannedAt          DateTime @default(now())
   deviceInfo         String?
   isDuplicateIgnored Boolean  @default(false)
+  batchId            String?
 
   @@index([inventoryCheckId])
   @@index([sessionId])
@@ -1384,6 +1385,22 @@ model RecheckRequest {
   requestedAt      DateTime  @default(now())
   approvedBy       String?
   approvedAt       DateTime?
+}
+
+model BatchScanJob {
+  id               Int      @id @default(autoincrement())
+  inventoryCheckId Int?
+  sessionId        Int?
+  batchId          String   @unique
+  totalScanned     Int
+  processedCount   Int
+  successCount     Int
+  reviewCount      Int
+  outOfBookCount   Int
+  failedCount      Int
+  status           String   @default("COMPLETED")
+  createdBy        String
+  createdAt        DateTime @default(now())
 }
 
 

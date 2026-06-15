@@ -1351,6 +1351,564 @@ router.post('/fast-scan', authenticateToken, async (req: AuthRequest, res) => {
 });
 
 // ──────────────────────────────────────────────────────────────
+// BATCH PROCESS INVENTORY SCANS (CONTINUOUS SCAN MODE)
+// ──────────────────────────────────────────────────────────────
+router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
+  const { mode, inventoryCheckId, sessionId, barcodes, scope } = req.body;
+  const username = req.user?.username || 'system';
+
+  if (!barcodes || !Array.isArray(barcodes)) {
+    return res.status(400).json({ message: 'Danh sách mã quét là bắt buộc' });
+  }
+
+  // 1. Batch size limit check (Max 500)
+  if (barcodes.length > 500) {
+    return res.status(400).json({ message: 'Vượt quá giới hạn tối đa 500 mã/lần xử lý. Vui lòng chia nhỏ hàng đợi.' });
+  }
+
+  const checkIdInt = inventoryCheckId ? Number(inventoryCheckId) : null;
+  const sessIdInt = sessionId ? Number(sessionId) : null;
+  
+  // Generate tracking batchId
+  const batchId = `BATCH-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+
+  // Stats Counters
+  const totalScanned = barcodes.length;
+  // Deduplicate locally
+  const uniqueBarcodesList = Array.from(new Set(barcodes.map(b => b.trim()).filter(Boolean)));
+  const uniqueBarcodes = uniqueBarcodesList.length;
+  const duplicatedInBatch = totalScanned - uniqueBarcodes;
+
+  let autoSaved = 0;
+  let needReview = 0;
+  let alreadyChecked = 0;
+  let outOfScope = 0;
+  let outOfBook = 0;
+  let failed = 0;
+
+  // Detailed lists returned to frontend
+  const autoSavedItems: any[] = [];
+  const reviewItems: any[] = [];
+  const alreadyCheckedItems: any[] = [];
+  const outOfBookItems: any[] = [];
+  const failedItems: any[] = [];
+
+  const matchesScope = (assetBookValues: {
+    cityName?: string | null;
+    locationName?: string | null;
+    projectName?: string | null;
+    departmentName?: string | null;
+    currentUserName?: string | null;
+  }) => {
+    if (!scope || !scope.isScopeLocked) return true;
+    if (scope.city && assetBookValues.cityName !== scope.city) return false;
+    if (scope.location && assetBookValues.locationName !== scope.location) return false;
+    if (scope.project && assetBookValues.projectName !== scope.project) return false;
+    if (scope.department && assetBookValues.departmentName !== scope.department) return false;
+    if (scope.user && assetBookValues.currentUserName !== scope.user) return false;
+    return true;
+  };
+
+  // Process barcodes individually so one failure does not break the entire batch
+  for (const barcode of uniqueBarcodesList) {
+    try {
+      // Find asset by code or serial
+      const asset = await prisma.asset.findFirst({
+        where: {
+          OR: [
+            { assetCode: barcode },
+            { serialNumber: barcode }
+          ],
+          isDeleted: false
+        }
+      });
+
+      // 1. Out of Book (Asset not found)
+      if (!asset) {
+        // Create DiscoveredAsset if not exists
+        const existsDiscovered = await prisma.discoveredAsset.findFirst({
+          where: {
+            tempCode: barcode,
+            inventoryCheckId: checkIdInt || 0
+          }
+        });
+
+        if (!existsDiscovered && checkIdInt) {
+          const dbUser = await prisma.user.findUnique({ where: { username } });
+          if (dbUser) {
+            await prisma.discoveredAsset.create({
+              data: {
+                tempCode: barcode,
+                name: `Tài sản chưa rõ tên (${barcode})`,
+                note: 'Tự động tạo từ phiên quét liên tục',
+                inventoryCheckId: checkIdInt,
+                createdById: dbUser.id
+              }
+            });
+          }
+        }
+
+        await prisma.inventoryScanLog.create({
+          data: {
+            barcode,
+            inventoryCheckId: checkIdInt,
+            sessionId: sessIdInt,
+            action: 'NOT_FOUND',
+            result: 'OUT_OF_BOOK',
+            scannedBy: username,
+            batchId
+          }
+        });
+
+        outOfBook++;
+        outOfBookItems.push({ barcode, assetName: 'Tài sản ngoài sổ', status: 'NOT_FOUND' });
+        continue;
+      }
+
+      // 2. Mode SESSION
+      if (mode === 'SESSION') {
+        const details = await prisma.inventoryDetail.findMany({
+          where: {
+            sessionId: sessIdInt!,
+            OR: [
+              { assetCode: barcode },
+              { serialNumber: barcode },
+              { asset: { serialNumber: barcode } }
+            ]
+          },
+          include: { asset: true, session: true }
+        });
+
+        if (details.length === 0) {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'OUT_OF_SCOPE',
+              result: 'OUT_OF_SCOPE',
+              scannedBy: username,
+              batchId
+            }
+          });
+          outOfScope++;
+          failedItems.push({ barcode, assetName: asset.assetName, reason: 'Không thuộc danh mục kiểm kê của phiên này' });
+          continue;
+        }
+
+        if (details.length > 1) {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'DUPLICATE_CODE',
+              result: 'DUPLICATE_CODE',
+              scannedBy: username,
+              batchId
+            }
+          });
+          needReview++;
+          reviewItems.push({ barcode, assetName: asset.assetName, reason: 'Trùng mã tài sản trong danh sách kiểm kê' });
+          continue;
+        }
+
+        const detail = details[0];
+
+        // Already Checked
+        if (detail.checkedAt) {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: detail.assetId,
+              assetCode: detail.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'ALREADY_CHECKED',
+              result: 'ALREADY_CHECKED',
+              scannedBy: username,
+              batchId
+            }
+          });
+          alreadyChecked++;
+          alreadyCheckedItems.push({ barcode, assetName: asset.assetName });
+          continue;
+        }
+
+        const bookCity = asset.cityName || null;
+        const bookLocation = detail.bookLocationName || asset.locationName || null;
+        const bookProject = asset.projectName || null;
+        const bookDept = detail.bookDepartmentName || asset.departmentName || null;
+        const bookUser = detail.bookUserName || asset.currentUserName || null;
+
+        const inScope = matchesScope({
+          cityName: bookCity,
+          locationName: bookLocation,
+          projectName: bookProject,
+          departmentName: bookDept,
+          currentUserName: bookUser
+        });
+
+        if (!inScope) {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: detail.assetId,
+              assetCode: detail.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'OUT_OF_SCOPE',
+              result: 'OUT_OF_SCOPE',
+              scannedBy: username,
+              batchId
+            }
+          });
+          outOfScope++;
+          failedItems.push({ barcode, assetName: asset.assetName, reason: 'Ngoài phạm vi được khóa bộ lọc' });
+          continue;
+        }
+
+        const targetLocation = scope?.location || bookLocation;
+        const targetUser = scope?.user || bookUser;
+
+        let discrepancyAction: "MATCH_AUTO_SAVED" | "NEED_REVIEW" | "MISMATCH_LOCATION" | "MISMATCH_USER" | "MISMATCH_SERIAL" = 'MATCH_AUTO_SAVED';
+        if (asset.status && ['DAMAGED', 'LOST', 'LIQUIDATED'].includes(asset.status)) {
+          discrepancyAction = 'NEED_REVIEW';
+        } else if (bookLocation && targetLocation && bookLocation !== targetLocation) {
+          discrepancyAction = 'MISMATCH_LOCATION';
+        } else if (bookUser && targetUser && bookUser !== targetUser) {
+          discrepancyAction = 'MISMATCH_USER';
+        } else if (detail.serialNumber && asset.serialNumber && detail.serialNumber !== asset.serialNumber) {
+          discrepancyAction = 'MISMATCH_SERIAL';
+        }
+
+        if (discrepancyAction === 'MATCH_AUTO_SAVED') {
+          // Perform auto-save in transaction
+          await prisma.$transaction(async (tx) => {
+            await tx.inventoryDetail.update({
+              where: { id: detail.id },
+              data: {
+                actualUserName: bookUser,
+                actualDepartmentName: bookDept || '',
+                actualLocationName: bookLocation || '',
+                resultStatus: 'MATCH',
+                checkedAt: new Date(),
+                checkedBy: username
+              }
+            });
+            await tx.asset.update({
+              where: { id: detail.assetId! },
+              data: {
+                lastInventoryDate: new Date(),
+                lastInventoryStatus: 'MATCH'
+              }
+            });
+            await tx.auditLog.create({
+              data: {
+                entityType: 'ASSET',
+                entityId: detail.assetId!,
+                action: 'FAST_SCAN_CHECK',
+                details: `Quét lô liên tục khớp hoàn toàn. Batch ID: ${batchId}`,
+                performedBy: username
+              }
+            });
+          });
+
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: detail.assetId,
+              assetCode: detail.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'MATCH_AUTO_SAVED',
+              result: 'MATCHED',
+              scannedBy: username,
+              batchId
+            }
+          });
+
+          autoSaved++;
+          autoSavedItems.push({ id: detail.id, barcode, assetName: asset.assetName });
+        } else {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: detail.assetId,
+              assetCode: detail.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: discrepancyAction,
+              result: 'MISMATCH',
+              scannedBy: username,
+              batchId
+            }
+          });
+          needReview++;
+          reviewItems.push({ id: detail.id, barcode, assetName: asset.assetName, reason: discrepancyAction });
+        }
+      } 
+      // 3. Mode CHECK (Main inventory campaign)
+      else {
+        const items = await prisma.inventoryItem.findMany({
+          where: {
+            inventoryCheckId: checkIdInt!,
+            OR: [
+              { assetCode: barcode },
+              { asset: { serialNumber: barcode } }
+            ]
+          },
+          include: { asset: true }
+        });
+
+        if (items.length === 0) {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'OUT_OF_SCOPE',
+              result: 'OUT_OF_SCOPE',
+              scannedBy: username,
+              batchId
+            }
+          });
+          outOfScope++;
+          failedItems.push({ barcode, assetName: asset.assetName, reason: 'Không thuộc danh mục kiểm kê của kỳ này' });
+          continue;
+        }
+
+        if (items.length > 1) {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'DUPLICATE_CODE',
+              result: 'DUPLICATE_CODE',
+              scannedBy: username,
+              batchId
+            }
+          });
+          needReview++;
+          reviewItems.push({ barcode, assetName: asset.assetName, reason: 'Trùng mã tài sản' });
+          continue;
+        }
+
+        const item = items[0];
+
+        // Already Checked
+        if (item.checkStatus === 'CHECKED') {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: item.assetId,
+              assetCode: item.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'ALREADY_CHECKED',
+              result: 'ALREADY_CHECKED',
+              scannedBy: username,
+              batchId
+            }
+          });
+          alreadyChecked++;
+          alreadyCheckedItems.push({ barcode, assetName: asset.assetName });
+          continue;
+        }
+
+        const bookCity = asset.cityName || null;
+        const bookLocation = item.expectedLocation || asset.locationName || null;
+        const bookProject = asset.projectName || null;
+        const bookDept = asset.departmentName || null;
+        const bookUser = asset.currentUserName || null;
+
+        const inScope = matchesScope({
+          cityName: bookCity,
+          locationName: bookLocation,
+          projectName: bookProject,
+          departmentName: bookDept,
+          currentUserName: bookUser
+        });
+
+        if (!inScope) {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: item.assetId,
+              assetCode: item.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'OUT_OF_SCOPE',
+              result: 'OUT_OF_SCOPE',
+              scannedBy: username,
+              batchId
+            }
+          });
+          outOfScope++;
+          failedItems.push({ barcode, assetName: asset.assetName, reason: 'Ngoài phạm vi được khóa bộ lọc' });
+          continue;
+        }
+
+        const targetLocation = scope?.location || bookLocation;
+        const targetUser = scope?.user || bookUser;
+
+        let discrepancyAction: "MATCH_AUTO_SAVED" | "NEED_REVIEW" | "MISMATCH_LOCATION" | "MISMATCH_USER" | "MISMATCH_SERIAL" = 'MATCH_AUTO_SAVED';
+        if (asset.status && ['DAMAGED', 'LOST', 'LIQUIDATED'].includes(asset.status)) {
+          discrepancyAction = 'NEED_REVIEW';
+        } else if (bookLocation && targetLocation && bookLocation !== targetLocation) {
+          discrepancyAction = 'MISMATCH_LOCATION';
+        } else if (bookUser && targetUser && bookUser !== targetUser) {
+          discrepancyAction = 'MISMATCH_USER';
+        } else if (item.actualSerialNumber && asset.serialNumber && item.actualSerialNumber !== asset.serialNumber) {
+          discrepancyAction = 'MISMATCH_SERIAL';
+        }
+
+        if (discrepancyAction === 'MATCH_AUTO_SAVED') {
+          // Perform auto-save in transaction
+          await prisma.$transaction(async (tx) => {
+            await tx.inventoryItem.update({
+              where: { id: item.id },
+              data: {
+                actualLocation: bookLocation,
+                actualUserName: bookUser,
+                actualSerialNumber: asset.serialNumber || '',
+                checkStatus: 'CHECKED',
+                checkedAt: new Date(),
+                checkedBy: username,
+                result: 'MATCHED',
+                checkCondition: 'FOUND'
+              }
+            });
+            await tx.asset.update({
+              where: { id: item.assetId },
+              data: {
+                lastInventoryDate: new Date(),
+                lastInventoryStatus: 'MATCH'
+              }
+            });
+            await tx.auditLog.create({
+              data: {
+                entityType: 'ASSET',
+                entityId: item.assetId,
+                action: 'FAST_SCAN_CHECK',
+                details: `Quét lô liên tục khớp hoàn toàn. Batch ID: ${batchId}`,
+                performedBy: username
+              }
+            });
+          });
+
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: item.assetId,
+              assetCode: item.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: 'MATCH_AUTO_SAVED',
+              result: 'MATCHED',
+              scannedBy: username,
+              batchId
+            }
+          });
+
+          autoSaved++;
+          autoSavedItems.push({ id: item.id, barcode, assetName: asset.assetName });
+        } else {
+          await prisma.inventoryScanLog.create({
+            data: {
+              assetId: item.assetId,
+              assetCode: item.assetCode,
+              barcode,
+              inventoryCheckId: checkIdInt,
+              sessionId: sessIdInt,
+              action: discrepancyAction,
+              result: 'MISMATCH',
+              scannedBy: username,
+              batchId
+            }
+          });
+          needReview++;
+          reviewItems.push({ id: item.id, barcode, assetName: asset.assetName, reason: discrepancyAction });
+        }
+      }
+    } catch (itemErr: any) {
+      console.error(`Lỗi xử lý barcode ${barcode}:`, itemErr);
+      failed++;
+      failedItems.push({ barcode, assetName: 'Mã lỗi xử lý', reason: itemErr.message || 'Lỗi hệ thống' });
+      
+      await prisma.inventoryScanLog.create({
+        data: {
+          barcode,
+          inventoryCheckId: checkIdInt,
+          sessionId: sessIdInt,
+          action: 'FAILED',
+          result: 'FAILED',
+          reason: itemErr.message || 'Lỗi hệ thống',
+          scannedBy: username,
+          batchId
+        }
+      });
+    }
+  }
+
+  // Create BatchScanJob
+  let jobStatus = 'COMPLETED';
+  if (failed > 0 && autoSaved === 0 && needReview === 0) {
+    jobStatus = 'FAILED';
+  }
+
+  try {
+    await prisma.batchScanJob.create({
+      data: {
+        inventoryCheckId: checkIdInt,
+        sessionId: sessIdInt,
+        batchId,
+        totalScanned,
+        processedCount: uniqueBarcodes,
+        successCount: autoSaved,
+        reviewCount: needReview,
+        outOfBookCount: outOfBook,
+        failedCount: failed,
+        status: jobStatus,
+        createdBy: username
+      }
+    });
+  } catch (jobErr) {
+    console.error('Lỗi khi lưu BatchScanJob:', jobErr);
+  }
+
+  res.json({
+    success: true,
+    batchId,
+    summary: {
+      totalScanned,
+      uniqueBarcodes,
+      duplicatedInBatch,
+      autoSaved,
+      needReview,
+      alreadyChecked,
+      outOfScope,
+      outOfBook,
+      failed
+    },
+    autoSavedItems,
+    reviewItems,
+    alreadyCheckedItems,
+    outOfBookItems,
+    failedItems
+  });
+});
+
+// ──────────────────────────────────────────────────────────────
 // GET RECENT SCAN LOGS (LAST 20 RECORDS)
 // ──────────────────────────────────────────────────────────────
 router.get('/scan-logs', authenticateToken, async (req, res) => {
