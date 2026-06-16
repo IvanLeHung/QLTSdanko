@@ -365,6 +365,7 @@ export const InventoryDetail: React.FC = () => {
   const [batchReviewTab, setBatchReviewTab] = useState<string>('matchPendingItems');
   const [batchConfirmedMeta, setBatchConfirmedMeta] = useState<{[itemId: number]: { undoDeadline: string; confirmedAt: string }}>({});
   const [batchReviewEditData, setBatchReviewEditData] = useState<{[itemId: number]: any}>({});
+  const [batchCardStatuses, setBatchCardStatuses] = useState<{[key: string]: string}>({});
   const [showOverrideWarning, setShowOverrideWarning] = useState<any>(null);
   const [editingItemIds, setEditingItemIds] = useState<Set<number>>(new Set());
   const [nowTime, setNowTime] = useState(new Date());
@@ -2103,6 +2104,54 @@ export const InventoryDetail: React.FC = () => {
     }
   };
 
+  const getBatchItemKey = (groupKey: string, item: any, idx?: number) =>
+    `${groupKey}:${item.id || item.itemId || item.barcode || idx}`;
+
+  const setBatchCardStatus = (groupKey: string, item: any, status: string, idx?: number) => {
+    setBatchCardStatuses(prev => ({ ...prev, [getBatchItemKey(groupKey, item, idx)]: status }));
+  };
+
+  const getBatchCardStatus = (groupKey: string, item: any, idx?: number) => {
+    const status = batchCardStatuses[getBatchItemKey(groupKey, item, idx)];
+    if (status) return status;
+    if (item.checkStatus === 'CHECKED' || batchConfirmedMeta[item.id]) return 'CONFIRMED';
+    if (item.checkStatus === 'ACTUAL_UPDATED') return 'EDITED';
+    if (item.result === 'OUT_OF_BOOK_REGISTERED' || item.outOfBookStatus === 'REGISTERED') return 'PENDING_BOOK_UPDATE';
+    if (item.result === 'OUT_OF_BOOK_IGNORED' || item.outOfBookStatus === 'IGNORED') return 'SKIPPED';
+    return 'UNPROCESSED';
+  };
+
+  const getBatchCardStatusLabel = (status: string) => {
+    switch (status) {
+      case 'EDITED': return 'Đã chỉnh sửa';
+      case 'PENDING_CONFIRM': return 'Chờ xác nhận';
+      case 'CONFIRMED': return 'Đã xác nhận';
+      case 'SKIPPED': return 'Đã bỏ qua';
+      case 'PENDING_BOOK_UPDATE': return 'Chờ duyệt cập nhật sổ';
+      default: return 'Chưa xử lý';
+    }
+  };
+
+  const getBatchGroupProgress = (groupKey: string) => {
+    const items = activeBatchData?.groups?.[groupKey] || [];
+    const processed = items.filter((item: any, idx: number) => getBatchCardStatus(groupKey, item, idx) !== 'UNPROCESSED').length;
+    return { processed, total: items.length, pct: items.length ? Math.round((processed / items.length) * 100) : 0 };
+  };
+
+  const hasUnprocessedBatchCards = () => {
+    if (!activeBatchData?.groups) return false;
+    return ['matchPendingItems', 'reviewItems', 'alreadyCheckedItems', 'outOfBookItems', 'failedItems']
+      .some(groupKey => (activeBatchData.groups[groupKey] || []).some((item: any, idx: number) => getBatchCardStatus(groupKey, item, idx) === 'UNPROCESSED'));
+  };
+
+  const closeBatchReviewWorkspace = () => {
+    if (hasUnprocessedBatchCards()) {
+      toast.warning('Còn tài sản trong lô chưa xử lý. Vui lòng xác nhận, tạm lưu, bỏ qua hoặc tạo yêu cầu xử lý trước khi đóng.');
+      return;
+    }
+    setShowBatchReviewWorkspace(false);
+  };
+
   // Batch Confirm Single Item
   const handleBatchConfirmItem = async (item: any) => {
     if (!activeBatchId) return;
@@ -2176,6 +2225,7 @@ export const InventoryDetail: React.FC = () => {
       });
       if (res.data?.success) {
         toast.success('Đã lưu thực tế (chưa xác nhận kiểm kê)');
+        setBatchCardStatus(batchReviewTab, item, 'EDITED');
         fetchPendingBatches();
         // Close editing mode
         setEditingItemIds(prev => {
@@ -7144,7 +7194,7 @@ export const InventoryDetail: React.FC = () => {
       {showBatchReviewWorkspace && (
         <BaseModal
           isOpen={showBatchReviewWorkspace}
-          onClose={() => setShowBatchReviewWorkspace(false)}
+          onClose={closeBatchReviewWorkspace}
           title={
             <div className="flex items-center gap-3">
               <span className="text-lg font-black text-slate-800 tracking-tight">🔎 RÀ SOÁT KẾT QUẢ LÔ QUÉT</span>
@@ -7240,16 +7290,8 @@ export const InventoryDetail: React.FC = () => {
                     const isActive = batchReviewTab === group.key;
                     const total = group.count;
 
-                    // Compute confirmed/progress if applicable
-                    let confirmedCount = 0;
-                    if (group.key === 'matchPendingItems') {
-                      confirmedCount = (activeBatchData.groups.matchPendingItems || []).filter((item: any) => item.checkStatus === 'CHECKED' || !!batchConfirmedMeta[item.id]).length;
-                    } else if (group.key === 'reviewItems') {
-                      confirmedCount = (activeBatchData.groups.reviewItems || []).filter((item: any) => item.checkStatus === 'CHECKED' || !!batchConfirmedMeta[item.id]).length;
-                    }
-
-                    const hasProgress = group.key === 'matchPendingItems' || group.key === 'reviewItems';
-                    const pct = total > 0 ? Math.round((confirmedCount / total) * 100) : 0;
+                    const progress = getBatchGroupProgress(group.key);
+                    const hasProgress = total > 0;
 
                     return (
                       <button
@@ -7277,10 +7319,10 @@ export const InventoryDetail: React.FC = () => {
                           <div className="space-y-1 pt-1">
                             <div className="flex justify-between text-[9px] font-extrabold text-slate-500 uppercase">
                               <span>Tiến độ xác nhận:</span>
-                              <span>{confirmedCount}/{total} ({pct}%)</span>
+                              <span>{progress.processed}/{total} ({progress.pct}%)</span>
                             </div>
                             <div className="w-full h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                              <div className={`h-full bg-${group.colorClass}-600 rounded-full transition-all`} style={{ width: `${pct}%` }} />
+                              <div className={`h-full bg-${group.colorClass}-600 rounded-full transition-all`} style={{ width: `${progress.pct}%` }} />
                             </div>
                           </div>
                         )}
@@ -7303,16 +7345,42 @@ export const InventoryDetail: React.FC = () => {
                           const undoDeadline = meta?.undoDeadline || item.undoDeadline;
                           const canUndo = undoDeadline && new Date(undoDeadline) > nowTime;
                           const secondsLeft = undoDeadline ? Math.max(0, Math.round((new Date(undoDeadline).getTime() - nowTime.getTime()) / 1000)) : 0;
+                          const isEditing = editingItemIds.has(item.id);
+                          const editData = batchReviewEditData[item.id] || {};
+                          const status = getBatchCardStatus('matchPendingItems', item);
 
                           return (
                             <div key={item.id} className={`border rounded-2xl p-4 transition-all bg-white ${isConfirmed ? 'border-emerald-250 bg-emerald-50/10' : 'border-slate-200'}`}>
                               <div className="flex items-start justify-between gap-4">
                                 <div className="space-y-2 flex-1">
                                   <div className="flex items-center gap-2.5">
-                                    <span className="font-black text-xs px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg tracking-wider border border-slate-200">{item.barcode}</span>
-                                    <span className="text-xs font-black text-slate-800">{item.assetName}</span>
-                                  </div>
-                                  {renderBatchComparisonTable(item, false, {}, () => {})}
+                                     <span className="font-black text-xs px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg tracking-wider border border-slate-200">{item.barcode}</span>
+                                     <span className="text-xs font-black text-slate-800">{item.assetName}</span>
+                                     <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 uppercase tracking-wider">{getBatchCardStatusLabel(status)}</span>
+                                     {!isConfirmed && (
+                                       <button
+                                         type="button"
+                                         onClick={() => setEditingItemIds(prev => {
+                                           const next = new Set(prev);
+                                           if (next.has(item.id)) next.delete(item.id);
+                                           else next.add(item.id);
+                                           return next;
+                                         })}
+                                         className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[10px] font-black border border-slate-200"
+                                       >
+                                         Chỉnh sửa
+                                       </button>
+                                     )}
+                                   </div>
+                                  {renderBatchComparisonTable(item, isEditing, editData, (fields) => {
+                                    setBatchReviewEditData(prev => ({
+                                      ...prev,
+                                      [item.id]: {
+                                        ...(prev[item.id] || {}),
+                                        ...fields
+                                      }
+                                    }));
+                                  })}
                                 </div>
 
                                 <div className="flex-shrink-0 pt-1">
@@ -7373,9 +7441,10 @@ export const InventoryDetail: React.FC = () => {
                                   <div className="flex items-center gap-2.5">
                                     <span className="font-black text-xs px-2.5 py-1 bg-amber-50 text-amber-800 rounded-lg tracking-wider border border-amber-200">{item.barcode}</span>
                                     <span className="text-xs font-black text-slate-800">{item.assetName}</span>
-                                    <span className="text-[9px] font-black text-amber-700 bg-amber-100/50 px-2 py-0.5 rounded border border-amber-200 uppercase tracking-wider">
-                                      {item.reason}
-                                    </span>
+                                     <span className="text-[9px] font-black text-amber-700 bg-amber-100/50 px-2 py-0.5 rounded border border-amber-200 uppercase tracking-wider">
+                                       {item.reason}
+                                     </span>
+                                     <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 uppercase tracking-wider">{getBatchCardStatusLabel(status)}</span>
                                     {item.checkStatus === 'ACTUAL_UPDATED' && (
                                       <span className="text-[9px] font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200 uppercase tracking-wider">
                                         💾 Đã lưu thực tế
@@ -7444,7 +7513,10 @@ export const InventoryDetail: React.FC = () => {
                                           </div>
                                           <button
                                             type="button"
-                                            onClick={() => handleBatchProposeBookUpdate(item)}
+                                            onClick={async () => {
+                                              await handleBatchProposeBookUpdate(item);
+                                              setBatchCardStatus('reviewItems', item, 'PENDING_BOOK_UPDATE');
+                                            }}
                                             disabled={submitting}
                                             className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50"
                                           >
@@ -7479,7 +7551,10 @@ export const InventoryDetail: React.FC = () => {
                                           {item.assetId && (
                                             <button
                                               type="button"
-                                              onClick={() => handleBatchProposeBookUpdate(item)}
+                                               onClick={async () => {
+                                                 await handleBatchProposeBookUpdate(item);
+                                                 setBatchCardStatus('reviewItems', item, 'PENDING_BOOK_UPDATE');
+                                               }}
                                               disabled={submitting}
                                               className="px-3.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 rounded-xl text-[10px] font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50"
                                             >
@@ -7527,6 +7602,10 @@ export const InventoryDetail: React.FC = () => {
                                 </p>
                                 <div className="text-[10px] font-black text-blue-600">Trạng thái: ĐÃ ĐƯỢC KIỂM KÊ TRƯỚC ĐÓ</div>
                               </div>
+                              <div className="flex flex-col items-end gap-2">
+                                <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 uppercase tracking-wider">{getBatchCardStatusLabel(getBatchCardStatus('alreadyCheckedItems', item))}</span>
+                                <button type="button" onClick={() => { setBatchCardStatus('alreadyCheckedItems', item, 'PENDING_CONFIRM'); toast.info('Đã mở thông tin phiếu đã kiểm.'); }} className="px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-black hover:bg-blue-100 cursor-pointer border border-blue-200 uppercase tracking-wider transition-all">Xem phiếu đã kiểm</button>
+                                <button type="button" onClick={() => { setBatchCardStatus('alreadyCheckedItems', item, 'PENDING_CONFIRM'); toast.success('Đã ghi nhận yêu cầu kiểm kê lại. Không ghi đè kết quả cũ.'); }} className="px-3 py-2 bg-slate-50 text-slate-700 rounded-xl text-xs font-black hover:bg-slate-100 cursor-pointer border border-slate-200 uppercase tracking-wider transition-all">Yêu cầu kiểm kê lại</button>
                               <button
                                 type="button"
                                 onClick={() => setShowOverrideWarning(item)}
@@ -7534,6 +7613,7 @@ export const InventoryDetail: React.FC = () => {
                               >
                                 ⚠ Ghi đè thông tin
                               </button>
+                              </div>
                             </div>
                           </div>
                         ))
@@ -7560,6 +7640,12 @@ export const InventoryDetail: React.FC = () => {
                                     <span className="text-xs font-black text-rose-900">{item.assetName || 'Tài sản không xác định'}</span>
                                   </div>
                                   <p className="text-[10px] font-bold text-rose-600">Trạng thái: Tài sản ngoài sổ sách</p>
+                                  <span className="inline-flex text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 uppercase tracking-wider">{getBatchCardStatusLabel(getBatchCardStatus('outOfBookItems', item, idx))}</span>
+                                </div>
+                                <div className="flex flex-wrap justify-end gap-2">
+                                  <button type="button" onClick={() => { setEditingItemIds(prev => new Set(prev).add(idx + 100000)); setBatchCardStatus('outOfBookItems', item, 'EDITED', idx); }} className="px-3 py-2 bg-white text-slate-700 rounded-xl text-xs font-black hover:bg-slate-50 cursor-pointer border border-slate-200 uppercase tracking-wider transition-all">Chỉnh sửa thông tin</button>
+                                  <button type="button" onClick={() => setBatchCardStatus('outOfBookItems', item, 'PENDING_BOOK_UPDATE', idx)} className="px-3 py-2 bg-rose-600 text-white rounded-xl text-xs font-black hover:bg-rose-700 cursor-pointer uppercase tracking-wider transition-all">Đăng ký tài sản ngoài sổ</button>
+                                  <button type="button" onClick={() => setBatchCardStatus('outOfBookItems', item, 'SKIPPED', idx)} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-black hover:bg-slate-200 cursor-pointer border border-slate-200 uppercase tracking-wider transition-all">Bỏ qua</button>
                                 </div>
                               </div>
                             </div>
@@ -7590,6 +7676,12 @@ export const InventoryDetail: React.FC = () => {
                               <div className="flex items-center gap-2.5">
                                 <span className="font-black text-xs px-2.5 py-1 bg-slate-100 text-slate-700 rounded-lg tracking-wider border border-slate-200">{item.barcode}</span>
                                 <span className="text-xs font-black text-slate-800">Lỗi: {item.reason}</span>
+                                <span className="text-[9px] font-black text-slate-500 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 uppercase tracking-wider">{getBatchCardStatusLabel(getBatchCardStatus('failedItems', item, idx))}</span>
+                              </div>
+                              <div className="flex flex-wrap gap-2 pt-3">
+                                <button type="button" onClick={() => setBatchCardStatus('failedItems', item, 'EDITED', idx)} className="px-3 py-2 bg-white text-slate-700 rounded-xl text-xs font-black hover:bg-slate-50 cursor-pointer border border-slate-200 uppercase tracking-wider transition-all">Sửa mã</button>
+                                <button type="button" onClick={() => { if (item.barcode) updateBatchQueue([...batchQueue, item.barcode]); setBatchCardStatus('failedItems', item, 'PENDING_CONFIRM', idx); }} className="px-3 py-2 bg-blue-50 text-blue-700 rounded-xl text-xs font-black hover:bg-blue-100 cursor-pointer border border-blue-200 uppercase tracking-wider transition-all">Quét lại</button>
+                                <button type="button" onClick={() => setBatchCardStatus('failedItems', item, 'SKIPPED', idx)} className="px-3 py-2 bg-slate-100 text-slate-700 rounded-xl text-xs font-black hover:bg-slate-200 cursor-pointer border border-slate-200 uppercase tracking-wider transition-all">Bỏ qua</button>
                               </div>
                             </div>
                           </div>
