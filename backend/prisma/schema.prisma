@@ -1118,6 +1118,9 @@ model CCDCChildItem {
   specification          String?
   description            String?
   serialNumber           String?
+  purchaseDate           DateTime?
+  supplierName           String?
+  imageUrl               String?
   location               String?
   department             String?
   user                   String?

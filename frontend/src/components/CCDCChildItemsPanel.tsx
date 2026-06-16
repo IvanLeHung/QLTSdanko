@@ -30,6 +30,10 @@ type ChildItem = {
   color?: string | null;
   size?: string | null;
   specification?: string | null;
+  serialNumber?: string | null;
+  purchaseDate?: string | null;
+  supplierName?: string | null;
+  imageUrl?: string | null;
   location?: string | null;
   department?: string | null;
   user?: string | null;
@@ -73,6 +77,10 @@ const emptyCreateForm = {
   size: '',
   specification: '',
   lotNumber: '',
+  purchaseDate: '',
+  supplierName: '',
+  imageUrl: '',
+  serialNumber: '',
   location: '',
   department: '',
   user: '',
@@ -98,6 +106,9 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
   const [loading, setLoading] = useState(false);
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
+  const [createStep, setCreateStep] = useState(1);
+  const [applyAllRows, setApplyAllRows] = useState(true);
+  const [previewRows, setPreviewRows] = useState<any[]>([]);
   const [filters, setFilters] = useState(emptyFilters);
   const [needsManualRefresh, setNeedsManualRefresh] = useState(false);
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
@@ -108,6 +119,74 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
     const cancelled = summary?.cancelledCount || 0;
     return Math.max((parentTool.quantity || 0) - created + cancelled, 0);
   }, [parentTool.quantity, summary]);
+
+  const buildPreviewRows = (quantity = Number(createForm.quantity || 0)) => {
+    const existingCodes = new Set(items.map(item => item.childCode));
+    let maxSeq = 0;
+    for (const item of items) {
+      const match = item.childCode.match(/-(\d+)$/);
+      if (match) maxSeq = Math.max(maxSeq, Number(match[1]));
+    }
+    const rows = Array.from({ length: quantity }).map((_, index) => {
+      let seq = maxSeq + index + 1;
+      let childCode = `${parentTool.toolCode}-${String(seq).padStart(2, '0')}`;
+      while (existingCodes.has(childCode)) {
+        seq += 1;
+        childCode = `${parentTool.toolCode}-${String(seq).padStart(2, '0')}`;
+      }
+      existingCodes.add(childCode);
+      const common = applyAllRows ? createForm : emptyCreateForm;
+      return {
+        childCode,
+        serialNumber: '',
+        color: common.color,
+        size: common.size,
+        specification: common.specification,
+        lotNumber: common.lotNumber,
+        purchaseDate: common.purchaseDate,
+        supplierName: common.supplierName,
+        location: common.location,
+        department: common.department,
+        user: common.user,
+        imageUrl: common.imageUrl,
+        note: common.note
+      };
+    });
+    setPreviewRows(rows);
+    return rows;
+  };
+
+  const updatePreviewRow = (index: number, patch: any) => {
+    setPreviewRows(prev => prev.map((row, idx) => idx === index ? { ...row, ...patch } : row));
+  };
+
+  const importChildRows = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result || '');
+      const rows = text.split(/\r?\n/).map(line => line.split(',').map(cell => cell.trim())).filter(row => row.some(Boolean));
+      const dataRows = rows[0]?.some(cell => /serial|mã|ma|color|màu/i.test(cell)) ? rows.slice(1) : rows;
+      const imported = buildPreviewRows(dataRows.length).map((row, index) => {
+        const cells = dataRows[index] || [];
+        return {
+          ...row,
+          serialNumber: cells[0] || row.serialNumber,
+          color: cells[1] || row.color,
+          size: cells[2] || row.size,
+          specification: cells[3] || row.specification,
+          lotNumber: cells[4] || row.lotNumber,
+          location: cells[5] || row.location,
+          department: cells[6] || row.department,
+          user: cells[7] || row.user,
+          note: cells[8] || row.note
+        };
+      });
+      setCreateForm(prev => ({ ...prev, quantity: imported.length || prev.quantity }));
+      setPreviewRows(imported);
+      setCreateStep(2);
+    };
+    reader.readAsText(file);
+  };
 
   const loadChildren = async (nextPage = page) => {
     setLoading(true);
@@ -157,14 +236,30 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
 
   const createChildren = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (createStep === 1) {
+      buildPreviewRows();
+      setCreateStep(2);
+      return;
+    }
+    if (createStep === 2) {
+      setCreateStep(3);
+      return;
+    }
     try {
-      const res = await api.post(`/ccdc/${parentTool.id}/child-items`, createForm);
-      toast.success(`Đã tạo ${res.data.createdCount || createForm.quantity} mã con.`);
+      const rows = previewRows.length ? previewRows : buildPreviewRows();
+      const res = await api.post(`/ccdc/${parentTool.id}/child-items`, {
+        ...createForm,
+        quantity: rows.length,
+        items: rows
+      });
+      toast.success(`Da tao ${res.data.createdCount || rows.length} ma con.`);
       setCreateForm(emptyCreateForm);
+      setPreviewRows([]);
+      setCreateStep(1);
       setShowCreate(false);
       await handleOperationResponse(res.data);
     } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Không thể tạo mã con.');
+      toast.error(err.response?.data?.message || 'Khong the tao ma con.');
     }
   };
 
@@ -427,25 +522,105 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
 
       {showCreate && (
         <div className="fixed inset-0 bg-slate-950/50 z-50 flex items-center justify-center p-4">
-          <form onSubmit={createChildren} className="bg-white rounded-2xl shadow-xl max-w-2xl w-full p-5 space-y-4">
-            <div className="flex justify-between items-center">
-              <h3 className="font-black text-slate-900">Tạo mã con CCDC</h3>
-              <button type="button" onClick={() => setShowCreate(false)} className="p-2 rounded-lg hover:bg-slate-100"><X className="h-4 w-4" /></button>
+          <form onSubmit={createChildren} className="bg-white rounded-2xl shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="flex justify-between items-center p-5 border-b border-slate-100">
+              <div>
+                <h3 className="font-black text-slate-900">Tao ma con CCDC</h3>
+                <p className="text-xs font-bold text-slate-400 mt-1">Buoc {createStep}/3: {createStep === 1 ? 'Thong tin chung' : createStep === 2 ? 'Xem truoc danh sach' : 'Xac nhan tao'}</p>
+              </div>
+              <button type="button" onClick={() => { setShowCreate(false); setCreateStep(1); setPreviewRows([]); }} className="p-2 rounded-lg hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <Field label="Số lượng" type="number" min={1} max={remainingToSplit || undefined} value={createForm.quantity} onChange={(value: string) => setCreateForm({ ...createForm, quantity: Number(value) })} />
-              <Field label="Màu sắc" value={createForm.color} onChange={(value: string) => setCreateForm({ ...createForm, color: value })} />
-              <Field label="Kích thước" value={createForm.size} onChange={(value: string) => setCreateForm({ ...createForm, size: value })} />
-              <Field label="Đặc điểm" value={createForm.specification} onChange={(value: string) => setCreateForm({ ...createForm, specification: value })} />
-              <Field label="Lô hàng" value={createForm.lotNumber} onChange={(value: string) => setCreateForm({ ...createForm, lotNumber: value })} />
-              <Field label="Vị trí ban đầu" value={createForm.location} onChange={(value: string) => setCreateForm({ ...createForm, location: value })} />
-              <Field label="Phòng ban" value={createForm.department} onChange={(value: string) => setCreateForm({ ...createForm, department: value })} />
-              <Field label="Người dùng" value={createForm.user} onChange={(value: string) => setCreateForm({ ...createForm, user: value })} />
-              <div className="md:col-span-2"><Field label="Ghi chú" value={createForm.note} onChange={(value: string) => setCreateForm({ ...createForm, note: value })} /></div>
+
+            <div className="p-5 overflow-y-auto space-y-5">
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                {[
+                  ['Ma CCDC cha', parentTool.toolCode],
+                  ['Ten CCDC', parentTool.toolName],
+                  ['Tong so luong', parentTool.quantity || 0],
+                  ['Da tao ma con', summary?.createdChildCount || 0],
+                  ['Con lai', remainingToSplit]
+                ].map(([label, value]) => (
+                  <div key={String(label)} className="bg-white rounded-xl border border-slate-100 p-3">
+                    <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                    <p className="text-sm font-black text-slate-800 mt-1 truncate">{value || '-'}</p>
+                  </div>
+                ))}
+              </div>
+
+              {createStep === 1 && (
+                <>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <label className="inline-flex items-center gap-2 text-xs font-black text-slate-700">
+                      <input type="checkbox" checked={applyAllRows} onChange={e => setApplyAllRows(e.target.checked)} />
+                      Ap dung thong tin cho toan bo ma con
+                    </label>
+                    <label className="inline-flex items-center gap-2 px-3 py-2 rounded-xl border border-slate-200 bg-white text-xs font-black text-slate-700 cursor-pointer hover:bg-slate-50">
+                      Import Excel/CSV
+                      <input type="file" accept=".csv,.txt,.xlsx" className="hidden" onChange={e => e.target.files?.[0] && importChildRows(e.target.files[0])} />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <Field label="So luong" type="number" min={1} max={remainingToSplit || undefined} value={createForm.quantity} onChange={(value: string) => setCreateForm({ ...createForm, quantity: Number(value) })} />
+                    <Field label="Serial" value={createForm.serialNumber} onChange={(value: string) => setCreateForm({ ...createForm, serialNumber: value })} />
+                    <Field label="Mau sac" value={createForm.color} onChange={(value: string) => setCreateForm({ ...createForm, color: value })} />
+                    <Field label="Kich thuoc" value={createForm.size} onChange={(value: string) => setCreateForm({ ...createForm, size: value })} />
+                    <Field label="Dac diem" value={createForm.specification} onChange={(value: string) => setCreateForm({ ...createForm, specification: value })} />
+                    <Field label="Lo hang" value={createForm.lotNumber} onChange={(value: string) => setCreateForm({ ...createForm, lotNumber: value })} />
+                    <Field label="Ngay mua" type="date" value={createForm.purchaseDate} onChange={(value: string) => setCreateForm({ ...createForm, purchaseDate: value })} />
+                    <Field label="Nha cung cap" value={createForm.supplierName} onChange={(value: string) => setCreateForm({ ...createForm, supplierName: value })} />
+                    <Field label="Vi tri ban dau" value={createForm.location} onChange={(value: string) => setCreateForm({ ...createForm, location: value })} />
+                    <Field label="Phong ban" value={createForm.department} onChange={(value: string) => setCreateForm({ ...createForm, department: value })} />
+                    <Field label="Nguoi su dung" value={createForm.user} onChange={(value: string) => setCreateForm({ ...createForm, user: value })} />
+                    <Field label="Anh URL" value={createForm.imageUrl} onChange={(value: string) => setCreateForm({ ...createForm, imageUrl: value })} />
+                    <div className="md:col-span-3"><Field label="Ghi chu" value={createForm.note} onChange={(value: string) => setCreateForm({ ...createForm, note: value })} /></div>
+                  </div>
+                </>
+              )}
+
+              {createStep >= 2 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-black text-slate-800">Danh sach ma con xem truoc</h4>
+                    <button type="button" onClick={() => buildPreviewRows()} className="px-3 py-2 rounded-xl border border-slate-200 text-xs font-black text-slate-700 hover:bg-slate-50">Sinh lai ma</button>
+                  </div>
+                  <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50 text-slate-500 uppercase text-[10px]">
+                        <tr>
+                          {['Ma con','Serial','Mau','Size','Dac diem','Lo','Ngay mua','NCC','Vi tri','Phong ban','Nguoi dung','Anh','Ghi chu'].map(h => <th key={h} className="p-2 text-left">{h}</th>)}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewRows.map((row, index) => (
+                          <tr key={row.childCode} className="border-t border-slate-100">
+                            <td className="p-2 font-mono font-black text-primary-700">{row.childCode}</td>
+                            {['serialNumber','color','size','specification','lotNumber','purchaseDate','supplierName','location','department','user','imageUrl','note'].map(key => (
+                              <td key={key} className="p-1 min-w-[130px]">
+                                <input
+                                  value={row[key] || ''}
+                                  type={key === 'purchaseDate' ? 'date' : 'text'}
+                                  onChange={e => updatePreviewRow(index, { [key]: e.target.value })}
+                                  className="w-full px-2 py-1.5 rounded-lg border border-slate-200 font-semibold"
+                                />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {createStep === 3 && (
+                    <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
+                      He thong se tao {previewRows.length} ma con, sinh QR theo tung ma va ghi lich su CREATE_CHILD. Moi ma con co the ban giao, dieu chuyen, thu hoi, bao hong, mat va thanh ly doc lap.
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-            <div className="flex justify-end gap-2 pt-2">
-              <button type="button" onClick={() => setShowCreate(false)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-600">Hủy</button>
-              <button type="submit" className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-black">Tạo mã con</button>
+
+            <div className="flex justify-between gap-2 p-5 border-t border-slate-100 bg-white">
+              <button type="button" onClick={() => createStep > 1 ? setCreateStep(createStep - 1) : setShowCreate(false)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-600">{createStep > 1 ? 'Quay lai' : 'Huy'}</button>
+              <button type="submit" className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-black">{createStep === 1 ? 'Xem truoc' : createStep === 2 ? 'Tiep tuc xac nhan' : 'Xac nhan tao ma con'}</button>
             </div>
           </form>
         </div>

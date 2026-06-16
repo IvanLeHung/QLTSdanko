@@ -213,22 +213,28 @@ export class CCDCChildService {
       for (let i = 1; i <= quantity; i++) {
         const seq = maxSeq + i;
         const childCode = `${parent.toolCode}-${String(seq).padStart(2, '0')}`;
+        const row = Array.isArray(data.items) ? (data.items[i - 1] || {}) : {};
+        const purchaseDateValue = row.purchaseDate || data.purchaseDate;
         const child = await tx.cCDCChildItem.create({
           data: {
             parentCcdcId: parent.id,
             parentCode: parent.toolCode,
             childCode,
             quantity: 1,
-            lotNumber: compact(data.lotNumber),
-            color: compact(data.color),
-            size: compact(data.size),
-            specification: compact(data.specification),
-            description: compact(data.description),
-            location: compact(data.location) ?? parent.locationName,
-            department: compact(data.department) ?? parent.departmentName,
-            user: compact(data.user) ?? parent.currentUserName,
-            condition: compact(data.condition) ?? parent.initialCondition,
-            note: compact(data.note),
+            lotNumber: compact(row.lotNumber) ?? compact(data.lotNumber),
+            color: compact(row.color) ?? compact(data.color),
+            size: compact(row.size) ?? compact(data.size),
+            specification: compact(row.specification) ?? compact(data.specification),
+            description: compact(row.description) ?? compact(data.description),
+            serialNumber: compact(row.serialNumber) ?? compact(data.serialNumber),
+            purchaseDate: purchaseDateValue ? new Date(purchaseDateValue) : null,
+            supplierName: compact(row.supplierName) ?? compact(data.supplierName),
+            imageUrl: compact(row.imageUrl) ?? compact(data.imageUrl),
+            location: compact(row.location) ?? compact(data.location) ?? parent.locationName,
+            department: compact(row.department) ?? compact(data.department) ?? parent.departmentName,
+            user: compact(row.user) ?? compact(data.user) ?? parent.currentUserName,
+            condition: compact(row.condition) ?? compact(data.condition) ?? parent.initialCondition,
+            note: compact(row.note) ?? compact(data.note),
             createdBy: performedBy
           }
         });
