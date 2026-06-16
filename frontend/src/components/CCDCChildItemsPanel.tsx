@@ -107,6 +107,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
   const [showCreate, setShowCreate] = useState(false);
   const [createForm, setCreateForm] = useState(emptyCreateForm);
   const [createStep, setCreateStep] = useState(1);
+  const [splitMode, setSplitMode] = useState<'quantity' | 'individual' | 'combo'>('quantity');
   const [applyAllRows, setApplyAllRows] = useState(true);
   const [previewRows, setPreviewRows] = useState<any[]>([]);
   const [filters, setFilters] = useState(emptyFilters);
@@ -121,13 +122,18 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
   }, [parentTool.quantity, summary]);
 
   const buildPreviewRows = (quantity = Number(createForm.quantity || 0)) => {
+    const manualSerials = createForm.serialNumber
+      .split(/[\n,;]/)
+      .map(serial => serial.trim())
+      .filter(Boolean);
+    const rowCount = splitMode === 'individual' ? Math.max(manualSerials.length, 1) : quantity;
     const existingCodes = new Set(items.map(item => item.childCode));
     let maxSeq = 0;
     for (const item of items) {
       const match = item.childCode.match(/-(\d+)$/);
       if (match) maxSeq = Math.max(maxSeq, Number(match[1]));
     }
-    const rows = Array.from({ length: quantity }).map((_, index) => {
+    const rows = Array.from({ length: rowCount }).map((_, index) => {
       let seq = maxSeq + index + 1;
       let childCode = `${parentTool.toolCode}-${String(seq).padStart(2, '0')}`;
       while (existingCodes.has(childCode)) {
@@ -138,7 +144,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
       const common = applyAllRows ? createForm : emptyCreateForm;
       return {
         childCode,
-        serialNumber: '',
+        serialNumber: splitMode === 'individual' ? (manualSerials[index] || '') : '',
         color: common.color,
         size: common.size,
         specification: common.specification,
@@ -256,6 +262,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
       setCreateForm(emptyCreateForm);
       setPreviewRows([]);
       setCreateStep(1);
+      setSplitMode('quantity');
       setShowCreate(false);
       await handleOperationResponse(res.data);
     } catch (err: any) {
@@ -528,7 +535,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
                 <h3 className="font-black text-slate-900">Tao ma con CCDC</h3>
                 <p className="text-xs font-bold text-slate-400 mt-1">Buoc {createStep}/3: {createStep === 1 ? 'Thong tin chung' : createStep === 2 ? 'Xem truoc danh sach' : 'Xac nhan tao'}</p>
               </div>
-              <button type="button" onClick={() => { setShowCreate(false); setCreateStep(1); setPreviewRows([]); }} className="p-2 rounded-lg hover:bg-slate-100"><X className="h-4 w-4" /></button>
+              <button type="button" onClick={() => { setShowCreate(false); setCreateStep(1); setSplitMode('quantity'); setPreviewRows([]); }} className="p-2 rounded-lg hover:bg-slate-100"><X className="h-4 w-4" /></button>
             </div>
 
             <div className="p-5 overflow-y-auto space-y-5">
@@ -549,6 +556,23 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
 
               {createStep === 1 && (
                 <>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                    {[
+                      { key: 'quantity', title: 'Theo số lượng', desc: 'Nhập số lượng, hệ thống tự sinh mã con hàng loạt.' },
+                      { key: 'individual', title: 'Từng mã', desc: 'Nhập serial/mã thực tế từng dòng, mỗi dòng sinh một mã con.' },
+                      { key: 'combo', title: 'Combo', desc: 'Giống CCDC cha: có thông tin chung và vẫn sửa từng mã ở preview.' }
+                    ].map(mode => (
+                      <button
+                        key={mode.key}
+                        type="button"
+                        onClick={() => setSplitMode(mode.key as any)}
+                        className={`text-left rounded-2xl border p-4 transition ${splitMode === mode.key ? 'border-primary-300 bg-primary-50 text-primary-800' : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'}`}
+                      >
+                        <p className="text-sm font-black">{mode.title}</p>
+                        <p className="text-[11px] font-bold mt-1 opacity-70 leading-relaxed">{mode.desc}</p>
+                      </button>
+                    ))}
+                  </div>
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <label className="inline-flex items-center gap-2 text-xs font-black text-slate-700">
                       <input type="checkbox" checked={applyAllRows} onChange={e => setApplyAllRows(e.target.checked)} />
@@ -560,8 +584,8 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
                     </label>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <Field label="So luong" type="number" min={1} max={remainingToSplit || undefined} value={createForm.quantity} onChange={(value: string) => setCreateForm({ ...createForm, quantity: Number(value) })} />
-                    <Field label="Serial" value={createForm.serialNumber} onChange={(value: string) => setCreateForm({ ...createForm, serialNumber: value })} />
+                    <Field label={splitMode === 'individual' ? 'So luong (tu danh sach serial)' : 'So luong'} type="number" min={1} max={remainingToSplit || undefined} value={splitMode === 'individual' ? Math.max(createForm.serialNumber.split(/[\n,;]/).filter(Boolean).length, 1) : createForm.quantity} disabled={splitMode === 'individual'} onChange={(value: string) => setCreateForm({ ...createForm, quantity: Number(value) })} />
+                    <Field label={splitMode === 'individual' ? 'Serial / ma tung dong' : 'Serial'} value={createForm.serialNumber} onChange={(value: string) => setCreateForm({ ...createForm, serialNumber: value })} />
                     <Field label="Mau sac" value={createForm.color} onChange={(value: string) => setCreateForm({ ...createForm, color: value })} />
                     <Field label="Kich thuoc" value={createForm.size} onChange={(value: string) => setCreateForm({ ...createForm, size: value })} />
                     <Field label="Dac diem" value={createForm.specification} onChange={(value: string) => setCreateForm({ ...createForm, specification: value })} />
@@ -619,7 +643,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
             </div>
 
             <div className="flex justify-between gap-2 p-5 border-t border-slate-100 bg-white">
-              <button type="button" onClick={() => createStep > 1 ? setCreateStep(createStep - 1) : setShowCreate(false)} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-600">{createStep > 1 ? 'Quay lai' : 'Huy'}</button>
+              <button type="button" onClick={() => createStep > 1 ? setCreateStep(createStep - 1) : (setShowCreate(false), setSplitMode('quantity'))} className="px-4 py-2 rounded-xl border border-slate-200 text-sm font-black text-slate-600">{createStep > 1 ? 'Quay lai' : 'Huy'}</button>
               <button type="submit" className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-black">{createStep === 1 ? 'Xem truoc' : createStep === 2 ? 'Tiep tuc xac nhan' : 'Xac nhan tao ma con'}</button>
             </div>
           </form>
