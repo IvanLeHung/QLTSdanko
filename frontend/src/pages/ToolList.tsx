@@ -29,7 +29,9 @@ import {
 } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import QRCode from 'react-qr-code';
+import QRCodeComponent from 'react-qr-code';
+
+const QRCode = (QRCodeComponent as any).default || QRCodeComponent;
 
 const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {

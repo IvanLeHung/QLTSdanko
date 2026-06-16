@@ -1,7 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import QRCode from 'react-qr-code';
+import QRCodeComponent from 'react-qr-code';
 import { toast } from 'react-toastify';
+
+const QRCode = (QRCodeComponent as any).default || QRCodeComponent;
 import api from '../lib/api';
 import {
   AlertTriangle,

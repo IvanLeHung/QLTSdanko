@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import QRCode from 'react-qr-code';
+import QRCodeComponent from 'react-qr-code';
+const QRCode = (QRCodeComponent as any).default || QRCodeComponent;
 import { ArrowLeft, ArrowRightLeft, FileText, Loader2, Package, Paperclip, ShieldAlert, UserCheck, Wrench } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '../lib/api';
