@@ -26,6 +26,7 @@ type ChildItem = {
   parentCcdcId: number;
   parentCode: string;
   childCode: string;
+  quantity?: number;
   lotNumber?: string | null;
   color?: string | null;
   size?: string | null;
@@ -117,8 +118,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
 
   const remainingToSplit = useMemo(() => {
     const created = summary?.createdChildCount || 0;
-    const cancelled = summary?.cancelledCount || 0;
-    return Math.max((parentTool.quantity || 0) - created + cancelled, 0);
+    return Math.max((parentTool.quantity || 0) - created, 0);
   }, [parentTool.quantity, summary]);
 
   const buildPreviewRows = (quantity = Number(createForm.quantity || 0)) => {
@@ -126,7 +126,11 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
       .split(/[\n,;]/)
       .map(serial => serial.trim())
       .filter(Boolean);
-    const rowCount = splitMode === 'individual' ? Math.max(manualSerials.length, 1) : quantity;
+    const rowCount = splitMode === 'quantity'
+      ? 1
+      : splitMode === 'individual'
+        ? Math.max(manualSerials.length, 1)
+        : quantity;
     const existingCodes = new Set(items.map(item => item.childCode));
     let maxSeq = 0;
     for (const item of items) {
@@ -144,6 +148,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
       const common = applyAllRows ? createForm : emptyCreateForm;
       return {
         childCode,
+        quantity: splitMode === 'quantity' ? quantity : 1,
         serialNumber: splitMode === 'individual' ? (manualSerials[index] || '') : '',
         color: common.color,
         size: common.size,
@@ -253,9 +258,11 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
     }
     try {
       const rows = previewRows.length ? previewRows : buildPreviewRows();
+      const totalQuantity = rows.reduce((sum, row) => sum + Math.max(1, Math.floor(Number(row.quantity || 1))), 0);
       const res = await api.post(`/ccdc/${parentTool.id}/child-items`, {
         ...createForm,
-        quantity: rows.length,
+        quantity: totalQuantity,
+        splitMode,
         items: rows
       });
       toast.success(`Da tao ${res.data.createdCount || rows.length} ma con.`);
@@ -489,6 +496,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
                     <p>{child.user || 'Kho CCDC'}</p>
                   </td>
                   <td className="p-3 text-xs text-slate-500">
+                    <p>SL: <b>{child.quantity || 1}</b></p>
                     <p>Màu: <b>{child.color || '-'}</b></p>
                     <p>Size: <b>{child.size || '-'}</b></p>
                     <p>Lô: <b>{child.lotNumber || '-'}</b></p>
@@ -558,7 +566,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
                 <>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                     {[
-                      { key: 'quantity', title: 'Theo số lượng', desc: 'Nhập số lượng, hệ thống tự sinh mã con hàng loạt.' },
+                      { key: 'quantity', title: 'Theo số lượng', desc: 'Tạo 1 mã con đại diện, số lượng nằm trên mã con.' },
                       { key: 'individual', title: 'Từng mã', desc: 'Nhập serial/mã thực tế từng dòng, mỗi dòng sinh một mã con.' },
                       { key: 'combo', title: 'Combo', desc: 'Giống CCDC cha: có thông tin chung và vẫn sửa từng mã ở preview.' }
                     ].map(mode => (
@@ -611,19 +619,20 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
                     <table className="w-full text-xs">
                       <thead className="bg-slate-50 text-slate-500 uppercase text-[10px]">
                         <tr>
-                          {['Ma con','Serial','Mau','Size','Dac diem','Lo','Ngay mua','NCC','Vi tri','Phong ban','Nguoi dung','Anh','Ghi chu'].map(h => <th key={h} className="p-2 text-left">{h}</th>)}
+                          {['Ma con','SL','Serial','Mau','Size','Dac diem','Lo','Ngay mua','NCC','Vi tri','Phong ban','Nguoi dung','Anh','Ghi chu'].map(h => <th key={h} className="p-2 text-left">{h}</th>)}
                         </tr>
                       </thead>
                       <tbody>
                         {previewRows.map((row, index) => (
                           <tr key={row.childCode} className="border-t border-slate-100">
                             <td className="p-2 font-mono font-black text-primary-700">{row.childCode}</td>
-                            {['serialNumber','color','size','specification','lotNumber','purchaseDate','supplierName','location','department','user','imageUrl','note'].map(key => (
+                            {['quantity','serialNumber','color','size','specification','lotNumber','purchaseDate','supplierName','location','department','user','imageUrl','note'].map(key => (
                               <td key={key} className="p-1 min-w-[130px]">
                                 <input
                                   value={row[key] || ''}
-                                  type={key === 'purchaseDate' ? 'date' : 'text'}
-                                  onChange={e => updatePreviewRow(index, { [key]: e.target.value })}
+                                  type={key === 'purchaseDate' ? 'date' : key === 'quantity' ? 'number' : 'text'}
+                                  min={key === 'quantity' ? 1 : undefined}
+                                  onChange={e => updatePreviewRow(index, { [key]: key === 'quantity' ? Math.max(1, Math.floor(Number(e.target.value || 1))) : e.target.value })}
                                   className="w-full px-2 py-1.5 rounded-lg border border-slate-200 font-semibold"
                                 />
                               </td>
@@ -635,7 +644,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
                   </div>
                   {createStep === 3 && (
                     <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-800">
-                      He thong se tao {previewRows.length} ma con, sinh QR theo tung ma va ghi lich su CREATE_CHILD. Moi ma con co the ban giao, dieu chuyen, thu hoi, bao hong, mat va thanh ly doc lap.
+                      He thong se tao {previewRows.length} ma con voi tong so luong {previewRows.reduce((sum, row) => sum + Math.max(1, Math.floor(Number(row.quantity || 1))), 0)}, sinh QR theo tung ma va ghi lich su CREATE_CHILD. Moi ma con co the ban giao, dieu chuyen, thu hoi, bao hong, mat va thanh ly doc lap.
                     </div>
                   )}
                 </div>

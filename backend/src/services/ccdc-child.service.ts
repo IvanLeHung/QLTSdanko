@@ -54,14 +54,18 @@ export class CCDCChildService {
 
     const children = await client.cCDCChildItem.findMany({
       where: { parentCcdcId: parentId, deletedAt: null },
-      select: { childStatus: true }
+      select: { childStatus: true, quantity: true }
     });
 
     const count = (status: ChildStatus) => children.filter((item: any) => item.childStatus === status).length;
+    const createdQuantity = children
+      .filter((item: any) => item.childStatus !== 'CANCELLED')
+      .reduce((sum: number, item: any) => sum + Math.max(1, Math.floor(Number(item.quantity || 1))), 0);
 
     return {
       totalQuantity: parent.quantity || 0,
-      createdChildCount: children.length,
+      createdChildCount: createdQuantity,
+      childItemCount: children.length,
       availableCount: count('AVAILABLE'),
       inUseCount: count('IN_USE'),
       transferringCount: count('TRANSFERRING'),
@@ -191,11 +195,20 @@ export class CCDCChildService {
       const parent = await tx.toolEquipment.findUnique({ where: { id: parentId } });
       if (!parent || parent.isDeleted) throw new Error('Không tìm thấy CCDC cha.');
 
-      const activeChildCount = await tx.cCDCChildItem.count({
-        where: { parentCcdcId: parentId, deletedAt: null, childStatus: { not: 'CANCELLED' } }
+      const activeChildren = await tx.cCDCChildItem.findMany({
+        where: { parentCcdcId: parentId, deletedAt: null, childStatus: { not: 'CANCELLED' } },
+        select: { quantity: true }
       });
-      const remaining = Math.max((parent.quantity || 0) - activeChildCount, 0);
-      if (quantity > remaining) {
+      const rows = Array.isArray(data.items) && data.items.length
+        ? data.items
+        : Array.from({ length: data.splitMode === 'quantity' ? 1 : quantity }, () => ({}));
+      const requestedQuantity = rows.reduce((sum: number, row: any) => {
+        const fallbackQuantity = data.splitMode === 'quantity' ? quantity : 1;
+        return sum + Math.max(1, Math.floor(Number(row.quantity || fallbackQuantity)));
+      }, 0);
+      const activeChildQuantity = activeChildren.reduce((sum: number, item: any) => sum + Math.max(1, Math.floor(Number(item.quantity || 1))), 0);
+      const remaining = Math.max((parent.quantity || 0) - activeChildQuantity, 0);
+      if (requestedQuantity > remaining) {
         throw new Error(`Số lượng tạo vượt quá số lượng chưa tách. Còn lại ${remaining}.`);
       }
 
@@ -210,17 +223,19 @@ export class CCDCChildService {
       }
 
       const created = [];
-      for (let i = 1; i <= quantity; i++) {
-        const seq = maxSeq + i;
+      for (let i = 0; i < rows.length; i++) {
+        const seq = maxSeq + i + 1;
         const childCode = `${parent.toolCode}-${String(seq).padStart(2, '0')}`;
-        const row = Array.isArray(data.items) ? (data.items[i - 1] || {}) : {};
+        const row = rows[i] || {};
+        const fallbackQuantity = data.splitMode === 'quantity' ? quantity : 1;
+        const rowQuantity = Math.max(1, Math.floor(Number(row.quantity || fallbackQuantity)));
         const purchaseDateValue = row.purchaseDate || data.purchaseDate;
         const child = await tx.cCDCChildItem.create({
           data: {
             parentCcdcId: parent.id,
             parentCode: parent.toolCode,
             childCode,
-            quantity: 1,
+            quantity: rowQuantity,
             lotNumber: compact(row.lotNumber) ?? compact(data.lotNumber),
             color: compact(row.color) ?? compact(data.color),
             size: compact(row.size) ?? compact(data.size),
@@ -244,10 +259,10 @@ export class CCDCChildService {
           data: {
             toolId: parent.id,
             type: 'CREATE_CHILD',
-            quantity: 1,
+            quantity: rowQuantity,
             toLocation: child.location,
             performedBy,
-            note: `Tạo mã con ${child.childCode}`
+            note: `Tạo mã con ${child.childCode} (SL: ${rowQuantity})`
           }
         });
       }
@@ -259,7 +274,7 @@ export class CCDCChildService {
           eventTime: new Date(),
           actionType: 'CREATE_CHILD',
           newStatus: parent.status,
-          newNote: `Tạo ${created.length} mã con`
+          newNote: `Tạo ${created.length} mã con, tổng SL ${requestedQuantity}`
         }
       });
 
@@ -269,7 +284,8 @@ export class CCDCChildService {
         action: 'CREATE',
         details: {
           parentCode: parent.toolCode,
-          quantity: created.length,
+          quantity: requestedQuantity,
+          childItemCount: created.length,
           childCodes: created.map(item => item.childCode)
         },
         performedBy,
