@@ -97,6 +97,7 @@ function App() {
           <Route path="/inventory" element={<PrivateRoute><InventoryList /></PrivateRoute>} />
           <Route path="/inventory/:id" element={<PrivateRoute><InventoryDetail /></PrivateRoute>} />
           <Route path="/handover" element={<PrivateRoute><HandoverTransfer /></PrivateRoute>} />
+          <Route path="/handover/new" element={<PrivateRoute><HandoverTransfer /></PrivateRoute>} />
           <Route path="/operational/damage" element={<PrivateRoute><DamageReport /></PrivateRoute>} />
           <Route path="/operational/lost" element={<PrivateRoute><LostReport /></PrivateRoute>} />
           <Route path="/operational/liquidation" element={<PrivateRoute><Liquidation /></PrivateRoute>} />

@@ -481,7 +481,7 @@ export const CreateAsset: React.FC = () => {
       
       // Auto handover flow if assignImmediately is selected
       if (assignImmediately) {
-        navigate('/handover/new', { state: { assetCodes: res.data.createdAssetCodes } });
+        navigate('/handover/new', { state: { assetIds: res.data.createdAssetIds || [], assetCodes: res.data.createdAssetCodes || [] } });
       } else {
         navigate('/assets');
       }

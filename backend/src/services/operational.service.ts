@@ -150,6 +150,34 @@ export class OperationalService {
   }
 
   // --- PRINT LOG ---
+  static async getPrintLogs(limit = 50) {
+    const logs = await prisma.auditLog.findMany({
+      where: {
+        entityType: 'ASSET',
+        action: 'PRINT'
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.min(Math.max(limit, 1), 200)
+    });
+
+    return logs.map(log => {
+      let details: any = {};
+      try {
+        details = log.details ? JSON.parse(log.details) : {};
+      } catch {
+        details = {};
+      }
+
+      return {
+        ...log,
+        details: {
+          ...details,
+          assetCount: details.assetCount || 1
+        }
+      };
+    });
+  }
+
   static async logPrintAction(data: {
     assetIds: number[];
     template: string;

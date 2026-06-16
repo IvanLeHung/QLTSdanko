@@ -30,10 +30,12 @@ import {
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { useModal } from '../context/ModalContext';
-import { useSearchParams } from 'react-router-dom';
+import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
 
 export const HandoverTransfer: React.FC = () => {
   const [searchParams] = useSearchParams();
+  const location = useLocation();
+  const navigate = useNavigate();
   const initialType = searchParams.get('type') || 'ALL';
   const initialFromDate = searchParams.get('fromDate') || '';
   const initialToDate = searchParams.get('toDate') || '';
@@ -97,6 +99,45 @@ export const HandoverTransfer: React.FC = () => {
   useEffect(() => {
     fetchMetadata();
   }, []);
+
+  useEffect(() => {
+    const state = location.state as any;
+    const assetIds = Array.isArray(state?.assetIds) ? state.assetIds.filter(Boolean) : [];
+    const assetCodes = Array.isArray(state?.assetCodes) ? state.assetCodes.filter(Boolean) : [];
+
+    if (assetIds.length === 0 && assetCodes.length === 0) return;
+
+    const openPrefilledWizard = async () => {
+      try {
+        let initialAssetIds = assetIds;
+
+        if (initialAssetIds.length === 0 && assetCodes.length > 0) {
+          const resolved = await Promise.all(assetCodes.map(async (code: string) => {
+            const res = await api.get('/assets', { params: { search: code, limit: 10 } });
+            const exact = (res.data.assets || []).find((asset: any) => asset.assetCode === code);
+            return exact?.id;
+          }));
+          initialAssetIds = resolved.filter(Boolean);
+        }
+
+        if (initialAssetIds.length > 0) {
+          openModal("TRANSFER_WIZARD", {
+            initialAssetIds,
+            defaultType: 'HANDOVER',
+            source: "CREATE_ASSET_AUTO_HANDOVER",
+            onComplete: fetchDocuments
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        toast.error('Không thể mở nhanh hồ sơ bàn giao từ tài sản vừa tạo.');
+      } finally {
+        navigate('/handover', { replace: true, state: {} });
+      }
+    };
+
+    openPrefilledWizard();
+  }, [location.state]);
 
   // Fetch documents when filter dependencies change
   useEffect(() => {

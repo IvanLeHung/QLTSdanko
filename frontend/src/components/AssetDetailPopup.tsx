@@ -1529,7 +1529,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
           fetchAssetDetail();
           
           // Log audit
-          await api.post('/operational/log-print', {
+          await api.post('/operational/print-log', {
             assetIds: [asset.id],
             template: selectedForm?.code,
             copies: 1,

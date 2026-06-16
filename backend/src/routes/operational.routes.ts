@@ -36,7 +36,26 @@ router.post('/liquidation', authenticateToken, async (req: any, res) => {
 
 
 // --- PRINT LOG ---
+router.get('/print-logs', authenticateToken, async (req: any, res) => {
+  try {
+    const limit = Number(req.query.limit || 50);
+    const result = await OperationalService.getPrintLogs(limit);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.post('/print-log', authenticateToken, async (req: any, res) => {
+  try {
+    const result = await OperationalService.logPrintAction(req.body, req.user.username);
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/log-print', authenticateToken, async (req: any, res) => {
   try {
     const result = await OperationalService.logPrintAction(req.body, req.user.username);
     res.json(result);

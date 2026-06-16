@@ -207,6 +207,11 @@ export class InvoicePostService {
         await tx.asset.createMany({ data: assetsData });
       }
 
+      const createdAssets = await tx.asset.findMany({
+        where: { assetCode: { in: createdAssetCodes } },
+        select: { id: true, assetCode: true }
+      });
+
       // 6. Audit Logging
       await AuditService.log({
         entityType: 'CREATION_BATCH',
@@ -221,7 +226,8 @@ export class InvoicePostService {
         batchId: batch.id,
         invoiceNo: batch.invoiceNo,
         createdAssetsCount,
-        createdAssetCodes
+        createdAssetCodes,
+        createdAssetIds: createdAssets.map(asset => asset.id)
       };
     }, { timeout: 45000 });
   }
