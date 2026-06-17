@@ -25,6 +25,7 @@ import {
   ArrowUpDown, 
   ShieldAlert,
   CheckSquare,
+  MinusSquare,
   Square,
   Activity,
   ChevronDown,
@@ -86,6 +87,7 @@ export const AssetList: React.FC = () => {
   };
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedAssetMap, setSelectedAssetMap] = useState<Record<number, any>>({});
   const [localSearch, setLocalSearch] = useState(search);
 
   // Compact Filters States
@@ -390,12 +392,50 @@ export const AssetList: React.FC = () => {
     fetchStats();
   }, [fetchStats]);
 
+  const currentPageAssetIds = useMemo(() => assets.map(a => a.id), [assets]);
+  const isCurrentPageFullySelected = assets.length > 0 && currentPageAssetIds.every(id => selectedIds.includes(id));
+  const isCurrentPagePartiallySelected = assets.length > 0 && currentPageAssetIds.some(id => selectedIds.includes(id)) && !isCurrentPageFullySelected;
+
+  const clearSelection = () => {
+    setSelectedIds([]);
+    setSelectedAssetMap({});
+  };
+
+  const toggleAssetSelection = (asset: any) => {
+    setSelectedIds(prev => {
+      if (prev.includes(asset.id)) return prev.filter(id => id !== asset.id);
+      return [...prev, asset.id];
+    });
+    setSelectedAssetMap(prev => {
+      if (prev[asset.id]) {
+        const next = { ...prev };
+        delete next[asset.id];
+        return next;
+      }
+      return { ...prev, [asset.id]: asset };
+    });
+  };
+
   const toggleSelectAll = () => {
-    if (selectedIds.length === assets.length && assets.length > 0) {
-      setSelectedIds([]);
-    } else {
-      setSelectedIds(assets.map(a => a.id));
+    if (isCurrentPageFullySelected) {
+      const pageIdSet = new Set(currentPageAssetIds);
+      setSelectedIds(prev => prev.filter(id => !pageIdSet.has(id)));
+      setSelectedAssetMap(prev => {
+        const next = { ...prev };
+        currentPageAssetIds.forEach(id => delete next[id]);
+        return next;
+      });
+      return;
     }
+
+    setSelectedIds(prev => Array.from(new Set([...prev, ...currentPageAssetIds])));
+    setSelectedAssetMap(prev => {
+      const next = { ...prev };
+      assets.forEach(asset => {
+        next[asset.id] = asset;
+      });
+      return next;
+    });
   };
 
   const getStatusLabel = (status: string) => {
@@ -521,15 +561,18 @@ export const AssetList: React.FC = () => {
   };
 
   const handleBulkPrint = () => {
-    const selectedAssets = assets.filter(a => selectedIds.includes(a.id));
-    if (selectedAssets.length === 0) return;
+    const currentPageMap = new Map(assets.map(asset => [asset.id, asset]));
+    const selectedAssetsForPrint = selectedIds
+      .map(id => selectedAssetMap[id] || currentPageMap.get(id))
+      .filter(Boolean);
+    if (selectedAssetsForPrint.length === 0) return;
     navigate('/print-center', {
       state: {
-        selectedAssets
+        selectedAssets: selectedAssetsForPrint
       }
     });
-    setSelectedIds([]);
-    toast.success(`Đã thêm ${selectedAssets.length} tài sản vào danh sách in tem`);
+    clearSelection();
+    toast.success(`Đã thêm ${selectedAssetsForPrint.length} tài sản vào danh sách in tem`);
   };
 
   const handleExportAll = async () => {
@@ -673,7 +716,12 @@ export const AssetList: React.FC = () => {
     }).join(', ');
   };
 
-  const selectedAssets = useMemo(() => assets.filter(a => selectedIds.includes(a.id)), [assets, selectedIds]);
+  const selectedAssets = useMemo(() => {
+    const currentPageMap = new Map(assets.map(asset => [asset.id, asset]));
+    return selectedIds
+      .map(id => selectedAssetMap[id] || currentPageMap.get(id))
+      .filter(Boolean);
+  }, [assets, selectedAssetMap, selectedIds]);
 
   const handleSortSelection = (key: string, order: string, isFilter: boolean = false, filterKey?: string, filterValue?: string) => {
     const newParams = new URLSearchParams(searchParams);
@@ -1380,7 +1428,7 @@ export const AssetList: React.FC = () => {
             </div>
             <div className="h-6 w-px bg-[#334155]"></div>
             <div className="flex items-center space-x-2">
-              <button onClick={() => setSelectedIds([])} className="px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400">Bỏ chọn</button>
+              <button onClick={clearSelection} className="px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400">Bỏ chọn</button>
               <button 
                 onClick={() => {
                   const hasInStock = selectedAssets.some(a => a.status === 'IN_STOCK');
@@ -1388,7 +1436,7 @@ export const AssetList: React.FC = () => {
                     initialAssetIds: selectedIds,
                     defaultType: hasInStock ? 'HANDOVER' : 'TRANSFER',
                     source: 'ASSET_DETAIL',
-                    onComplete: () => { setSelectedIds([]); fetchAssets(); }
+                    onComplete: () => { clearSelection(); fetchAssets(); }
                   });
                 }} 
                 className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors"
@@ -1399,7 +1447,7 @@ export const AssetList: React.FC = () => {
                 onClick={() => {
                   openModal("INVENTORY_WIZARD", {
                     initialAssetIds: selectedIds,
-                    onComplete: () => { setSelectedIds([]); fetchAssets(); }
+                    onComplete: () => { clearSelection(); fetchAssets(); }
                   });
                 }} 
                 className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors"
@@ -1431,7 +1479,7 @@ export const AssetList: React.FC = () => {
                              initialAssetIds: selectedIds,
                              defaultType: 'RECALL',
                              source: 'ASSET_DETAIL',
-                             onComplete: () => { setSelectedIds([]); fetchAssets(); }
+                             onComplete: () => { clearSelection(); fetchAssets(); }
                            });
                          }} 
                          className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
@@ -1444,7 +1492,7 @@ export const AssetList: React.FC = () => {
                            openModal("BM_FORM", {
                              code: 'BM10/QLTS',
                              data: { assets: selectedAssets },
-                             onSubmit: () => { setSelectedIds([]); fetchAssets(); }
+                             onSubmit: () => { clearSelection(); fetchAssets(); }
                            });
                          }} 
                          className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
@@ -1457,7 +1505,7 @@ export const AssetList: React.FC = () => {
                            openModal("BM_FORM", {
                              code: 'BM04/QLTS',
                              data: { asset: selectedAssets[0], assets: selectedAssets },
-                             onSubmit: () => { setSelectedIds([]); fetchAssets(); }
+                             onSubmit: () => { clearSelection(); fetchAssets(); }
                            });
                          }} 
                          className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400"
@@ -1478,7 +1526,7 @@ export const AssetList: React.FC = () => {
                 )}
               </div>
             </div>
-            <button onClick={() => setSelectedIds([])} className="p-1.5 hover:bg-[#1E293B] rounded-full transition-colors">
+            <button onClick={clearSelection} className="p-1.5 hover:bg-[#1E293B] rounded-full transition-colors">
               <X className="h-5 w-5 text-[#94A3B8]" />
             </button>
           </div>
@@ -1497,10 +1545,13 @@ export const AssetList: React.FC = () => {
                 <tr className="h-9">
                   <th className="px-3 w-10 sticky left-0 bg-[#F8FAFC] z-10">
                     <button onClick={toggleSelectAll} className="flex items-center justify-center w-4 h-4">
-                      {selectedIds.length === assets.length && assets.length > 0 
-                        ? <CheckSquare className="h-4 w-4 text-primary-600" /> 
-                        : <Square className="h-4 w-4 text-[#CBD5E1]" />
-                      }
+                      {isCurrentPageFullySelected ? (
+                        <CheckSquare className="h-4 w-4 text-primary-600" />
+                      ) : isCurrentPagePartiallySelected ? (
+                        <MinusSquare className="h-4 w-4 text-primary-600" />
+                      ) : (
+                        <Square className="h-4 w-4 text-[#CBD5E1]" />
+                      )}
                     </button>
                   </th>
                   {sortableColumns.map(col => (
@@ -1539,7 +1590,7 @@ export const AssetList: React.FC = () => {
                     onClick={() => openAssetDetail(asset.id, 'info')}
                   >
                     <td className="px-3 sticky left-0 bg-white group-hover:bg-[#F8FAFC] z-10" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={(e) => { e.stopPropagation(); setSelectedIds(prev => prev.includes(asset.id) ? prev.filter(i => i !== asset.id) : [...prev, asset.id]); }} className="flex items-center justify-center w-4 h-4">
+                      <button onClick={(e) => { e.stopPropagation(); toggleAssetSelection(asset); }} className="flex items-center justify-center w-4 h-4">
                         {selectedIds.includes(asset.id) 
                           ? <CheckSquare className="h-4 w-4 text-primary-600" /> 
                           : <Square className="h-4 w-4 text-[#CBD5E1] group-hover:text-[#94A3B8]" />
