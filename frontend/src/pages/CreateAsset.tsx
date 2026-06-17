@@ -440,43 +440,48 @@ export const CreateAsset: React.FC = () => {
     toast.success("Đã tải tệp CSV mẫu thành công!");
   };
 
-  // Submit and Create Assets
-  const handleConfirmPost = async () => {
-    if (validationErrors.length > 0) {
+  const buildInvoicePostPayload = (status: 'DRAFT' | 'POSTED') => ({
+    invoice: {
+      invoiceNo: invoice.invoiceNo,
+      invoiceDate: invoice.invoiceDate,
+      supplierName: invoice.supplierName,
+      supplierTaxCode: invoice.supplierTaxCode,
+      companyId: invoice.companyId,
+      warehouseId: invoice.warehouseId,
+      totalAmount: invoice.totalAmount ? parseFloat(invoice.totalAmount) : undefined,
+      note: invoice.note,
+      fileUrl: invoice.fileUrl
+    },
+    lines: lines.map(l => ({
+      invoiceItemName: l.invoiceItemName,
+      assetName: l.assetName,
+      categoryLevel1Id: parseInt(l.categoryLevel1Id),
+      categoryLevel2Id: parseInt(l.categoryLevel2Id),
+      categoryLevel3Id: parseInt(l.categoryLevel3Id),
+      categoryLevel4Id: parseInt(l.categoryLevel4Id),
+      quantity: l.quantity,
+      unitPrice: l.unitPrice,
+      serials: l.serials,
+      note: l.note
+    })),
+    assignImmediately,
+    status
+  });
+
+  const submitInvoicePost = async (status: 'DRAFT' | 'POSTED') => {
+    if (status === 'POSTED' && validationErrors.length > 0) {
       toast.error("Vui lòng khắc phục các lỗi nghiêm trọng trước khi tạo tài sản.");
       return;
     }
 
     setLoading(true);
     try {
-      const payload = {
-        invoice: {
-          invoiceNo: invoice.invoiceNo,
-          invoiceDate: invoice.invoiceDate,
-          supplierName: invoice.supplierName,
-          supplierTaxCode: invoice.supplierTaxCode,
-          companyId: invoice.companyId,
-          warehouseId: invoice.warehouseId,
-          totalAmount: invoice.totalAmount ? parseFloat(invoice.totalAmount) : undefined,
-          note: invoice.note,
-          fileUrl: invoice.fileUrl
-        },
-        lines: lines.map(l => ({
-          invoiceItemName: l.invoiceItemName,
-          assetName: l.assetName,
-          categoryLevel1Id: parseInt(l.categoryLevel1Id),
-          categoryLevel2Id: parseInt(l.categoryLevel2Id),
-          categoryLevel3Id: parseInt(l.categoryLevel3Id),
-          categoryLevel4Id: parseInt(l.categoryLevel4Id),
-          quantity: l.quantity,
-          unitPrice: l.unitPrice,
-          serials: l.serials,
-          note: l.note
-        })),
-        assignImmediately
-      };
-
-      const res = await api.post('/assets/import-invoice/post', payload);
+      const res = await api.post('/assets/import-invoice/post', buildInvoicePostPayload(status));
+      if (status === 'DRAFT') {
+        toast.success(`Đã lưu nháp lô hàng ${res.data.invoiceNo}.`);
+        navigate('/assets');
+        return;
+      }
       toast.success(`Nhập thành công! Đã tạo ${res.data.createdAssetsCount} tài sản vào Sổ tài sản.`);
       
       // Auto handover flow if assignImmediately is selected
@@ -491,6 +496,10 @@ export const CreateAsset: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Submit and Create Assets
+  const handleConfirmPost = async () => submitInvoicePost('POSTED');
+  const handleSaveDraft = async () => submitInvoicePost('DRAFT');
 
   // Open Serials Input Modal
   const openSerialsModal = (line: InvoiceLineItem) => {
@@ -1149,6 +1158,14 @@ export const CreateAsset: React.FC = () => {
               className="flex-1 px-6 py-4 border border-slate-200 text-slate-700 rounded-2xl font-bold text-sm hover:bg-slate-50 transition-colors shadow-sm"
             >
               Hủy bỏ & Quay về Sổ
+            </button>
+            <button
+              disabled={loading}
+              onClick={handleSaveDraft}
+              className="flex-1 px-6 py-4 border border-primary-200 text-primary-700 bg-primary-50 rounded-2xl font-bold text-sm hover:bg-primary-100 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <Save className="h-4 w-4" />
+              <span>Lưu nháp</span>
             </button>
             <button
               disabled={loading || validationErrors.length > 0}

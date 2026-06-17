@@ -7348,6 +7348,7 @@ export const InventoryDetail: React.FC = () => {
                           const isEditing = editingItemIds.has(item.id);
                           const editData = batchReviewEditData[item.id] || {};
                           const status = getBatchCardStatus('matchPendingItems', item);
+                          const hasEditedActualData = isEditing || status === 'EDITED' || Object.keys(editData).length > 0;
 
                           return (
                             <div key={item.id} className={`border rounded-2xl p-4 transition-all bg-white ${isConfirmed ? 'border-emerald-250 bg-emerald-50/10' : 'border-slate-200'}`}>
@@ -7406,7 +7407,7 @@ export const InventoryDetail: React.FC = () => {
                                       disabled={submitting}
                                       className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-black uppercase tracking-wider cursor-pointer transition disabled:opacity-50 shadow-sm"
                                     >
-                                      [ Xác nhận khớp ]
+                                      {hasEditedActualData ? '[ Xác nhận ]' : '[ Xác nhận khớp ]'}
                                     </button>
                                   )}
                                 </div>
@@ -7433,6 +7434,7 @@ export const InventoryDetail: React.FC = () => {
                           
                           const isEditing = editingItemIds.has(item.id);
                           const editData = batchReviewEditData[item.id] || {};
+                          const status = getBatchCardStatus('reviewItems', item);
 
                           return (
                             <div key={item.id} className={`border rounded-2xl p-4 transition-all bg-white ${isConfirmed ? 'border-emerald-250 bg-emerald-50/10' : 'border-amber-200 bg-amber-50/5'}`}>
@@ -7744,4 +7746,3 @@ export const InventoryDetail: React.FC = () => {
       </div>
   );
 };
-

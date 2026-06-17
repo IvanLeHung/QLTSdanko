@@ -29,11 +29,13 @@ export interface PostInvoicePayload {
     note?: string;
   }>;
   assignImmediately?: boolean;
+  status?: 'DRAFT' | 'POSTED';
 }
 
 export class InvoicePostService {
   static async postInvoice(payload: PostInvoicePayload, performedBy: string) {
     const { invoice, lines, assignImmediately } = payload;
+    const isDraft = payload.status === 'DRAFT';
 
     // 1. Basic Valdiation
     if (!invoice.invoiceNo) throw new Error('Vui lòng nhập số hóa đơn.');
@@ -120,11 +122,11 @@ export class InvoicePostService {
           totalAmount: invoice.totalAmount ? parseFloat(String(invoice.totalAmount)) : null,
           fileUrl: invoice.fileUrl || null,
           note: invoice.note || null,
-          status: 'POSTED',
+          status: isDraft ? 'DRAFT' : 'POSTED',
           totalLines: lines.length,
           totalAssets: lines.reduce((sum, l) => sum + l.quantity, 0),
           totalValue: lines.reduce((sum, l) => sum + (l.quantity * l.unitPrice), 0),
-          postedAt: new Date()
+          postedAt: isDraft ? null : new Date()
         }
       });
 
@@ -152,6 +154,10 @@ export class InvoicePostService {
             validationStatus: 'VALID'
           }
         });
+
+        if (isDraft) {
+          continue;
+        }
 
         // Resolve category codes/names
         const c1 = catMap.get(line.categoryLevel1Id);
@@ -207,7 +213,7 @@ export class InvoicePostService {
         await tx.asset.createMany({ data: assetsData });
       }
 
-      const createdAssets = await tx.asset.findMany({
+      const createdAssets = isDraft ? [] : await tx.asset.findMany({
         where: { assetCode: { in: createdAssetCodes } },
         select: { id: true, assetCode: true }
       });
@@ -217,7 +223,7 @@ export class InvoicePostService {
         entityType: 'CREATION_BATCH',
         entityId: batch.id,
         action: 'CREATE',
-        details: { invoiceNo: invoice.invoiceNo, totalAssets: createdAssetsCount, supplier: invoice.supplierName },
+        details: { invoiceNo: invoice.invoiceNo, totalAssets: createdAssetsCount, supplier: invoice.supplierName, status: batch.status },
         performedBy,
         tx
       });
@@ -225,6 +231,7 @@ export class InvoicePostService {
       return {
         batchId: batch.id,
         invoiceNo: batch.invoiceNo,
+        status: batch.status,
         createdAssetsCount,
         createdAssetCodes,
         createdAssetIds: createdAssets.map(asset => asset.id)

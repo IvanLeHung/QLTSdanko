@@ -15,7 +15,8 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    const message = error.response?.data?.message;
+    if (error.response?.status === 401 || (error.response?.status === 403 && message === 'Invalid or expired token.')) {
       localStorage.removeItem('token');
       const redirect = encodeURIComponent(window.location.pathname + window.location.search);
       window.location.href = `/login?redirect=${redirect}`;
