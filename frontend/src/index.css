@@ -107,3 +107,48 @@ body {
   opacity: 0 !important;
   pointer-events: none !important;
 }
+
+@media (pointer: coarse) {
+  button,
+  [role="button"],
+  input[type="checkbox"],
+  select {
+    touch-action: manipulation;
+  }
+}
+
+@media print {
+  aside,
+  header,
+  .print\:hidden,
+  .asset-manager-module > header,
+  .asset-manager-module button,
+  .asset-manager-module input,
+  .asset-manager-module select {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  main,
+  .asset-manager-module {
+    overflow: visible !important;
+    height: auto !important;
+    background: #fff !important;
+  }
+
+  table {
+    page-break-inside: auto;
+  }
+
+  tr {
+    page-break-inside: avoid;
+    break-inside: avoid;
+  }
+}
