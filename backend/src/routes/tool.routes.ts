@@ -260,7 +260,7 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
     if (isNaN(id)) return res.status(400).json({ message: 'ID không hợp lệ.' });
 
     const performedBy = req.user?.fullName || req.user?.username || 'system';
-    const updated = await ToolService.updateTool(id, req.body, performedBy, req.body.reason);
+    const updated = await ToolService.updateTool(id, req.body, performedBy, req.body.reason, req.user);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
@@ -288,7 +288,7 @@ router.put('/:id', authenticateToken, async (req: any, res) => {
     if (isNaN(id)) return res.status(400).json({ message: 'ID không hợp lệ.' });
 
     const performedBy = req.user?.fullName || req.user?.username || 'system';
-    const updated = await ToolService.updateTool(id, req.body, performedBy, req.body.reason);
+    const updated = await ToolService.updateTool(id, req.body, performedBy, req.body.reason, req.user);
     res.json(updated);
   } catch (err: any) {
     res.status(500).json({ message: err.message });
