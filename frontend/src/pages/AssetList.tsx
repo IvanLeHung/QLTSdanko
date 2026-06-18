@@ -328,6 +328,7 @@ export const AssetList: React.FC = () => {
 
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
+  const [isAssetActionMenuOpen, setIsAssetActionMenuOpen] = useState(false);
 
   // Compact Header State
   const [isCompact, setIsCompact] = useState(false);
@@ -681,11 +682,11 @@ export const AssetList: React.FC = () => {
   };
 
   const sortableColumns = [
-    { key: "assetCode", label: "Mã tài sản" },
-    { key: "assetName", label: "Tên tài sản" },
-    { key: "currentUserName", label: "Người sử dụng / Chức vụ" },
-    { key: "cityName", label: "Thành phố / Dự án / Vị trí" },
-    { key: "status", label: "Trạng thái" },
+    { key: "assetCode", label: "Mã tài sản", className: "w-[170px]" },
+    { key: "assetName", label: "Tên tài sản", className: "w-[280px] md:w-[320px]" },
+    { key: "currentUserName", label: "Người sử dụng / Chức vụ", className: "w-[210px]" },
+    { key: "cityName", label: "Thành phố / Dự án / Vị trí", className: "hidden xl:table-cell w-[260px]" },
+    { key: "status", label: "Trạng thái", className: "w-[150px]" },
   ];
 
   const statCards = useMemo(() => {
@@ -960,13 +961,13 @@ export const AssetList: React.FC = () => {
   );
 
   return (
-    <div className="h-screen flex flex-col overflow-hidden bg-[#f8fafc]">
+    <div className="asset-manager-module h-full min-h-0 flex flex-col overflow-hidden bg-[#f8fafc]">
       {/* COLLAPSIBLE HEADER */}
       <header className={cn(
         "shrink-0 z-40 bg-white/90 backdrop-blur-md border-b transition-all duration-500 ease-in-out",
         isCompact ? "py-1 shadow-md" : "py-3"
       )}>
-        <div className="px-4">
+        <div className="px-2 sm:px-3 lg:px-4">
           {/* Title Section — Animates away */}
           <div className={cn(
             "transition-all duration-500 ease-in-out overflow-hidden",
@@ -990,7 +991,7 @@ export const AssetList: React.FC = () => {
           )}>
             {stats && (
               <div className="pt-1 pb-4">
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 lg:gap-3">
                   {statCards.map((card) => {
                     const active = card.key === 'ALL' ? !filters.status : filters.status === card.status;
                     return (
@@ -1012,13 +1013,13 @@ export const AssetList: React.FC = () => {
 
           {/* Toolbar Section — Always visible */}
           <div className={cn(
-            "flex items-center gap-3 transition-all duration-500 justify-between flex-wrap",
+            "flex items-center gap-2 lg:gap-3 transition-all duration-500 justify-between flex-wrap",
             isCompact ? "mt-1 py-1" : "mt-3"
           )}>
             {/* Left side: Search & Chip filters */}
-            <div className="flex items-center gap-2.5 flex-1 min-w-[280px] flex-wrap">
+            <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
               {/* Main Search Input */}
-              <div className="relative flex-1 max-w-md min-w-[220px]">
+              <div className="relative w-full lg:flex-1 lg:max-w-md lg:min-w-[220px]">
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input 
                   type="text" 
@@ -1151,6 +1152,7 @@ export const AssetList: React.FC = () => {
               </ChipPopoverFilter>
 
               {/* Phòng ban filter chip */}
+              <div className="hidden xl:block">
               <ChipPopoverFilter
                 label={filters.departmentName ? `Phòng ban: ${filters.departmentName}` : 'Phòng ban'}
                 isActive={!!filters.departmentName}
@@ -1180,8 +1182,10 @@ export const AssetList: React.FC = () => {
                   </div>
                 </div>
               </ChipPopoverFilter>
+              </div>
 
               {/* Vị trí filter chip */}
+              <div className="hidden xl:block">
               <ChipPopoverFilter
                 label={locationLabel}
                 isActive={locationActive}
@@ -1227,8 +1231,10 @@ export const AssetList: React.FC = () => {
                   </div>
                 </div>
               </ChipPopoverFilter>
+              </div>
 
               {/* Nhóm tài sản filter chip (LV4) */}
+              <div className="hidden xl:block">
               <ChipPopoverFilter
                 label={lv4Label}
                 isActive={lv4Active}
@@ -1279,14 +1285,44 @@ export const AssetList: React.FC = () => {
                   </div>
                 </div>
               </ChipPopoverFilter>
+              </div>
             </div>
 
             {/* Right side: Action Buttons */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 ml-auto">
+              <div className="relative xl:hidden">
+                <button
+                  type="button"
+                  onClick={() => setIsAssetActionMenuOpen(!isAssetActionMenuOpen)}
+                  className="h-11 px-4 flex items-center text-[12px] font-black bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-700 whitespace-nowrap shadow-xs"
+                >
+                  <MoreVertical className="mr-1.5 h-4 w-4" /> Tác vụ
+                </button>
+                {isAssetActionMenuOpen && (
+                  <>
+                    <div className="fixed inset-0 z-30" onClick={() => setIsAssetActionMenuOpen(false)}></div>
+                    <div className="absolute right-0 mt-2 w-56 bg-white rounded-2xl shadow-2xl border border-slate-200 z-40 p-2">
+                      <Can permission="ASSET_EXPORT">
+                        <button onClick={() => { setIsAssetActionMenuOpen(false); handleExportAll(); }} className="w-full h-11 px-3 rounded-xl flex items-center text-left text-xs font-black text-slate-700 hover:bg-slate-50">
+                          <Download className="mr-2 h-4 w-4 text-slate-500" /> Export
+                        </button>
+                      </Can>
+                      <Can permission="ASSET_VIEW">
+                        <button onClick={() => { setIsAssetActionMenuOpen(false); handleExportExcel(); }} className="w-full h-11 px-3 rounded-xl flex items-center text-left text-xs font-black text-slate-700 hover:bg-slate-50">
+                          <Download className="mr-2 h-4 w-4 text-slate-500" /> Tải báo cáo
+                        </button>
+                      </Can>
+                      <button onClick={() => { setIsAssetActionMenuOpen(false); setIsNormalizationOpen(true); }} className="w-full h-11 px-3 rounded-xl flex items-center text-left text-xs font-black text-slate-700 hover:bg-slate-50">
+                        <Search className="mr-2 h-4 w-4 text-slate-500" /> Rà soát & Chuẩn hóa
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
               <Can permission="ASSET_EXPORT">
                 <button 
                   onClick={handleExportAll}
-                  className="h-[36px] px-4 flex items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap shadow-xs"
+                  className="hidden xl:flex h-[36px] px-4 items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap shadow-xs"
                 >
                   <Download className="mr-1.5 h-4 w-4 text-slate-500" /> Export
                 </button>
@@ -1296,7 +1332,7 @@ export const AssetList: React.FC = () => {
                 <button 
                   type="button"
                   onClick={handleExportExcel}
-                  className="h-[36px] px-4 flex items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap shadow-xs"
+                  className="hidden xl:flex h-[36px] px-4 items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap shadow-xs"
                 >
                   <Download className="mr-1.5 h-4 w-4 text-slate-500" /> Tải báo cáo
                 </button>
@@ -1305,7 +1341,7 @@ export const AssetList: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsNormalizationOpen(true)}
-                className="h-[36px] px-4 flex items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-650 whitespace-nowrap shadow-xs cursor-pointer"
+                className="hidden xl:flex h-[36px] px-4 items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-650 whitespace-nowrap shadow-xs cursor-pointer"
               >
                 🔍 Rà soát & Chuẩn hóa
               </button>
@@ -1314,7 +1350,7 @@ export const AssetList: React.FC = () => {
                 <button 
                   type="button"
                   onClick={() => openModal("ASSET_CREATE", { onComplete: fetchAssets })} 
-                  className="h-[36px] px-5 flex items-center text-[12px] font-black bg-primary-600 text-white rounded-full shadow-md hover:bg-primary-700 transition-all whitespace-nowrap"
+                  className="h-11 xl:h-[36px] px-5 flex items-center text-[12px] font-black bg-primary-600 text-white rounded-full shadow-md hover:bg-primary-700 transition-all whitespace-nowrap"
                 >
                   <Plus className="mr-1.5 h-4 w-4" /> Thêm mới
                 </button>
@@ -1418,8 +1454,8 @@ export const AssetList: React.FC = () => {
 
       {/* BULK ACTION BAR */}
       {selectedIds.length > 0 && (
-        <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-10">
-          <div className="bg-[#0F172A] text-white px-6 py-4 rounded-2xl shadow-2xl flex items-center space-x-6 border border-[#1E293B]">
+        <div className="fixed bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-10 w-[calc(100vw-1rem)] sm:w-auto max-w-5xl print:hidden">
+          <div className="bg-[#0F172A] text-white px-3 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl flex items-center gap-2 sm:space-x-6 border border-[#1E293B] overflow-x-auto custom-scrollbar">
             <div className="flex items-center space-x-3">
               <div className="bg-primary-500 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
                 {selectedIds.length}
@@ -1428,7 +1464,7 @@ export const AssetList: React.FC = () => {
             </div>
             <div className="h-6 w-px bg-[#334155]"></div>
             <div className="flex items-center space-x-2">
-              <button onClick={clearSelection} className="px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400">Bỏ chọn</button>
+              <button onClick={clearSelection} className="h-11 px-3 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400 whitespace-nowrap">Bỏ chọn</button>
               <button 
                 onClick={() => {
                   const hasInStock = selectedAssets.some(a => a.status === 'IN_STOCK');
@@ -1439,7 +1475,7 @@ export const AssetList: React.FC = () => {
                     onComplete: () => { clearSelection(); fetchAssets(); }
                   });
                 }} 
-                className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors"
+                className="h-11 flex items-center px-3 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
               >
                 <UserPlus className="mr-2 h-4 w-4" /> Bàn giao / Điều chuyển
               </button>
@@ -1450,18 +1486,18 @@ export const AssetList: React.FC = () => {
                     onComplete: () => { clearSelection(); fetchAssets(); }
                   });
                 }} 
-                className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors"
+                className="h-11 flex items-center px-3 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
               >
                 <ClipboardCheck className="mr-2 h-4 w-4" /> Kiểm kê
               </button>
-              <button onClick={handleBulkPrint} className="flex items-center px-3 py-1.5 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-primary-400">
+              <button onClick={handleBulkPrint} className="h-11 flex items-center px-3 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-primary-400 whitespace-nowrap">
                 <Printer className="mr-2 h-4 w-4" /> In tem tài sản
               </button>
               <div className="relative">
                 <button 
                   onClick={() => setIsMoreMenuOpen(!isMoreMenuOpen)}
                   className={cn(
-                    "flex items-center px-3 py-1.5 rounded-lg text-xs font-bold transition-all",
+                    "h-11 flex items-center px-3 rounded-lg text-xs font-bold transition-all whitespace-nowrap",
                     isMoreMenuOpen ? "bg-primary-600 text-white" : "hover:bg-[#1E293B] text-white"
                   )}
                 >
@@ -1526,7 +1562,7 @@ export const AssetList: React.FC = () => {
                 )}
               </div>
             </div>
-            <button onClick={clearSelection} className="p-1.5 hover:bg-[#1E293B] rounded-full transition-colors">
+            <button onClick={clearSelection} className="h-11 w-11 flex items-center justify-center hover:bg-[#1E293B] rounded-full transition-colors shrink-0">
               <X className="h-5 w-5 text-[#94A3B8]" />
             </button>
           </div>
@@ -1534,17 +1570,17 @@ export const AssetList: React.FC = () => {
       )}
 
       {/* ASSET TABLE — fills remaining space */}
-      <main className="flex-1 min-h-0 p-3">
+      <main className="flex-1 min-h-0 p-2 sm:p-3">
         <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
           <div 
             ref={scrollContainerRef}
             className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth"
           >
-            <table className="w-full text-left border-collapse table-fixed">
+            <table className="min-w-[860px] xl:min-w-0 w-full text-left border-collapse table-fixed">
               <thead className="sticky top-0 z-10 bg-[#F8FAFC] border-b border-[#E2E8F0]">
                 <tr className="h-9">
-                  <th className="px-3 w-10 sticky left-0 bg-[#F8FAFC] z-10">
-                    <button onClick={toggleSelectAll} className="flex items-center justify-center w-4 h-4">
+                  <th className="px-3 w-12 sticky left-0 bg-[#F8FAFC] z-10">
+                    <button onClick={toggleSelectAll} className="flex items-center justify-center w-11 h-11 -my-1 -mx-3">
                       {isCurrentPageFullySelected ? (
                         <CheckSquare className="h-4 w-4 text-primary-600" />
                       ) : isCurrentPagePartiallySelected ? (
@@ -1555,7 +1591,7 @@ export const AssetList: React.FC = () => {
                     </button>
                   </th>
                   {sortableColumns.map(col => (
-                    <th key={col.key} className="px-3 uppercase text-[10px] font-black text-slate-400 tracking-widest overflow-hidden">
+                    <th key={col.key} className={cn("px-3 uppercase text-[10px] font-black text-slate-400 tracking-widest overflow-hidden", col.className)}>
                       <button 
                         onClick={() => handleSort(col.key)}
                         className="group inline-flex items-center gap-1.5 hover:text-slate-700 transition-colors whitespace-nowrap"
@@ -1570,7 +1606,7 @@ export const AssetList: React.FC = () => {
                       </button>
                     </th>
                   ))}
-                  <th className="px-3 w-14 text-right uppercase text-[10px] font-black text-slate-400 tracking-widest">Tác vụ</th>
+                  <th className="px-3 w-16 text-right uppercase text-[10px] font-black text-slate-400 tracking-widest">Tác vụ</th>
                 </tr>
               </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
@@ -1590,7 +1626,7 @@ export const AssetList: React.FC = () => {
                     onClick={() => openAssetDetail(asset.id, 'info')}
                   >
                     <td className="px-3 sticky left-0 bg-white group-hover:bg-[#F8FAFC] z-10" onClick={(e) => e.stopPropagation()}>
-                      <button onClick={(e) => { e.stopPropagation(); toggleAssetSelection(asset); }} className="flex items-center justify-center w-4 h-4">
+                      <button onClick={(e) => { e.stopPropagation(); toggleAssetSelection(asset); }} className="flex items-center justify-center w-11 h-11 -my-2 -mx-3">
                         {selectedIds.includes(asset.id) 
                           ? <CheckSquare className="h-4 w-4 text-primary-600" /> 
                           : <Square className="h-4 w-4 text-[#CBD5E1] group-hover:text-[#94A3B8]" />
@@ -1601,10 +1637,11 @@ export const AssetList: React.FC = () => {
                       {asset.assetCode}
                     </td>
                     <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
-                      <p className="text-[13px] font-bold text-slate-800 leading-tight">{asset.assetNameShort || asset.assetName}</p>
+                      <p className="text-[13px] font-bold text-slate-800 leading-tight whitespace-normal break-words">{asset.assetNameShort || asset.assetName}</p>
                       <p className="text-[10px] font-medium text-slate-400 leading-tight">Serial: <span className="text-slate-500">{asset.serialNumber || '-'}</span></p>
+                      <p className="xl:hidden text-[10px] font-medium text-slate-400 leading-tight">{asset.cityName || '-'}{asset.locationName ? ` - ${asset.locationName}` : ''}</p>
                     </td>
-                    <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
+                    <td className="hidden xl:table-cell px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
                       <p className="text-[13px] font-semibold text-slate-800 leading-tight">{asset.currentUserName || <span className="text-slate-300 font-medium italic">Chưa cấp phát</span>}</p>
                       <p className="text-[10px] font-medium text-slate-400 leading-tight">{asset.currentPosition || '-'}</p>
                     </td>
@@ -1628,7 +1665,7 @@ export const AssetList: React.FC = () => {
                        <div className="relative inline-block">
                           <button 
                             onClick={(e) => { e.stopPropagation(); setActiveMenuId(activeMenuId === asset.id ? null : asset.id); }}
-                            className="p-2 hover:bg-white rounded-xl border border-transparent hover:border-[#E2E8F0] text-[#94A3B8] hover:text-[#0F172A] transition-all shadow-sm"
+                             className="h-11 w-11 inline-flex items-center justify-center hover:bg-white rounded-xl border border-transparent hover:border-[#E2E8F0] text-[#94A3B8] hover:text-[#0F172A] transition-all shadow-sm"
                           >
                             <MoreVertical className="h-5 w-5" />
                           </button>
@@ -1903,7 +1940,7 @@ const StatCard = ({ label, value, icon, color, active, onClick }: any) => {
       type="button"
       onClick={onClick}
       className={cn(
-        "h-[60px] px-4 rounded-xl border flex items-center gap-3 shadow-sm hover:shadow-md transition-all group w-full outline-none cursor-pointer",
+        "h-[56px] md:h-[60px] px-3 lg:px-4 rounded-xl border flex items-center gap-2 lg:gap-3 shadow-sm hover:shadow-md transition-all group w-full outline-none cursor-pointer",
         active ? style.active : style.inactive
       )}
     >
@@ -1914,7 +1951,7 @@ const StatCard = ({ label, value, icon, color, active, onClick }: any) => {
         {icon}
       </div>
       <div className="min-w-0 text-left">
-        <p className="text-[9px] font-black uppercase text-[#94A3B8] tracking-wider leading-none">{label}</p>
+        <p className="text-[8px] lg:text-[9px] font-black uppercase text-[#94A3B8] tracking-wider leading-none">{label}</p>
         <p className="text-xl font-[900] text-[#0F172A] tracking-tighter leading-tight mt-0.5">
           {value?.toLocaleString('vi-VN') || 0}
         </p>
@@ -1924,7 +1961,7 @@ const StatCard = ({ label, value, icon, color, active, onClick }: any) => {
 };
 
 const ActionItem = ({ label, icon, onClick }: any) => (
-  <button onClick={onClick} className="w-full flex items-center px-4 py-3 text-[12px] font-black text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC] rounded-xl transition-all uppercase tracking-tight">
+  <button onClick={onClick} className="w-full min-h-11 flex items-center px-4 py-3 text-[12px] font-black text-[#475569] hover:text-[#0F172A] hover:bg-[#F8FAFC] rounded-xl transition-all uppercase tracking-tight">
     <span className="mr-3 text-[#94A3B8]">{icon}</span> {label}
   </button>
 );

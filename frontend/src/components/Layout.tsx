@@ -22,7 +22,8 @@ import {
   Shield,
   BookOpen,
   Hammer,
-  FileSpreadsheet
+  FileSpreadsheet,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { clsx, type ClassValue } from 'clsx';
@@ -98,6 +99,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   const navigate = useNavigate();
   const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
+  const [isNavDrawerOpen, setIsNavDrawerOpen] = React.useState(false);
 
   const handleLogout = () => {
     logout();
@@ -111,7 +113,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   return (
     <div className="flex h-screen bg-slate-50">
       <aside className={cn(
-        "transition-all duration-300 bg-white flex flex-col shrink-0",
+        "hidden lg:flex transition-all duration-300 bg-white flex-col shrink-0 print:hidden",
         isSidebarCollapsed ? "w-0 overflow-hidden border-r-0" : "w-72 border-r border-slate-200"
       )}>
         <div className="p-6">
@@ -178,15 +180,104 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-8">
+      <aside className="hidden md:flex lg:hidden fixed inset-y-0 left-0 z-40 w-16 bg-white border-r border-slate-200 flex-col items-center py-3 print:hidden">
+        <button
+          type="button"
+          onClick={() => setIsNavDrawerOpen(true)}
+          className="h-11 w-11 rounded-xl text-slate-500 hover:bg-slate-100 flex items-center justify-center"
+          title="Mở menu"
+        >
+          <Menu className="h-5 w-5" />
+        </button>
+        <nav className="mt-4 flex-1 flex flex-col items-center gap-1 overflow-y-auto custom-scrollbar">
+          {navItems.filter(item => hasPermission(item.requiredPermission)).map((item) => {
+            const isActive = isPathActive(location.pathname, location.search, item.path);
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setIsNavDrawerOpen(false)}
+                title={item.name}
+                className={cn(
+                  "h-11 w-11 rounded-xl flex items-center justify-center transition-all",
+                  isActive ? "bg-primary-50 text-primary-700" : "text-slate-400 hover:bg-slate-50 hover:text-slate-700"
+                )}
+              >
+                <item.icon className="h-5 w-5" />
+              </Link>
+            );
+          })}
+        </nav>
+        <button
+          onClick={handleLogout}
+          className="h-11 w-11 rounded-xl text-red-500 hover:bg-red-50 flex items-center justify-center"
+          title="Logout"
+        >
+          <LogOut className="h-5 w-5" />
+        </button>
+      </aside>
+
+      {isNavDrawerOpen && (
+        <div className="fixed inset-0 z-50 lg:hidden print:hidden">
+          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setIsNavDrawerOpen(false)} />
+          <aside className="absolute inset-y-0 left-0 w-80 max-w-[86vw] bg-white shadow-2xl border-r border-slate-200 flex flex-col">
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-bold text-primary-600 tracking-tight">AssetManager</h1>
+                <p className="text-[10px] text-slate-500 mt-1 uppercase tracking-widest">Enterprise Edition</p>
+              </div>
+              <button onClick={() => setIsNavDrawerOpen(false)} className="h-10 w-10 rounded-xl hover:bg-slate-100 flex items-center justify-center">
+                <X className="h-5 w-5 text-slate-500" />
+              </button>
+            </div>
+            <nav className="flex-1 px-4 py-4 overflow-y-auto space-y-5">
+              {navSections.map((section) => {
+                const visibleItems = section.items.filter(item => hasPermission(item.requiredPermission));
+                if (visibleItems.length === 0) return null;
+                return (
+                  <div key={section.title || 'main'} className="space-y-1">
+                    {section.title && <div className="px-3 pt-1 pb-1.5 text-[10px] font-black uppercase tracking-widest text-slate-400">{section.title}</div>}
+                    {visibleItems.map((item) => {
+                      const isActive = isPathActive(location.pathname, location.search, item.path);
+                      return (
+                        <Link
+                          key={item.path}
+                          to={item.path}
+                          onClick={() => setIsNavDrawerOpen(false)}
+                          className={cn(
+                            'flex items-center px-3 py-3 text-sm font-semibold rounded-xl transition-all',
+                            isActive ? 'bg-primary-50 text-primary-700' : 'text-slate-600 hover:bg-slate-50'
+                          )}
+                        >
+                          <item.icon className={cn('mr-3 h-5 w-5', isActive ? 'text-primary-600' : 'text-slate-400')} />
+                          <span className="truncate">{item.name}</span>
+                        </Link>
+                      );
+                    })}
+                  </div>
+                );
+              })}
+            </nav>
+          </aside>
+        </div>
+      )}
+
+      <main className="flex-1 flex flex-col overflow-hidden md:pl-16 lg:pl-0">
+        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 print:hidden">
           <div className="flex items-center gap-4">
             <button
-              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
-              className="p-2 hover:bg-slate-100 rounded-lg text-slate-500 transition-all cursor-pointer flex items-center justify-center"
+              onClick={() => {
+                if (window.matchMedia('(min-width: 1024px)').matches) {
+                  setIsSidebarCollapsed(!isSidebarCollapsed);
+                } else {
+                  setIsNavDrawerOpen(true);
+                }
+              }}
+              className="h-11 w-11 hover:bg-slate-100 rounded-xl text-slate-500 transition-all cursor-pointer flex items-center justify-center"
               title={isSidebarCollapsed ? "Hiện thanh menu" : "Ẩn thanh menu"}
             >
-              {isSidebarCollapsed ? <Menu className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5" />}
+              {isSidebarCollapsed ? <Menu className="h-5 w-5" /> : <ChevronLeft className="h-5 w-5 hidden lg:block" />}
+              <Menu className="h-5 w-5 lg:hidden" />
             </button>
             <h2 className="text-lg font-semibold text-slate-800">
               {currentNav?.name || 'Dashboard'}
@@ -195,7 +286,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
           <div className="flex items-center space-x-4" />
         </header>
 
-        <div className="flex-1 overflow-y-auto p-8">
+        <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-8">
           {children}
         </div>
         <ModalManager />
