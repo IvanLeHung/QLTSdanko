@@ -641,6 +641,38 @@ model DocumentCounter {
   lastNumber   Int    @default(0)
 }
 
+model ToolCodeCounter {
+  id            Int      @id @default(autoincrement())
+  categoryKey   String
+  year          Int
+  currentNumber Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([categoryKey, year])
+  @@index([categoryKey])
+}
+
+model ToolCategoryChangeRequest {
+  id             Int       @id @default(autoincrement())
+  toolId         Int
+  oldCategory    String
+  newCategory    String
+  oldToolCode    String
+  newToolCode    String?
+  idempotencyKey String
+  status         String    @default("PENDING")
+  reason         String?
+  requestedBy    String?
+  createdAt      DateTime  @default(now())
+  completedAt    DateTime?
+
+  @@unique([toolId, idempotencyKey])
+  @@index([toolId])
+  @@index([oldToolCode])
+  @@index([newToolCode])
+}
+
 model HandoverDocument {
   id                   Int            @id @default(autoincrement())
   documentNo           String         @unique

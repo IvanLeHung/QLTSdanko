@@ -58,6 +58,94 @@ const normalizeToolAction = (action?: string | null) => {
 };
 
 export class ToolService {
+  private static readonly CATEGORY_CHANGE_BLOCK_MESSAGE = 'CCDC đang có nghiệp vụ chưa hoàn tất. Vui lòng hoàn tất hoặc hủy nghiệp vụ liên quan trước khi đổi nhóm.';
+
+  private static resolveToolCategoryCode(category?: string | null) {
+    let nhomCode = 'GEN';
+    if (category) {
+      const parentCat = category.split('-')[0].trim().toLowerCase();
+      if (parentCat.includes('decor')) nhomCode = 'DECOR';
+      else if (parentCat.includes('event')) nhomCode = 'EVENT';
+      else if (parentCat.includes('fb') || parentCat.includes('tiệc') || parentCat.includes('f&b')) nhomCode = 'FNB';
+      else if (parentCat.includes('nội thất')) nhomCode = 'FURNITURE';
+      else if (parentCat.includes('bất động sản') || parentCat.includes('bđs')) nhomCode = 'BDS';
+      else if (parentCat.includes('marketing')) nhomCode = 'MKT';
+      else if (parentCat.includes('media')) nhomCode = 'MEDIA';
+      else if (parentCat.includes('kỹ thuật')) nhomCode = 'TECH';
+      else if (parentCat.includes('kho vận')) nhomCode = 'KHO';
+      else if (parentCat.includes('cntt') || parentCat.includes('it')) nhomCode = 'CNTT';
+      else if (parentCat.includes('tiêu hao')) nhomCode = 'CONSUMABLE';
+      else if (parentCat.includes('merchandise')) nhomCode = 'MERCH';
+      else if (parentCat.includes('branding')) nhomCode = 'BRAND';
+      else if (parentCat.includes('dịch vụ vận hành')) nhomCode = 'OPS';
+    }
+    return nhomCode;
+  }
+
+  private static assertCanChangeToolCategory(user?: any) {
+    const permissions = new Set<string>(user?.permissions || []);
+    const roles = (user?.roles || []).map((role: string) => String(role).toUpperCase());
+    const roleText = roles.join(' ');
+    const allowed = permissions.has('TOOL_UPDATE')
+      || permissions.has('TOOL_MANAGE')
+      || permissions.has('CCDC_MANAGE')
+      || roles.includes('SUPER_ADMIN')
+      || roles.includes('ADMIN')
+      || roleText.includes('MANAGER')
+      || roleText.includes('QUAN_LY')
+      || roleText.includes('KE_TOAN')
+      || roleText.includes('FINANCE')
+      || roleText.includes('ACCOUNTING');
+    if (!allowed) throw new Error('Bạn không có quyền đổi nhóm CCDC.');
+  }
+
+  private static async getOpenToolOperationLabels(tx: any, toolId: number) {
+    const checks: Array<[string, Promise<number>]> = [
+      ['Bàn giao/điều chuyển/thu hồi', tx.toolHandoverItem.count({ where: { toolId, handoverDocument: { status: { in: ['DRAFT', 'PENDING_CONFIRMATION'] } } } })],
+      ['Kiểm kê', tx.toolInventoryItem.count({ where: { toolId, inventoryCheck: { status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS'] } } } })],
+      ['Lô kiểm kê', tx.toolInventoryDetail.count({ where: { toolId, session: { status: { in: ['PENDING', 'IN_PROGRESS'] } } } })],
+      ['Báo hỏng/sửa chữa', tx.toolDamageReportItem.count({ where: { toolId, damageReport: { OR: [{ status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS', 'PENDING'] } }, { approvalStatus: 'PENDING' }] } } })],
+      ['Phiếu sửa chữa', tx.toolRepairTicket.count({ where: { toolId, status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS', 'PENDING'] } } })],
+      ['Báo mất', tx.toolLostReport.count({ where: { toolId, approvalStatus: 'PENDING' } })],
+      ['Thanh lý', tx.toolLiquidationItem.count({ where: { toolId, liquidationRecord: { status: { in: ['DRAFT', 'PENDING', 'PENDING_APPROVAL', 'OPEN', 'IN_PROGRESS'] } } } })],
+      ['Sửa chữa mã con', tx.cCDCChildRepair.count({ where: { child: { parentCcdcId: toolId }, status: { in: ['PENDING', 'OPEN', 'IN_PROGRESS'] } } })],
+      ['Duyệt mã con', tx.cCDCApprovalRequest.count({ where: { parentId: toolId, status: 'PENDING' } })]
+    ];
+    const counts = await Promise.all(checks.map(([, promise]) => promise));
+    return checks.map(([label], index) => counts[index] > 0 ? label : null).filter(Boolean) as string[];
+  }
+
+  private static async generateToolCodeWithCounter(params: { category?: string | null; purchaseDate?: Date | null }, tx: any) {
+    const categoryKey = this.resolveToolCategoryCode(params.category);
+    const year = params.purchaseDate ? new Date(params.purchaseDate).getFullYear() : new Date().getFullYear();
+    const baseCode = `CCDC.${categoryKey}.${year}`;
+
+    await tx.$executeRaw`
+      INSERT INTO "ToolCodeCounter" ("categoryKey", "year", "currentNumber", "createdAt", "updatedAt")
+      VALUES (${categoryKey}, ${year}, 0, NOW(), NOW())
+      ON CONFLICT ("categoryKey", "year") DO NOTHING
+    `;
+    const counterRows = await tx.$queryRaw<Array<{ id: number; currentNumber: number }>>`
+      SELECT "id", "currentNumber" FROM "ToolCodeCounter"
+      WHERE "categoryKey" = ${categoryKey} AND "year" = ${year}
+      FOR UPDATE
+    `;
+    if (!counterRows.length) throw new Error('Không thể khóa bộ đếm mã CCDC.');
+
+    let nextNumber = counterRows[0].currentNumber;
+    for (let attempt = 0; attempt < 50; attempt++) {
+      nextNumber += 1;
+      const runningNoText = nextNumber.toString().padStart(5, '0');
+      const toolCode = `${baseCode}.${runningNoText}`;
+      const duplicated = await tx.toolEquipment.findUnique({ where: { toolCode }, select: { id: true } });
+      if (!duplicated) {
+        await tx.toolCodeCounter.update({ where: { id: counterRows[0].id }, data: { currentNumber: nextNumber } });
+        return { runningNo: nextNumber, runningNoText, toolCode };
+      }
+    }
+    throw new Error('Không thể sinh mã CCDC mới không trùng. Vui lòng thử lại.');
+  }
+
   /**
    * Generates CCDC tool codes in format: CCDC.{NHOM}.{NAM}.{STT}
    * STT is a 5-digit zero-padded running number unique to the Nhóm and year.
@@ -464,14 +552,75 @@ export class ToolService {
   /**
    * Update Tool details
    */
-  static async updateTool(id: number, updates: any, performedBy: string, reason?: string) {
+  static async updateTool(id: number, updates: any, performedBy: string, reason?: string, actor?: any) {
     return await prisma.$transaction(async (tx) => {
-      const { reason: payloadReason, id: _id, createdAt: _createdAt, updatedAt: _updatedAt, ...safeUpdates } = updates || {};
+      const { reason: payloadReason, id: _id, createdAt: _createdAt, updatedAt: _updatedAt, idempotencyKey, ...safeUpdates } = updates || {};
       updates = safeUpdates;
       reason = reason || payloadReason;
 
       const oldTool = await tx.toolEquipment.findUnique({ where: { id } });
       if (!oldTool) throw new Error('Không tìm thấy CCDC.');
+
+      delete updates.toolCode;
+
+      const categoryChanged = typeof updates.category === 'string'
+        && updates.category.trim()
+        && updates.category.trim() !== oldTool.category;
+
+      let categoryChangeContext: any = null;
+      if (categoryChanged) {
+        this.assertCanChangeToolCategory(actor);
+        const requestKey = String(idempotencyKey || '').trim();
+        if (!requestKey) throw new Error('Thiếu idempotencyKey khi đổi nhóm CCDC.');
+
+        const newCategory = updates.category.trim();
+        const existingRequest = await tx.toolCategoryChangeRequest.findUnique({
+          where: { toolId_idempotencyKey: { toolId: id, idempotencyKey: requestKey } }
+        });
+        if (existingRequest) {
+          if (
+            existingRequest.status === 'COMPLETED'
+            && existingRequest.newCategory === oldTool.category
+            && existingRequest.newToolCode === oldTool.toolCode
+          ) {
+            return oldTool;
+          }
+          if (existingRequest.newCategory !== newCategory || existingRequest.oldToolCode !== oldTool.toolCode) {
+            throw new Error('Yêu cầu đổi nhóm CCDC không khớp với lần gửi trước.');
+          }
+          if (existingRequest.status === 'COMPLETED' && existingRequest.newToolCode) return oldTool;
+        }
+
+        const openOperations = await this.getOpenToolOperationLabels(tx, id);
+        if (openOperations.length > 0) throw new Error(this.CATEGORY_CHANGE_BLOCK_MESSAGE);
+
+        const request = existingRequest || await tx.toolCategoryChangeRequest.create({
+          data: {
+            toolId: id,
+            oldCategory: oldTool.category,
+            newCategory,
+            oldToolCode: oldTool.toolCode,
+            idempotencyKey: requestKey,
+            reason: reason || null,
+            requestedBy: performedBy
+          }
+        });
+        const generated = await this.generateToolCodeWithCounter({
+          category: newCategory,
+          purchaseDate: updates.purchaseDate ? new Date(updates.purchaseDate) : oldTool.purchaseDate
+        }, tx);
+
+        updates.category = newCategory;
+        updates.toolCode = generated.toolCode;
+        categoryChangeContext = {
+          requestId: request.id,
+          idempotencyKey: requestKey,
+          oldCategory: oldTool.category,
+          newCategory,
+          oldToolCode: oldTool.toolCode,
+          newToolCode: generated.toolCode
+        };
+      }
 
       // Normalize location
       if (updates.locationName) {
@@ -502,7 +651,7 @@ export class ToolService {
       const fieldsToTrack = [
         'status', 'currentUserName', 'departmentName', 'locationName',
         'cityName', 'projectName', 'toolName', 'purchasePrice', 'unit',
-        'purchaseDate', 'supplierName', 'toolCode', 'note', 'industryAttributesJson',
+        'purchaseDate', 'supplierName', 'toolCode', 'category', 'note', 'industryAttributesJson',
         'managementType', 'vat', 'shippingInstallCost', 'totalAmount', 'fundingSource',
         'expectedUsefulLife', 'expectedResidualValue', 'companyName', 'branchName',
         'buildingName', 'floorName', 'areaName', 'specificLocation',
@@ -533,15 +682,40 @@ export class ToolService {
             newLocationName: updated.locationName,
             oldDepartmentName: oldTool.departmentName,
             newDepartmentName: updated.departmentName,
-            oldNote: reason || 'Cập nhật thông tin chi tiết',
+            oldNote: categoryChangeContext
+              ? `Đổi nhóm CCDC: ${categoryChangeContext.oldCategory} (${categoryChangeContext.oldToolCode}) -> ${categoryChangeContext.newCategory} (${categoryChangeContext.newToolCode})`
+              : (reason || 'Cập nhật thông tin chi tiết'),
+            newNote: categoryChangeContext ? 'Mã con CCDC giữ nguyên, liên kết theo parentCcdcId.' : undefined,
           }
         });
+
+        if (categoryChangeContext) {
+          await tx.toolCategoryChangeRequest.update({
+            where: { id: categoryChangeContext.requestId },
+            data: {
+              newToolCode: categoryChangeContext.newToolCode,
+              status: 'COMPLETED',
+              completedAt: new Date()
+            }
+          });
+        }
 
         await AuditService.log({
           entityType: 'TOOL_EQUIPMENT',
           entityId: updated.id,
           action: 'UPDATE',
-          details: { changes, reason: reason || null },
+          details: {
+            changes,
+            reason: reason || null,
+            categoryChange: categoryChangeContext ? {
+              oldCategory: categoryChangeContext.oldCategory,
+              newCategory: categoryChangeContext.newCategory,
+              oldToolCode: categoryChangeContext.oldToolCode,
+              newToolCode: categoryChangeContext.newToolCode,
+              idempotencyKey: categoryChangeContext.idempotencyKey,
+              childCodesUnchanged: true
+            } : undefined
+          },
           performedBy,
           tx
         });

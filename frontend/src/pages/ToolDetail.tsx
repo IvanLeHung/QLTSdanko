@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import api from '../lib/api';
 import { CCDCChildItemsPanel } from '../components/CCDCChildItemsPanel';
 import { toast } from 'react-toastify';
+import { TOOL_CATEGORY_TREE, buildToolCategory, splitToolCategory } from '../constants/toolCategories';
 import { 
   ArrowLeft, 
   User, 
@@ -126,9 +127,15 @@ export const ToolDetail: React.FC = () => {
   };
 
   const openEditModal = () => {
+    const parsedCategory = splitToolCategory(tool.category);
     setEditForm({
       toolName: tool.toolName || '',
       category: tool.category || '',
+      category1: parsedCategory.category1,
+      category2: parsedCategory.category2,
+      originalCategory: tool.category || '',
+      originalToolCode: tool.toolCode || '',
+      idempotencyKey: `tool-category-${tool.id}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
       quantity: tool.quantity || 1,
       unit: tool.unit || 'Cái',
       purchasePrice: tool.purchasePrice || 0,
@@ -156,8 +163,32 @@ export const ToolDetail: React.FC = () => {
     e.preventDefault();
     try {
       setLoading(true);
-      const { reason, ...payload } = editForm;
-      await api.put(`/tools/${tool.id}`, { ...payload, reason });
+      const selectedCategory = buildToolCategory(editForm.category1, editForm.category2);
+      const categoryChanged = selectedCategory && selectedCategory !== editForm.originalCategory;
+      if (categoryChanged) {
+        const confirmed = window.confirm('Đổi Nhóm CCDC sẽ sinh lại Mã CCDC cha theo nhóm mới. Mã con và liên kết hiện có được giữ nguyên. Bạn muốn tiếp tục?');
+        if (!confirmed) {
+          setLoading(false);
+          return;
+        }
+      }
+
+      const {
+        reason,
+        category1,
+        category2,
+        originalCategory,
+        originalToolCode,
+        idempotencyKey,
+        ...payload
+      } = editForm;
+
+      await api.put(`/tools/${tool.id}`, {
+        ...payload,
+        category: selectedCategory || payload.category,
+        idempotencyKey: categoryChanged ? idempotencyKey : undefined,
+        reason
+      });
       toast.success('Đã cập nhật thông tin CCDC và lưu log thay đổi.');
       setShowEditModal(false);
       fetchToolDetail();
@@ -1957,8 +1988,43 @@ export const ToolDetail: React.FC = () => {
                     <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.toolName || ''} onChange={e => setEditForm({ ...editForm, toolName: e.target.value })} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhóm CCDC</label>
-                    <input className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold" value={editForm.category || ''} onChange={e => setEditForm({ ...editForm, category: e.target.value })} />
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhóm CCDC cấp 1</label>
+                    <select
+                      className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold"
+                      value={editForm.category1 || ''}
+                      onChange={e => setEditForm({
+                        ...editForm,
+                        category1: e.target.value,
+                        category2: '',
+                        category: buildToolCategory(e.target.value, '')
+                      })}
+                    >
+                      <option value="">Chọn nhóm CCDC</option>
+                      {Object.keys(TOOL_CATEGORY_TREE).map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Nhóm CCDC cấp 2</label>
+                    <select
+                      className="w-full bg-slate-50 border rounded-xl px-3 py-2.5 text-sm font-semibold"
+                      value={editForm.category2 || ''}
+                      disabled={!editForm.category1}
+                      onChange={e => setEditForm({
+                        ...editForm,
+                        category2: e.target.value,
+                        category: buildToolCategory(editForm.category1, e.target.value)
+                      })}
+                    >
+                      <option value="">Không chọn</option>
+                      {(TOOL_CATEGORY_TREE[editForm.category1] || []).map(category => (
+                        <option key={category} value={category}>{category}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="md:col-span-2 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-semibold text-amber-800">
+                    Mã CCDC hiện tại: <span className="font-black">{editForm.originalToolCode || tool.toolCode}</span>. Khi đổi nhóm, backend sẽ tự sinh mã CCDC cha mới và ghi lịch sử; mã con giữ nguyên.
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Đơn vị tính</label>
