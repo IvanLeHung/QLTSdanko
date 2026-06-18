@@ -111,7 +111,7 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
     .find(item => isPathActive(location.pathname, location.search, item.path));
 
   return (
-    <div className="flex h-screen bg-slate-50">
+    <div className="flex min-h-[100dvh] h-[100dvh] bg-slate-50">
       <aside className={cn(
         "hidden lg:flex transition-all duration-300 bg-white flex-col shrink-0 print:hidden",
         isSidebarCollapsed ? "w-0 overflow-hidden border-r-0" : "w-72 border-r border-slate-200"

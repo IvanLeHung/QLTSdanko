@@ -117,6 +117,37 @@ body {
   }
 }
 
+@media (min-width: 768px) and (max-width: 1023px) {
+  .asset-manager-module {
+    min-height: 100dvh;
+  }
+
+  .asset-manager-module > header {
+    max-height: 25dvh;
+  }
+
+  .asset-table-section {
+    min-height: 55dvh;
+  }
+}
+
+@media (min-width: 768px) and (max-width: 1023px) and (orientation: portrait) {
+  .asset-table-section {
+    min-height: 60dvh;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
 @media print {
   aside,
   header,

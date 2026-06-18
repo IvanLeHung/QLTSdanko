@@ -119,6 +119,10 @@ export const AssetList: React.FC = () => {
   const [tempSupplierName, setTempSupplierName] = useState('');
   const [tempHasSerial, setTempHasSerial] = useState('');
   const [tempHasDocuments, setTempHasDocuments] = useState('');
+  const [tempHasPrinted, setTempHasPrinted] = useState('');
+  const [tempIsChecked, setTempIsChecked] = useState('');
+  const [tempSortBy, setTempSortBy] = useState(sortBy);
+  const [tempSortOrder, setTempSortOrder] = useState(sortOrder);
 
   const [filterInvoiceNo, setFilterInvoiceNo] = useState<string>('');
 
@@ -167,6 +171,10 @@ export const AssetList: React.FC = () => {
     setTempSupplierName(filters.supplierName || '');
     setTempHasSerial(filters.hasSerial || '');
     setTempHasDocuments(filters.hasDocuments || '');
+    setTempHasPrinted(filters.hasPrinted || '');
+    setTempIsChecked(filters.isChecked || '');
+    setTempSortBy(sortBy);
+    setTempSortOrder(sortOrder);
   }, [searchParams]);
 
   const applyStatusFilter = () => {
@@ -254,6 +262,37 @@ export const AssetList: React.FC = () => {
 
   const applyAdvancedFilters = () => {
     const newParams = new URLSearchParams(searchParams);
+    if (tempStatus.length) newParams.set('status', tempStatus.join(','));
+    else newParams.delete('status');
+
+    if (tempUserName) newParams.set('currentUserName', tempUserName);
+    else newParams.delete('currentUserName');
+
+    if (tempDeptName) newParams.set('departmentName', tempDeptName);
+    else newParams.delete('departmentName');
+
+    if (tempAllocation === 'ASSIGNED') newParams.set('isAssigned', 'true');
+    else if (tempAllocation === 'UNASSIGNED') newParams.set('isAssigned', 'false');
+    else newParams.delete('isAssigned');
+
+    if (tempHandoverFrom) newParams.set('handoverDateFrom', tempHandoverFrom);
+    else newParams.delete('handoverDateFrom');
+
+    if (tempHandoverTo) newParams.set('handoverDateTo', tempHandoverTo);
+    else newParams.delete('handoverDateTo');
+
+    if (tempCity) newParams.set('cityName', tempCity);
+    else newParams.delete('cityName');
+
+    if (tempProject) newParams.set('projectName', tempProject);
+    else newParams.delete('projectName');
+
+    if (tempLocation) newParams.set('locationQuery', tempLocation);
+    else newParams.delete('locationQuery');
+
+    if (tempLv4Name.length) newParams.set('level4Name', tempLv4Name.join(','));
+    else newParams.delete('level4Name');
+
     if (tempCompanyCode) newParams.set('companyCode', tempCompanyCode);
     else newParams.delete('companyCode');
 
@@ -278,12 +317,31 @@ export const AssetList: React.FC = () => {
     if (tempHasDocuments) newParams.set('hasDocuments', tempHasDocuments);
     else newParams.delete('hasDocuments');
 
+    if (tempHasPrinted) newParams.set('hasPrinted', tempHasPrinted);
+    else newParams.delete('hasPrinted');
+
+    if (tempIsChecked) newParams.set('isChecked', tempIsChecked);
+    else newParams.delete('isChecked');
+
+    if (tempSortBy) newParams.set('sortBy', tempSortBy);
+    if (tempSortOrder) newParams.set('sortOrder', tempSortOrder);
+
     newParams.set('page', '1');
     setSearchParams(newParams);
     setIsAdvancedFilterOpen(false);
   };
 
   const clearAdvancedFilters = () => {
+    setTempStatus([]);
+    setTempUserName('');
+    setTempDeptName('');
+    setTempAllocation('');
+    setTempHandoverFrom('');
+    setTempHandoverTo('');
+    setTempCity('');
+    setTempProject('');
+    setTempLocation('');
+    setTempLv4Name([]);
     setTempCompanyCode('');
     setTempPriceMin('');
     setTempPriceMax('');
@@ -292,7 +350,21 @@ export const AssetList: React.FC = () => {
     setTempSupplierName('');
     setTempHasSerial('');
     setTempHasDocuments('');
+    setTempHasPrinted('');
+    setTempIsChecked('');
+    setTempSortBy('updatedAt');
+    setTempSortOrder('desc');
     const newParams = new URLSearchParams(searchParams);
+    newParams.delete('status');
+    newParams.delete('currentUserName');
+    newParams.delete('departmentName');
+    newParams.delete('isAssigned');
+    newParams.delete('handoverDateFrom');
+    newParams.delete('handoverDateTo');
+    newParams.delete('cityName');
+    newParams.delete('projectName');
+    newParams.delete('locationQuery');
+    newParams.delete('level4Name');
     newParams.delete('companyCode');
     newParams.delete('priceMin');
     newParams.delete('priceMax');
@@ -301,6 +373,10 @@ export const AssetList: React.FC = () => {
     newParams.delete('supplierName');
     newParams.delete('hasSerial');
     newParams.delete('hasDocuments');
+    newParams.delete('hasPrinted');
+    newParams.delete('isChecked');
+    newParams.delete('sortBy');
+    newParams.delete('sortOrder');
     newParams.set('page', '1');
     setSearchParams(newParams);
     setIsAdvancedFilterOpen(false);
@@ -316,6 +392,21 @@ export const AssetList: React.FC = () => {
     setLocalSearch(search);
   }, [search]);
 
+  useEffect(() => {
+    if (!isAdvancedFilterOpen) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsAdvancedFilterOpen(false);
+    };
+    const orientationQuery = window.matchMedia('(orientation: portrait)');
+    const handleOrientationChange = () => setIsAdvancedFilterOpen(false);
+    window.addEventListener('keydown', handleKeyDown);
+    orientationQuery.addEventListener('change', handleOrientationChange);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      orientationQuery.removeEventListener('change', handleOrientationChange);
+    };
+  }, [isAdvancedFilterOpen]);
+
   // Debounce updating the search URL parameter to prevent focus loss & IME breaks
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -329,25 +420,6 @@ export const AssetList: React.FC = () => {
   const [activeMenuId, setActiveMenuId] = useState<number | null>(null);
   const [isMoreMenuOpen, setIsMoreMenuOpen] = useState(false);
   const [isAssetActionMenuOpen, setIsAssetActionMenuOpen] = useState(false);
-
-  // Compact Header State
-  const [isCompact, setIsCompact] = useState(false);
-  const scrollContainerRef = React.useRef<HTMLDivElement>(null);
-
-  const handleScroll = useCallback(() => {
-    if (scrollContainerRef.current) {
-      const scrollTop = scrollContainerRef.current.scrollTop;
-      setIsCompact(scrollTop > 40);
-    }
-  }, []);
-
-  useEffect(() => {
-    const el = scrollContainerRef.current;
-    if (el) {
-      el.addEventListener('scroll', handleScroll, { passive: true });
-      return () => el.removeEventListener('scroll', handleScroll);
-    }
-  }, [handleScroll]);
 
   const updateParam = (key: string, value: string | null) => {
     const newParams = new URLSearchParams(searchParams);
@@ -961,18 +1033,12 @@ export const AssetList: React.FC = () => {
   );
 
   return (
-    <div className="asset-manager-module h-full min-h-0 flex flex-col overflow-hidden bg-[#f8fafc]">
+    <div className="asset-manager-module min-h-[100dvh] h-full min-h-0 flex flex-col overflow-hidden bg-[#f8fafc]">
       {/* COLLAPSIBLE HEADER */}
-      <header className={cn(
-        "shrink-0 z-40 bg-white/90 backdrop-blur-md border-b transition-all duration-500 ease-in-out",
-        isCompact ? "py-1 shadow-md" : "py-3"
-      )}>
+      <header className="shrink-0 z-40 bg-white/90 backdrop-blur-md border-b py-2 lg:py-3">
         <div className="px-2 sm:px-3 lg:px-4">
           {/* Title Section — Animates away */}
-          <div className={cn(
-            "transition-all duration-500 ease-in-out overflow-hidden",
-            isCompact ? "max-h-0 opacity-0 -translate-y-10 mb-0" : "max-h-40 opacity-100 translate-y-0 mb-3"
-          )}>
+          <div className="hidden lg:block mb-3">
             <div className="flex items-end justify-between border-b border-slate-100 pb-3">
               <div>
                 <div className="text-[10px] font-bold uppercase text-slate-400 tracking-widest leading-none">Sổ tài sản</div>
@@ -985,13 +1051,10 @@ export const AssetList: React.FC = () => {
           </div>
 
           {/* Stats Section — Animates away */}
-          <div className={cn(
-            "transition-all duration-500 ease-in-out overflow-hidden",
-            isCompact ? "max-h-0 opacity-0 -translate-y-10" : "max-h-[140px] opacity-100 translate-y-0"
-          )}>
+          <div className="overflow-hidden">
             {stats && (
-              <div className="pt-1 pb-4">
-                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-2 lg:gap-3">
+              <div className="pt-1 pb-2 lg:pb-4">
+                <div className="flex md:grid md:grid-cols-5 gap-2 lg:gap-3 overflow-x-auto md:overflow-visible custom-scrollbar pb-1 md:pb-0">
                   {statCards.map((card) => {
                     const active = card.key === 'ALL' ? !filters.status : filters.status === card.status;
                     return (
@@ -1012,10 +1075,7 @@ export const AssetList: React.FC = () => {
           </div>
 
           {/* Toolbar Section — Always visible */}
-          <div className={cn(
-            "flex items-center gap-2 lg:gap-3 transition-all duration-500 justify-between flex-wrap",
-            isCompact ? "mt-1 py-1" : "mt-3"
-          )}>
+          <div className="flex items-center gap-2 lg:gap-3 justify-between flex-wrap mt-1 lg:mt-3">
             {/* Left side: Search & Chip filters */}
             <div className="flex items-center gap-2 flex-1 min-w-0 flex-wrap">
               {/* Main Search Input */}
@@ -1045,6 +1105,7 @@ export const AssetList: React.FC = () => {
               </button>
 
               {/* Trạng thái filter chip */}
+              <div className="hidden xl:block">
               <ChipPopoverFilter
                 label={statusLabel}
                 isActive={statusActive}
@@ -1084,8 +1145,10 @@ export const AssetList: React.FC = () => {
                   })}
                 </div>
               </ChipPopoverFilter>
+              </div>
 
               {/* Phân bổ filter chip */}
+              <div className="hidden xl:block">
               <ChipPopoverFilter
                 label={allocationLabel}
                 isActive={allocationActive}
@@ -1182,6 +1245,7 @@ export const AssetList: React.FC = () => {
                   </div>
                 </div>
               </ChipPopoverFilter>
+              </div>
               </div>
 
               {/* Vị trí filter chip */}
@@ -1359,7 +1423,7 @@ export const AssetList: React.FC = () => {
           </div>
 
           {/* Preset and Sorting Chips Row */}
-          <div className="mt-3 pt-3 border-t border-slate-100 flex flex-col gap-2.5">
+          <div className="hidden xl:flex mt-3 pt-3 border-t border-slate-100 flex-col gap-2.5">
             {/* Sorting Row */}
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest mr-1.5">Sắp xếp theo:</span>
@@ -1570,10 +1634,9 @@ export const AssetList: React.FC = () => {
       )}
 
       {/* ASSET TABLE — fills remaining space */}
-      <main className="flex-1 min-h-0 p-2 sm:p-3">
+      <main className="asset-table-section flex-1 min-h-0 p-2 sm:p-3">
         <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
           <div 
-            ref={scrollContainerRef}
             className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth"
           >
             <table className="min-w-[860px] xl:min-w-0 w-full text-left border-collapse table-fixed">
@@ -1726,7 +1789,7 @@ export const AssetList: React.FC = () => {
         </div>
         
         {/* PAGINATION — fixed at bottom */}
-        <div className="h-11 shrink-0 px-4 border-t border-[#E2E8F0] flex justify-between items-center bg-white">
+        <div className="min-h-12 shrink-0 px-3 sm:px-4 border-t border-[#E2E8F0] flex justify-between items-center bg-white">
            <div className="flex items-center gap-4">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Trang {page} / {Math.ceil(total/limit)} ({total} tài sản)</p>
               <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
@@ -1734,7 +1797,7 @@ export const AssetList: React.FC = () => {
                 <select 
                   value={limit}
                   onChange={(e) => updateParam('limit', e.target.value)}
-                  className="h-7 rounded-lg border border-slate-200 px-1.5 text-[11px] font-bold outline-none focus:ring-2 focus:ring-primary-50"
+                  className="h-11 lg:h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-primary-50"
                 >
                   {[20, 50, 100, 200].map(sz => (
                     <option key={sz} value={sz}>{sz} dòng / trang</option>
@@ -1743,8 +1806,8 @@ export const AssetList: React.FC = () => {
               </div>
            </div>
            <div className="flex space-x-1.5">
-             <button disabled={page === 1} onClick={() => updateParam('page', String(page - 1))} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-             <button disabled={page * limit >= total} onClick={() => updateParam('page', String(page + 1))} className="p-1.5 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+             <button disabled={page === 1} onClick={() => updateParam('page', String(page - 1))} className="h-11 w-11 lg:h-8 lg:w-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
+             <button disabled={page * limit >= total} onClick={() => updateParam('page', String(page + 1))} className="h-11 w-11 lg:h-8 lg:w-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
            </div>
         </div>
       </div>
@@ -1754,8 +1817,8 @@ export const AssetList: React.FC = () => {
     {isAdvancedFilterOpen && (
       <div className="fixed inset-0 z-50 overflow-hidden animate-in fade-in duration-200">
         <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-xs transition-opacity" onClick={() => setIsAdvancedFilterOpen(false)}></div>
-        <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-          <div className="w-screen max-w-md bg-white shadow-2xl rounded-l-3xl flex flex-col overflow-hidden animate-in slide-in-from-right duration-300">
+        <div className="absolute inset-x-0 bottom-0 md:inset-y-0 md:left-auto md:right-0 max-w-full flex md:pl-10">
+          <div className="w-full md:w-[380px] md:max-w-[90vw] max-h-[70dvh] md:max-h-none bg-white shadow-2xl rounded-t-3xl md:rounded-t-none md:rounded-l-3xl flex flex-col overflow-hidden animate-in slide-in-from-bottom-4 md:slide-in-from-right duration-200">
             {/* Header */}
             <div className="px-6 py-5 bg-slate-900 text-white flex justify-between items-center border-b border-slate-800">
               <h2 className="text-lg font-black tracking-tight flex items-center">
@@ -1768,6 +1831,169 @@ export const AssetList: React.FC = () => {
 
             {/* Content */}
             <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+              <div className="space-y-3 xl:hidden">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sắp xếp</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Mới cập nhật', key: 'updatedAt', order: 'desc' },
+                    { label: 'Mã A-Z', key: 'assetCode', order: 'asc' },
+                    { label: 'Giá trị cao-thấp', key: 'purchasePriceExVat', order: 'desc' },
+                    { label: 'Ngày mua mới nhất', key: 'purchaseDate', order: 'desc' },
+                    { label: 'Chưa kiểm kê', key: 'lastInventoryDate', order: 'asc' },
+                  ].map((s) => (
+                    <button
+                      key={s.label}
+                      type="button"
+                      onClick={() => {
+                        setTempSortBy(s.key);
+                        setTempSortOrder(s.order);
+                      }}
+                      className={cn(
+                        "h-11 px-3 rounded-full text-[12px] font-bold border transition-all",
+                        tempSortBy === s.key && tempSortOrder === s.order
+                          ? "bg-slate-900 border-slate-900 text-white"
+                          : "bg-white border-slate-200 text-slate-650"
+                      )}
+                    >
+                      {s.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-3 xl:hidden">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Lọc nhanh</label>
+                <div className="flex flex-wrap gap-2">
+                  {[
+                    { label: 'Đang sử dụng', key: 'status', val: 'ASSIGNED' },
+                    { label: 'Trong kho', key: 'status', val: 'IN_STOCK' },
+                    { label: 'Chưa kiểm kê', key: 'isChecked', val: 'false' },
+                    { label: 'Chưa in tem', key: 'hasPrinted', val: 'false' },
+                    { label: 'Thiếu thông tin', key: 'hasSerial', val: 'false' },
+                    { label: 'Chờ thanh lý', key: 'status', val: 'PENDING_DISPOSAL' },
+                    { label: 'Đang sửa chữa', key: 'status', val: 'UNDER_REPAIR' },
+                    { label: 'Mất / thất thoát', key: 'status', val: 'LOST' },
+                  ].map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                    onClick={() => {
+                      if (preset.key === 'status') setTempStatus([preset.val]);
+                      if (preset.key === 'isChecked') setTempIsChecked(preset.val);
+                      if (preset.key === 'hasPrinted') setTempHasPrinted(preset.val);
+                      if (preset.key === 'hasSerial') setTempHasSerial(preset.val);
+                    }}
+                      className={cn(
+                        "h-11 px-3 rounded-full text-[12px] font-bold border transition-all",
+                        (
+                          (preset.key === 'status' && tempStatus.includes(preset.val))
+                          || (preset.key === 'isChecked' && tempIsChecked === preset.val)
+                          || (preset.key === 'hasPrinted' && tempHasPrinted === preset.val)
+                          || (preset.key === 'hasSerial' && tempHasSerial === preset.val)
+                        )
+                          ? "bg-primary-600 border-primary-600 text-white"
+                          : "bg-white border-slate-200 text-slate-650"
+                      )}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2 xl:hidden">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trạng thái</label>
+                {[
+                  {label: 'Đang sử dụng', value: 'ASSIGNED'},
+                  {label: 'Trong kho', value: 'IN_STOCK'},
+                  {label: 'Chưa sử dụng', value: 'RETIRED'},
+                  {label: 'Đang sửa chữa', value: 'UNDER_REPAIR'},
+                  {label: 'Hỏng', value: 'DAMAGED'},
+                  {label: 'Mất', value: 'LOST'},
+                  {label: 'Chờ thanh lý', value: 'PENDING_DISPOSAL'},
+                  {label: 'Đã thanh lý', value: 'DISPOSED'},
+                ].map((opt) => {
+                  const checked = tempStatus.includes(opt.value);
+                  return (
+                    <label key={opt.value} className="min-h-11 flex items-center space-x-2.5 px-2 py-1 hover:bg-slate-50 rounded-xl cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => setTempStatus(checked ? tempStatus.filter(x => x !== opt.value) : [...tempStatus, opt.value])}
+                        className="rounded border-slate-355 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                      />
+                      <span className={`text-[13px] ${checked ? 'font-bold text-slate-800' : 'font-medium text-slate-600'}`}>{opt.label}</span>
+                    </label>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-4 xl:hidden">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Người sử dụng</label>
+                  <AutocompleteInput placeholder="Nhập tên..." value={tempUserName} onChange={setTempUserName} endpoint="/assets/filter-options/users" icon={<Search className="h-3 w-3" />} className="w-full" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Phòng ban</label>
+                  <AutocompleteInput placeholder="Chọn phòng ban..." value={tempDeptName} onChange={setTempDeptName} endpoint="/assets/filter-options/departments" icon={<Search className="h-3 w-3" />} className="w-full" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Phân bổ</label>
+                  <select value={tempAllocation} onChange={(e) => setTempAllocation(e.target.value)} className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-700 focus:outline-none focus:border-primary-500 h-11 transition-all shadow-sm">
+                    <option value="">Tất cả</option>
+                    <option value="ASSIGNED">Đã cấp phát</option>
+                    <option value="UNASSIGNED">Chưa cấp phát</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="space-y-4 xl:hidden">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tỉnh / Thành phố</label>
+                  <AutocompleteInput placeholder="Chọn thành phố..." value={tempCity} onChange={setTempCity} endpoint="/assets/filter-options/cities" icon={<MapPin className="h-3 w-3" />} className="w-full" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dự án</label>
+                  <AutocompleteInput placeholder="Chọn dự án..." value={tempProject} onChange={setTempProject} endpoint="/assets/filter-options/projects" icon={<Box className="h-3 w-3" />} className="w-full" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí chi tiết</label>
+                  <AutocompleteInput placeholder="Nhập vị trí..." value={tempLocation} onChange={setTempLocation} endpoint="/assets/filter-options/locations" icon={<MapPin className="h-3 w-3" />} className="w-full" />
+                </div>
+              </div>
+
+              <div className="space-y-2 xl:hidden">
+                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nhóm tài sản</label>
+                <div className="relative">
+                  <Search className="absolute left-3 top-3.5 h-3.5 w-3.5 text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Tìm nhóm tài sản..."
+                    value={lv4Search}
+                    onChange={(e) => setLv4Search(e.target.value)}
+                    className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-primary-50 text-[12px] font-bold text-slate-700 h-11"
+                  />
+                </div>
+                <div className="space-y-1 max-h-48 overflow-y-auto custom-scrollbar">
+                  {lv4Categories
+                    .filter(c => !lv4Search || c.name.toLowerCase().includes(lv4Search.toLowerCase()) || c.code.toLowerCase().includes(lv4Search.toLowerCase()))
+                    .map((cat) => {
+                      const checked = tempLv4Name.includes(cat.name);
+                      return (
+                        <label key={cat.id} className="min-h-11 flex items-center space-x-2.5 px-2 py-1 hover:bg-slate-50 rounded-xl cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={checked}
+                            onChange={() => setTempLv4Name(checked ? tempLv4Name.filter(x => x !== cat.name) : [...tempLv4Name, cat.name])}
+                            className="rounded border-slate-350 text-primary-600 focus:ring-primary-500 h-4 w-4"
+                          />
+                          <span className="text-[12px] font-medium text-slate-600">{cat.name}</span>
+                        </label>
+                      );
+                    })}
+                </div>
+              </div>
+
               {/* Company Code */}
               <div className="space-y-1.5">
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Công ty chủ quản</label>
@@ -1940,7 +2166,7 @@ const StatCard = ({ label, value, icon, color, active, onClick }: any) => {
       type="button"
       onClick={onClick}
       className={cn(
-        "h-[56px] md:h-[60px] px-3 lg:px-4 rounded-xl border flex items-center gap-2 lg:gap-3 shadow-sm hover:shadow-md transition-all group w-full outline-none cursor-pointer",
+        "h-[52px] md:h-[60px] px-3 lg:px-4 rounded-xl border flex items-center gap-2 lg:gap-3 shadow-sm hover:shadow-md transition-all group w-[168px] md:w-full shrink-0 outline-none cursor-pointer",
         active ? style.active : style.inactive
       )}
     >
