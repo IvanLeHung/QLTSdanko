@@ -1,6 +1,38 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
 
+const normalizeText = (value: any) => String(value || '').trim();
+
+const normalizeInspectionMembers = (members: any) => {
+  if (!Array.isArray(members)) return [];
+  return members
+    .map((member) => {
+      if (typeof member === 'string') {
+        return { userId: null, fullName: normalizeText(member), position: null };
+      }
+      return {
+        userId: member?.userId ? Number(member.userId) : null,
+        fullName: normalizeText(member?.fullName || member?.name),
+        position: normalizeText(member?.position) || null
+      };
+    })
+    .filter((member) => member.fullName);
+};
+
+const normalizeDepartmentRepresentatives = (representatives: any) => {
+  if (!Array.isArray(representatives)) return [];
+  return representatives
+    .map((rep) => ({
+      departmentId: rep?.departmentId ? Number(rep.departmentId) : null,
+      departmentName: normalizeText(rep?.departmentName),
+      representativeUserId: rep?.representativeUserId ? Number(rep.representativeUserId) : null,
+      representativeName: normalizeText(rep?.representativeName),
+      position: normalizeText(rep?.position) || null,
+      isManual: Boolean(rep?.isManual)
+    }))
+    .filter((rep) => rep.departmentName || rep.representativeName);
+};
+
 export class InventoryService {
   static async createInventorySession(data: {
     inventoryName: string;
@@ -282,6 +314,22 @@ export class InventoryService {
     const where = this.buildQueryFromFilters(data.filters);
     const assets = await prisma.asset.findMany({ where, orderBy: { assetCode: 'asc' } });
     const assetCountPlan = assets.length;
+    const inspectionMembers = normalizeInspectionMembers(data.inspectionMembers || data.members);
+    const departmentRepresentatives = normalizeDepartmentRepresentatives(data.departmentRepresentatives);
+    if (departmentRepresentatives.length === 0) {
+      throw new Error('Vui lòng khai báo đại diện ký biên bản cho phiên kiểm kê.');
+    }
+    const missingRepresentative = departmentRepresentatives.find((rep) => !rep.representativeName);
+    if (missingRepresentative) {
+      throw new Error(`Vui lòng chọn hoặc nhập đại diện ký biên bản cho ${missingRepresentative.departmentName || 'phòng ban kiểm kê'}.`);
+    }
+
+    const inspectionLeaderId = data.inspectionLeaderId ? Number(data.inspectionLeaderId) : null;
+    const inspectionLeaderName = normalizeText(data.inspectionLeaderName || data.checkerName);
+    const inspectionTeamName = normalizeText(data.inspectionTeamName || data.teamName);
+    const representativeName = departmentRepresentatives.length > 0
+      ? departmentRepresentatives.map((rep) => `${rep.departmentName ? `${rep.departmentName}: ` : ''}${rep.representativeName}${rep.position ? ` - ${rep.position}` : ''}`).join('; ')
+      : normalizeText(data.representativeName) || null;
 
     return await prisma.$transaction(async (tx) => {
       const session = await tx.inventorySession.create({
@@ -292,8 +340,13 @@ export class InventoryService {
           projectName: data.projectName || null,
           departmentName: data.departmentName || null,
           locationName: data.locationName || null,
-          checkerName: data.checkerName || null,
-          representativeName: data.representativeName || null,
+          checkerName: inspectionLeaderName || null,
+          representativeName,
+          inspectionLeaderId,
+          inspectionLeaderName: inspectionLeaderName || null,
+          inspectionTeamName: inspectionTeamName || null,
+          inspectionMembersJson: inspectionMembers.length > 0 ? inspectionMembers : undefined,
+          departmentRepresentativesJson: departmentRepresentatives.length > 0 ? departmentRepresentatives : undefined,
           assetCountPlan,
           note: data.note || null,
           status: 'PENDING'

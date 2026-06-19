@@ -57,6 +57,21 @@ function endOfDay(value: Date) {
   return date;
 }
 
+function vietnamDayRange(value: string | Date | undefined, fieldName: string) {
+  if (!value) {
+    throw new InventoryClosingError('INVALID_CLOSING_INPUT', `${fieldName} không hợp lệ`, 422);
+  }
+  const dateKey = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    throw new InventoryClosingError('INVALID_CLOSING_INPUT', `${fieldName} không hợp lệ`, 422);
+  }
+  return {
+    start: new Date(`${dateKey}T00:00:00+07:00`),
+    end: new Date(`${dateKey}T23:59:59.999+07:00`),
+    dateKey,
+  };
+}
+
 function parseDate(value: string | Date | undefined, fieldName: string) {
   if (!value) return undefined;
   const date = value instanceof Date ? value : new Date(value);
@@ -270,12 +285,15 @@ export class InventoryClosingService {
 
     for (const scope of normalizedScopes) {
       const refs = await this.resolveScopeRefs(scope);
+      const dailyBreakdown = String(scope.scopeType).toUpperCase() === 'DAILY'
+        ? await this.getDailySessionBreakdown(inventoryCheckId, scope)
+        : undefined;
       const rows = await this.getScopeRows(inventoryCheckId, scope, refs);
       if (rows.length === 0) {
         throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Phạm vi chốt không có tài sản', 422, { scope });
       }
       const summary = summarizeRows(rows);
-      summaries.push({ scope: this.serializeScope(scope, refs), summary });
+      summaries.push({ scope: this.serializeScope(scope, refs), summary, ...(dailyBreakdown ? { sessionBreakdown: dailyBreakdown } : {}) });
 
       const scopeOverlaps = await this.findOverlaps(inventoryCheckId, scope, refs);
       overlaps.push(...scopeOverlaps);
@@ -714,8 +732,7 @@ export class InventoryClosingService {
     if (scopeType === 'FULL') return base;
     if (scopeType === 'SESSION') return { id: -1 };
     if (scopeType === 'DAILY') {
-      const day = parseDate(scope.scopeDate, 'scopeDate')!;
-      return { ...base, checkedAt: { gte: startOfDay(day), lte: endOfDay(day) } };
+      return { id: -1 };
     }
     if (scopeType === 'DEPARTMENT') {
       return { ...base, OR: [{ actualDepartment: refs.departmentName }, { asset: { departmentName: refs.departmentName } }] };
@@ -735,13 +752,9 @@ export class InventoryClosingService {
     if (scopeType === 'FULL') return base;
     if (scopeType === 'SESSION') return { sessionId: scope.sessionId };
     if (scopeType === 'DAILY') {
-      const day = parseDate(scope.scopeDate, 'scopeDate')!;
+      const range = vietnamDayRange(scope.scopeDate, 'scopeDate');
       return {
-        ...base,
-        OR: [
-          { checkedAt: { gte: startOfDay(day), lte: endOfDay(day) } },
-          { session: { inventoryCheckId, scheduledDate: { gte: startOfDay(day), lte: endOfDay(day) } } },
-        ],
+        session: { inventoryCheckId, scheduledDate: { gte: range.start, lte: range.end } },
       };
     }
     if (scopeType === 'DEPARTMENT') {
@@ -768,8 +781,54 @@ export class InventoryClosingService {
       }),
     ]);
 
+    if (String(scope.scopeType).toUpperCase() === 'DAILY') return details;
     if (details.length > 0) return details;
     return items.map(item => ({ ...item, assetName: item.assetCode }));
+  }
+
+  private static async getDailySessionBreakdown(inventoryCheckId: number, scope: ClosingScopeInput) {
+    const range = vietnamDayRange(scope.scopeDate, 'scopeDate');
+    const sessions = await prisma.inventorySession.findMany({
+      where: {
+        inventoryCheckId,
+        scheduledDate: { gte: range.start, lte: range.end },
+      },
+      select: {
+        id: true,
+        scheduledDate: true,
+        departmentName: true,
+        locationName: true,
+        checkerName: true,
+        assetCountPlan: true,
+        _count: { select: { details: true } },
+        details: {
+          select: { id: true, checkStatus: true, resultStatus: true, checkedAt: true },
+        },
+      },
+      orderBy: [{ scheduledDate: 'asc' }, { id: 'asc' }],
+    });
+
+    if (sessions.length === 0) {
+      throw new InventoryClosingError(
+        'INVALID_CLOSING_INPUT',
+        `Không có phiên kiểm kê nào được lập trong ngày ${range.dateKey}. Không được chốt biên bản ngày trống.`,
+        422,
+        { scopeDate: range.dateKey }
+      );
+    }
+
+    return sessions.map((session) => ({
+      sessionId: session.id,
+      scheduledDate: session.scheduledDate,
+      departmentName: session.departmentName,
+      locationName: session.locationName,
+      checkerName: session.checkerName,
+      plannedItems: session.assetCountPlan,
+      scopedItems: session._count.details,
+      checkedItems: session.details.filter((detail) => Boolean(detail.checkedAt)).length,
+      pendingItems: session.details.filter((detail) => !detail.checkedAt).length,
+      discrepancyItems: session.details.filter((detail) => detail.checkedAt && detail.resultStatus && detail.resultStatus !== 'MATCH').length,
+    }));
   }
 
   private static async findOverlaps(inventoryCheckId: number, scope: ClosingScopeInput, refs: ScopeRefs) {

@@ -48,6 +48,66 @@ router.get('/', authenticateToken, async (req, res) => {
   }
 });
 
+router.get('/active-users', authenticateToken, async (req, res) => {
+  try {
+    const departmentId = req.query.departmentId ? Number(req.query.departmentId) : undefined;
+    const departmentName = typeof req.query.departmentName === 'string' ? req.query.departmentName.trim() : '';
+    const q = typeof req.query.q === 'string' ? req.query.q.trim() : '';
+    const limit = Math.min(Number(req.query.limit) || 100, 200);
+
+    const users = await prisma.user.findMany({
+      where: {
+        isActive: true,
+        status: 'ACTIVE',
+        ...(departmentId ? { departmentId } : {}),
+        ...(departmentName ? { department: { name: departmentName } } : {}),
+        ...(q ? {
+          OR: [
+            { fullName: { contains: q, mode: 'insensitive' } },
+            { username: { contains: q, mode: 'insensitive' } },
+            { employeeCode: { contains: q, mode: 'insensitive' } },
+            { position: { contains: q, mode: 'insensitive' } }
+          ]
+        } : {})
+      },
+      select: {
+        id: true,
+        username: true,
+        fullName: true,
+        employeeCode: true,
+        position: true,
+        departmentId: true,
+        department: { select: { id: true, name: true } }
+      },
+      take: limit
+    });
+
+    const priority = (position?: string | null) => {
+      const text = String(position || '').toLowerCase();
+      if (/(trưởng|truong|head|manager)/i.test(text)) return 1;
+      if (/(phó|pho|deputy)/i.test(text)) return 2;
+      if (/(quản lý|quan ly|phụ trách|phu trach|lead|supervisor)/i.test(text)) return 3;
+      return 4;
+    };
+
+    const result = users
+      .sort((a, b) => priority(a.position) - priority(b.position) || a.fullName.localeCompare(b.fullName, 'vi'))
+      .map((user) => ({
+        id: user.id,
+        username: user.username,
+        fullName: user.fullName,
+        employeeCode: user.employeeCode,
+        position: user.position,
+        departmentId: user.departmentId,
+        departmentName: user.department?.name || null
+      }));
+
+    res.json({ users: result });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
 router.get('/:id/sessions', authenticateToken, async (req, res) => {
   try {
     const sessions = await InventoryService.getInventorySessions(Number(req.params.id));

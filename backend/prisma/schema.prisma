@@ -567,6 +567,11 @@ model InventorySession {
   locationName       String?
   checkerName        String?
   representativeName String?
+  inspectionLeaderId Int?
+  inspectionLeaderName String?
+  inspectionTeamName String?
+  inspectionMembersJson Json?
+  departmentRepresentativesJson Json?
   assetCountPlan     Int                     @default(0)
   status             String                  @default("PENDING") // PENDING, IN_PROGRESS, COMPLETED
   completedAt        DateTime?

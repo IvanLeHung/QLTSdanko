@@ -38,6 +38,25 @@ import { BaseModal } from '../components/BaseModal';
 import { useAuth } from '../context/AuthContext';
 import { NormalizationModal } from '../components/NormalizationModal';
 
+type InventoryPersonnelUser = {
+  id: number;
+  fullName: string;
+  username?: string;
+  employeeCode?: string | null;
+  position?: string | null;
+  departmentId?: number | null;
+  departmentName?: string | null;
+};
+
+type DepartmentRepresentativeForm = {
+  departmentId: number | null;
+  departmentName: string;
+  representativeUserId: number | null;
+  representativeName: string;
+  position: string;
+  isManual: boolean;
+};
+
 const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {
     'Văn phòng C6': [
@@ -290,6 +309,9 @@ export const InventoryDetail: React.FC = () => {
     teamName: '',
     note: ''
   });
+  const [departmentRepresentatives, setDepartmentRepresentatives] = useState<DepartmentRepresentativeForm[]>([]);
+  const [representativeUsersByDepartment, setRepresentativeUsersByDepartment] = useState<Record<string, InventoryPersonnelUser[]>>({});
+  const [representativeUsersLoading, setRepresentativeUsersLoading] = useState(false);
   const [activeSessionReport, setActiveSessionReport] = useState<any>(null);
 
   // Discovered Assets state
@@ -455,6 +477,96 @@ export const InventoryDetail: React.FC = () => {
     'LOST',
     'LIQUIDATED'
   ];
+
+  const selectedSessionDepartmentNames = useMemo(() => {
+    const names: string[] = scopeSelection === 'FILTER'
+      ? ((sessionFilters.departmentNames || []) as string[])
+      : (scopeSelection === 'DEPARTMENT' && sessionForm.departmentName ? [sessionForm.departmentName] : []);
+    return Array.from(new Set<string>(names.map((name: string) => String(name || '').trim()).filter(Boolean)));
+  }, [scopeSelection, sessionFilters.departmentNames, sessionForm.departmentName]);
+
+  const representativeRows = selectedSessionDepartmentNames.length > 0
+    ? selectedSessionDepartmentNames
+    : ['Đơn vị kiểm kê'];
+
+  const buildRepresentativeKey = (departmentName: string) => departmentName || 'Đơn vị kiểm kê';
+
+  const updateDepartmentRepresentative = (departmentName: string, patch: Partial<DepartmentRepresentativeForm>) => {
+    setDepartmentRepresentatives((prev) => prev.map((rep) => (
+      rep.departmentName === departmentName ? { ...rep, ...patch } : rep
+    )));
+  };
+
+  const validateSessionPersonnel = () => {
+    if (!sessionForm.checkerName.trim()) {
+      toast.error('Vui lòng nhập trưởng đoàn kiểm kê.');
+      return false;
+    }
+    if (!sessionForm.teamName.trim()) {
+      toast.error('Vui lòng nhập đội kiểm kê.');
+      return false;
+    }
+    if (departmentRepresentatives.length === 0) {
+      toast.error('Vui lòng khai báo đại diện ký biên bản.');
+      return false;
+    }
+    const missingRep = departmentRepresentatives.find((rep) => !rep.representativeName.trim());
+    if (missingRep) {
+      toast.error(`Vui lòng chọn hoặc nhập đại diện ký biên bản cho ${missingRep.departmentName}.`);
+      return false;
+    }
+    return true;
+  };
+
+  useEffect(() => {
+    if (!showSessionModal) return;
+    setDepartmentRepresentatives((prev) => representativeRows.map((departmentName) => {
+      const existing = prev.find((rep) => rep.departmentName === departmentName);
+      return existing || {
+        departmentId: null,
+        departmentName,
+        representativeUserId: null,
+        representativeName: '',
+        position: '',
+        isManual: false
+      };
+    }));
+  }, [showSessionModal, representativeRows.join('|')]);
+
+  useEffect(() => {
+    if (!showSessionModal || wizardStep !== 2) return;
+    let cancelled = false;
+
+    const fetchRepresentatives = async () => {
+      setRepresentativeUsersLoading(true);
+      try {
+        const entries = await Promise.all(representativeRows.map(async (departmentName) => {
+          const key = buildRepresentativeKey(departmentName);
+          const isGeneric = departmentName === 'Đơn vị kiểm kê';
+          const url = isGeneric
+            ? '/inventory/active-users?limit=100'
+            : `/inventory/active-users?departmentName=${encodeURIComponent(departmentName)}&limit=100`;
+          const res = await api.get(url);
+          return [key, res.data.users || []] as const;
+        }));
+        if (!cancelled) {
+          setRepresentativeUsersByDepartment(Object.fromEntries(entries));
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setRepresentativeUsersByDepartment({});
+          toast.error('Không tải được danh sách nhân sự ký biên bản.');
+        }
+      } finally {
+        if (!cancelled) setRepresentativeUsersLoading(false);
+      }
+    };
+
+    fetchRepresentatives();
+    return () => {
+      cancelled = true;
+    };
+  }, [showSessionModal, wizardStep, representativeRows.join('|')]);
 
   // Cascading dependency effect
   useEffect(() => {
@@ -653,6 +765,7 @@ export const InventoryDetail: React.FC = () => {
 
   const handleCreateSession = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!validateSessionPersonnel()) return;
     setSubmitting(true);
     setCreationProgress(0);
     setCreationStatusText("Khởi tạo cấu hình phiên...");
@@ -677,6 +790,21 @@ export const InventoryDetail: React.FC = () => {
         departmentName: deptNameVal || undefined,
         locationName: locNameVal || undefined,
         members: sessionMembers,
+        inspectionLeaderName: sessionForm.checkerName,
+        inspectionTeamName: sessionForm.teamName,
+        inspectionMembers: sessionMembers.map((name) => ({ userId: null, fullName: name, position: null })),
+        departmentRepresentatives: departmentRepresentatives.map((rep) => ({
+          departmentId: rep.departmentId,
+          departmentName: rep.departmentName,
+          representativeUserId: rep.representativeUserId,
+          representativeName: rep.representativeName,
+          position: rep.position,
+          isManual: rep.isManual
+        })),
+        representativeName: departmentRepresentatives
+          .filter((rep) => rep.representativeName)
+          .map((rep) => `${rep.departmentName}: ${rep.representativeName}${rep.position ? ` - ${rep.position}` : ''}`)
+          .join('; '),
         scopeType: scopeSelection,
         expectedAssetCount: previewAssetsCount || 0,
         filters: sessionFilters
@@ -710,6 +838,8 @@ export const InventoryDetail: React.FC = () => {
       setPreviewAssetsCount(null);
       setPreviewBreakdown({});
       setSessionMembers([]);
+      setDepartmentRepresentatives([]);
+      setRepresentativeUsersByDepartment({});
       setCreationProgress(null);
       
       // Reset filters
@@ -5721,6 +5851,8 @@ export const InventoryDetail: React.FC = () => {
             setPreviewAssetsCount(null);
             setPreviewBreakdown({});
             setSessionMembers([]);
+            setDepartmentRepresentatives([]);
+            setRepresentativeUsersByDepartment({});
           }}
           size="wizard"
           title={
@@ -5790,6 +5922,9 @@ export const InventoryDetail: React.FC = () => {
                             toast.error("Vui lòng chọn dự án!");
                             return;
                           }
+                        }
+                        if (wizardStep === 2 && !validateSessionPersonnel()) {
+                          return;
                         }
                         setWizardStep(prev => prev + 1);
                       }}
@@ -6179,25 +6314,95 @@ export const InventoryDetail: React.FC = () => {
                     </div>
 
                     <div className="space-y-1.5">
+                      <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Phạm vi đại diện ký</label>
+                      <div className="h-12 px-4 bg-slate-50 border border-slate-200 rounded-xl flex items-center text-sm font-bold text-slate-700">
+                        {selectedSessionDepartmentNames.length > 0 ? `${selectedSessionDepartmentNames.length} phòng ban` : 'Đơn vị kiểm kê'}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3 pt-4 border-t border-slate-100">
+                    <div className="flex items-center justify-between">
                       <label className="font-bold text-slate-500 text-xs uppercase tracking-wider block">Đại diện phòng ban ký biên bản *</label>
-                      <select
-                        value={sessionForm.representativeName}
-                        onChange={e => setSessionForm({ ...sessionForm, representativeName: e.target.value })}
-                        className="w-full h-12 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:border-primary-500"
-                      >
-                        <option value="">-- Chọn người đại diện ký biên bản --</option>
-                        {reviewUserSuggestions.length > 0 ? (
-                          reviewUserSuggestions.map((name, i) => (
-                            <option key={i} value={name}>{name}</option>
-                          ))
-                        ) : (
-                          <>
-                            <option value="Nguyễn Văn A - Trưởng phòng HCNS">Nguyễn Văn A - Trưởng phòng HCNS</option>
-                            <option value="Lê Thị B - Trưởng phòng Kế toán">Lê Thị B - Trưởng phòng Kế toán</option>
-                            <option value="Trần Văn C - Giám đốc dự án">Trần Văn C - Giám đốc dự án</option>
-                          </>
-                        )}
-                      </select>
+                      {representativeUsersLoading && <span className="text-[11px] font-bold text-primary-600 flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Đang tải nhân sự</span>}
+                    </div>
+                    <div className="space-y-3">
+                      {departmentRepresentatives.map((rep) => {
+                        const key = buildRepresentativeKey(rep.departmentName);
+                        const users = representativeUsersByDepartment[key] || [];
+                        return (
+                          <div key={rep.departmentName} className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-3">
+                            <div className="flex items-center justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-black uppercase tracking-wider text-slate-500">Phòng ban kiểm kê</p>
+                                <p className="text-sm font-black text-slate-900">{rep.departmentName}</p>
+                              </div>
+                              {users.length === 0 && !representativeUsersLoading && (
+                                <span className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1.5 rounded-lg">
+                                  Chưa có nhân sự active, nhập thủ công
+                                </span>
+                              )}
+                            </div>
+
+                            <select
+                              value={rep.representativeUserId || ''}
+                              onChange={(e) => {
+                                const userId = Number(e.target.value);
+                                const selected = users.find((u) => u.id === userId);
+                                if (!selected) {
+                                  updateDepartmentRepresentative(rep.departmentName, {
+                                    representativeUserId: null,
+                                    representativeName: '',
+                                    position: '',
+                                    isManual: false
+                                  });
+                                  return;
+                                }
+                                updateDepartmentRepresentative(rep.departmentName, {
+                                  departmentId: selected.departmentId || rep.departmentId,
+                                  representativeUserId: selected.id,
+                                  representativeName: selected.fullName,
+                                  position: selected.position || '',
+                                  isManual: false
+                                });
+                              }}
+                              className="w-full h-11 px-4 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-sm focus:outline-none focus:border-primary-500 disabled:bg-slate-100"
+                              disabled={users.length === 0}
+                            >
+                              <option value="">-- Chọn nhân sự thuộc phòng ban --</option>
+                              {users.map((person) => (
+                                <option key={person.id} value={person.id}>
+                                  {person.fullName}{person.position ? ` - ${person.position}` : ''}
+                                </option>
+                              ))}
+                            </select>
+
+                            <div className="grid grid-cols-2 gap-3">
+                              <input
+                                type="text"
+                                placeholder="Tên người ký / người được ủy quyền"
+                                value={rep.representativeName}
+                                onChange={(e) => updateDepartmentRepresentative(rep.departmentName, {
+                                  representativeName: e.target.value,
+                                  representativeUserId: null,
+                                  isManual: true
+                                })}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                              />
+                              <input
+                                type="text"
+                                placeholder="Chức vụ"
+                                value={rep.position}
+                                onChange={(e) => updateDepartmentRepresentative(rep.departmentName, {
+                                  position: e.target.value,
+                                  isManual: true
+                                })}
+                                className="w-full bg-white border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:border-primary-500"
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
 
@@ -6296,6 +6501,16 @@ export const InventoryDetail: React.FC = () => {
                         <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Thành viên:</span>
                         <span className="text-slate-800 text-sm">{sessionMembers.join(', ') || 'Không có thành viên phụ'}</span>
                       </div>
+                      <div className="space-y-1 col-span-2">
+                        <span className="text-slate-400 uppercase text-[10px] tracking-wider block">Đại diện phòng ban ký biên bản:</span>
+                        <div className="space-y-1">
+                          {departmentRepresentatives.map((rep) => (
+                            <div key={rep.departmentName} className="text-slate-800 text-sm">
+                              <span className="font-black">{rep.departmentName}:</span> {rep.representativeName || '-'}{rep.position ? ` - ${rep.position}` : ''}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -6376,6 +6591,18 @@ export const InventoryDetail: React.FC = () => {
               <p>Người kiểm kê: <span className="font-bold text-slate-900">{activeSessionReport.session.checkerName || '-'}</span></p>
               <p>Đại diện đơn vị: <span className="font-bold text-slate-900">{activeSessionReport.session.representativeName || '-'}</span></p>
             </div>
+
+            {Array.isArray(activeSessionReport.session.departmentRepresentativesJson) && activeSessionReport.session.departmentRepresentativesJson.length > 0 && (
+              <div className="bg-white border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+                <h3 className="font-black uppercase tracking-wider text-slate-500">Đại diện phòng ban ký biên bản</h3>
+                {activeSessionReport.session.departmentRepresentativesJson.map((rep: any, index: number) => (
+                  <div key={`${rep.departmentName || index}-${rep.representativeName || index}`} className="flex items-center justify-between border-t border-slate-100 pt-2 first:border-t-0 first:pt-0">
+                    <span className="font-bold text-slate-700">{rep.departmentName || 'Đơn vị kiểm kê'}</span>
+                    <span className="font-black text-slate-900">{rep.representativeName || '-'}{rep.position ? ` - ${rep.position}` : ''}</span>
+                  </div>
+                ))}
+              </div>
+            )}
 
             <div className="grid grid-cols-4 gap-3 text-center">
               <div className="border border-slate-200 rounded-xl p-3 bg-white">
