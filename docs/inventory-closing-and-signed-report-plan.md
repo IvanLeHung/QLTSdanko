@@ -1,4 +1,4 @@
-# Inventory Closing & Signed Report Plan V3
+# Inventory Closing & Signed Report Plan V4
 
 ## Mục tiêu
 
@@ -281,6 +281,9 @@ Response đề xuất cho `POST /api/inventory/:id/closing/validate-scope`:
 - `MAX_REOPEN_EXCEEDED`: HTTP `403`, vượt quá số lần mở lại cho phép.
 - `INVALID_CLOSING_TRANSITION`: HTTP `409`, chuyển trạng thái không hợp lệ.
 - `REPORT_GENERATION_FAILED`: HTTP `500`, sinh báo cáo lỗi.
+- `CLOSING_SCOPE_TOO_LARGE`: HTTP `202`, scope lớn được chuyển sang async job.
+- `REPORT_SERVICE_UNAVAILABLE`: HTTP `202`, closing vẫn final nhưng report được queue lại.
+- `INVALID_CLOSING_INPUT`: HTTP `422`, dữ liệu đầu vào không hợp lệ.
 
 ### Core closing
 
@@ -289,6 +292,7 @@ Response đề xuất cho `POST /api/inventory/:id/closing/validate-scope`:
 - `GET /api/inventory/:id/closing-records`
 - `GET /api/inventory/closing-records/:closingId`
 - `POST /api/inventory/closing-records/:closingId/finalize`
+- `POST /api/inventory/closing-records/:closingId/cancel-scope`
 
 ### Validation
 
@@ -318,6 +322,86 @@ Response đề xuất cho `POST /api/inventory/:id/closing/validate-scope`:
 
 - `GET /api/inventory/:id/audit-log`
 - `GET /api/inventory/closing-records/:closingId/history`
+
+### Dashboard & monitoring
+
+- `GET /api/inventory/:id/closing/statistics`
+- `GET /api/inventory/closing/health`
+
+Response đề xuất cho cancel scope:
+
+```json
+{
+  "success": true,
+  "data": {
+    "cancelledScopeId": "scope-456",
+    "remainingScopes": 2,
+    "closingStatus": "DRAFT"
+  }
+}
+```
+
+Chỉ cho `cancel-scope` khi closing còn `DRAFT` hoặc `REOPENED`. Không cho hủy scope đã `FINAL` nếu chưa đi qua reopen workflow.
+
+Response đề xuất cho statistics:
+
+```json
+{
+  "success": true,
+  "data": {
+    "totalScopes": 15,
+    "closedScopes": 12,
+    "pendingScopes": 3,
+    "totalItems": 5000,
+    "lockedItems": 4200,
+    "discrepancyRate": 4.5,
+    "averageClosingTime": "2.5 hours",
+    "closingTrend": [
+      { "date": "2026-06-15", "closed": 3, "items": 1200 },
+      { "date": "2026-06-16", "closed": 5, "items": 1800 }
+    ]
+  }
+}
+```
+
+Response đề xuất cho health check:
+
+```json
+{
+  "success": true,
+  "data": {
+    "service": "inventory-closing",
+    "status": "healthy",
+    "checks": {
+      "database": "connected",
+      "reportGenerator": "available",
+      "eventBus": "connected",
+      "storage": "available"
+    },
+    "metrics": {
+      "activeClosings": 5,
+      "pendingReports": 2,
+      "failedJobs": 0,
+      "averageLockTime": "1.2s"
+    }
+  }
+}
+```
+
+## Input Validation
+
+Validation cần chạy trước khi tạo/chốt biên bản:
+
+- `closingDate` bắt buộc.
+- `closingDate` không được ở tương lai.
+- `closingDate` không được trước ngày bắt đầu đợt kiểm kê.
+- `forceCloseReason` bắt buộc khi còn pending item mà vẫn force close.
+- `forceCloseReason` tối thiểu 20 ký tự để tránh lý do hình thức.
+- Không cho trùng role người ký trong cùng biên bản, trừ role `OTHER`.
+- Người ký role `CHECKER` nên khớp với người kiểm kê trong session hoặc danh sách người được phân công.
+- Scope phải có đủ khóa ngoại tương ứng với `scopeType`.
+- Không cho scope rỗng item.
+- Không cho tạo closing không có scope.
 
 ## State Machine
 
@@ -360,6 +444,22 @@ Kênh thông báo:
 - In-app notification.
 - Email ở phase sau.
 - Mobile push ở phase sau nếu mobile app đã bật.
+
+## Graceful Degradation
+
+Closing không nên phụ thuộc cứng vào report generation service. Nếu service sinh báo cáo lỗi hoặc storage tạm thời không sẵn sàng:
+
+- Vẫn cho phép closing chuyển `FINAL` nếu dữ liệu, lock và audit đã thành công.
+- Tạo pending report job để sinh lại khi service phục hồi.
+- Trả warning rõ cho frontend: report đang được queue và sẽ có sau.
+- Ghi audit log sự kiện report queued.
+- Notification cho người tạo khi file report đã sẵn sàng.
+
+Với event bus/cache down:
+
+- Không chặn finalize nếu transaction DB chính thành công.
+- Ghi cảnh báo vận hành để retry notification/cache invalidation.
+- Không dùng cache làm nguồn số liệu chốt.
 
 ## UI Flow đề xuất
 
@@ -456,6 +556,8 @@ Triển khai theo hướng an toàn dữ liệu:
 ## Performance & Concurrency
 
 - Chốt scope lớn phải xử lý lock theo batch, đề xuất `BATCH_SIZE = 100`.
+- Nếu scope trên 50.000 item, không lock đồng bộ trong request; chuyển sang async job `LARGE_SCOPE_CLOSING`.
+- API trả `PROCESSING`, `jobId`, thời gian hoàn tất ước tính và notification khi xong.
 - Dùng transaction khi tạo closing record, scope, summary và lock dữ liệu.
 - Dùng optimistic locking bằng `version` để tránh 2 người cùng chốt một scope.
 - Mỗi thao tác scan/update kết quả phải kiểm tra `lockedAt` trước khi ghi.
@@ -466,6 +568,12 @@ Triển khai theo hướng an toàn dữ liệu:
   - `inventory_closing_scopes.department_id, scope_date`
   - `inventory_closing_scopes.location_id, scope_date`
   - `inventory_closing_scopes.project_id, scope_date`
+
+Ngưỡng đề xuất:
+
+- Dưới 10.000 item: xử lý sync có progress nội bộ.
+- 10.000 đến 50.000 item: xử lý batch sync hoặc async tùy cấu hình timeout.
+- Trên 50.000 item: bắt buộc async job.
 
 ## Cache Strategy
 
@@ -495,6 +603,88 @@ Trigger optional:
 - Tự đánh dấu `inventory_report_files.is_outdated = true` khi closing chuyển từ `FINAL` sang `REOPENED`.
 
 Lưu ý: nếu dùng Prisma migration, trigger cần được quản lý rõ trong migration SQL và test kỹ trên staging.
+
+## Implementation Priority Matrix
+
+P0 - bắt buộc cho lõi an toàn dữ liệu:
+
+- State machine validation.
+- Scope overlap detection.
+- Item/detail locking mechanism.
+- Audit log cho close/reopen.
+
+P1 - cần cho MVP nghiệp vụ:
+
+- Signer management.
+- Basic Excel report generation.
+- Force close with reason.
+- Reopen workflow.
+- Cancel scope trong `DRAFT`.
+
+P2 - hoàn thiện sản phẩm:
+
+- PDF report with signatures.
+- Cache strategy.
+- Event notifications.
+- Batch operations.
+- Dashboard/statistics API.
+
+P3 - nâng cao:
+
+- Signature pad integration.
+- Mobile responsive polish.
+- Advanced analytics dashboard.
+- Digital signature bằng USB token/OTP/provider ký số.
+
+## Architecture Decision Records
+
+Các quyết định kiến trúc cần ghi thành ADR khi bắt đầu implementation:
+
+### ADR-001: Lock ở InventoryDetail, không khóa cứng InventoryItem
+
+Lý do: một `InventoryItem` có thể liên quan nhiều session hoặc nhiều dòng chi tiết kiểm kê. Lock toàn item có thể chặn thao tác hợp lệ ở session khác.
+
+### ADR-002: Summary tính từ DB tại thời điểm FINAL
+
+Lý do: biên bản chốt cần số liệu chính xác tuyệt đối. Cache/frontend state không được dùng làm nguồn chính thức.
+
+### ADR-003: Report generation async, không chặn closing
+
+Lý do: scope lớn dễ timeout nếu sinh PDF/Excel đồng bộ. Closing có thể final trước, report được sinh sau và lưu kèm checksum.
+
+### ADR-004: Feature flag trước khi rollback schema
+
+Lý do: khi production phát sinh biên bản thật, rollback schema có thể gây mất hồ sơ. Tắt feature trước, xử lý dữ liệu sau.
+
+## Code Organization đề xuất
+
+Nếu refactor theo feature folder, cấu trúc backend đề xuất:
+
+```text
+backend/src/features/inventory/closing/
+  closing.controller.ts
+  closing.service.ts
+  closing.state-machine.ts
+  closing.validator.ts
+  closing.overlap-detector.ts
+  closing.lock-manager.ts
+  closing.event-emitter.ts
+  closing.audit-logger.ts
+  closing.report-generator.ts
+  closing.cache-manager.ts
+  closing.types.ts
+  closing.constants.ts
+  closing.service.spec.ts
+  closing.e2e.spec.ts
+```
+
+Nếu repo giữ style routes/services hiện tại, có thể triển khai tối thiểu:
+
+- `backend/src/routes/inventory-closing.routes.ts`
+- `backend/src/services/inventory-closing.service.ts`
+- `backend/src/services/inventory-closing-state.service.ts`
+- `backend/src/services/inventory-closing-report.service.ts`
+- `backend/src/types/inventory-closing.types.ts`
 
 ## Phân phase triển khai
 
@@ -570,6 +760,8 @@ Week 8:
 - Alert rule cho chốt lỗi, report lỗi, discrepancy cao.
 - Performance tuning.
 - Hoàn thiện tài liệu vận hành.
+- Health check endpoint.
+- Kiểm thử graceful degradation.
 
 Tổng: 8 tuần cho Phase A-D. Có thể thêm 1 tuần Phase E nếu triển khai production quy mô lớn.
 
@@ -591,6 +783,8 @@ Tổng: 8 tuần cho Phase A-D. Có thể thêm 1 tuần Phase E nếu triển k
 - `POST /sign` validate signer role.
 - `POST /reopen` unlock đúng scope.
 - Report generated lưu checksum và metadata.
+- `cancel-scope` chỉ hoạt động khi closing còn `DRAFT`.
+- Health check trả đúng trạng thái dependency.
 
 ### E2E tests
 
@@ -620,6 +814,8 @@ Tổng: 8 tuần cho Phase A-D. Có thể thêm 1 tuần Phase E nếu triển k
 - Chốt 10.000 item trong thời gian chấp nhận được, mục tiêu dưới 30 giây trên staging.
 - 100 request đọc progress đồng thời trong lúc closing đang chạy.
 - Sinh report 5.000 item, mục tiêu dưới 10 giây nếu dùng async worker phù hợp.
+- Scope trên 50.000 item phải chuyển async job, không timeout request.
+- Report service down không làm thất bại finalize nếu dữ liệu đã lock/audit thành công.
 
 ## Rollback Strategy
 
