@@ -513,6 +513,7 @@ model InventoryCheck {
   items              InventoryItem[]
   sessions           InventorySession[]
   discoveredAssets   DiscoveredAsset[]
+  closingRecords     InventoryClosingRecord[]
 }
 
 model InventoryItem {
@@ -542,13 +543,18 @@ model InventoryItem {
   batchId             String?
   resultStatus        String?
   outOfBookStatus     String?        // IGNORED, REGISTERED
+  lockedAt            DateTime?
+  lockedBy            String?
+  closingScopeId      Int?
 
   asset               Asset          @relation(fields: [assetId], references: [id])
   inventoryCheck      InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+  closingScope        InventoryClosingScope? @relation(fields: [closingScopeId], references: [id])
 
   @@index([inventoryCheckId])
   @@index([assetCode])
   @@index([checkStatus])
+  @@index([closingScopeId])
 }
 
 model InventorySession {
@@ -569,6 +575,7 @@ model InventorySession {
   inventoryCheck     InventoryCheck          @relation(fields: [inventoryCheckId], references: [id])
   details            InventoryDetail[]
   filter             InventorySessionFilter?
+  closingScopes      InventoryClosingScope[]
 }
 
 model InventorySessionFilter {
@@ -603,13 +610,138 @@ model InventoryDetail {
   checkedBy          String?
   batchId            String?
   outOfBookStatus    String?           // IGNORED, REGISTERED
+  lockedAt           DateTime?
+  lockedBy           String?
+  closingScopeId     Int?
 
   session            InventorySession  @relation(fields: [sessionId], references: [id])
   asset              Asset?            @relation(fields: [assetId], references: [id])
+  closingScope       InventoryClosingScope? @relation(fields: [closingScopeId], references: [id])
 
   @@index([sessionId])
   @@index([assetCode])
   @@index([checkStatus])
+  @@index([closingScopeId])
+}
+
+model InventoryClosingRecord {
+  id                Int      @id @default(autoincrement())
+  inventoryCheckId  Int
+  closingCode       String   @unique
+  closingDate       DateTime
+  closedAt          DateTime?
+  closedBy          String?
+  status            String   @default("DRAFT") // DRAFT, PENDING_SIGN, SIGNED, FINAL, REOPENED, CANCELLED
+  totalItems        Int      @default(0)
+  matchedItems      Int      @default(0)
+  discrepancyItems  Int      @default(0)
+  missingItems      Int      @default(0)
+  extraItems        Int      @default(0)
+  damagedItems      Int      @default(0)
+  differencePercent Float    @default(0)
+  summaryJson       Json?
+  closingNote       String?
+  forceCloseReason  String?
+  version           Int      @default(1)
+  reopenCount       Int      @default(0)
+  reopenHistory     Json     @default("[]")
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  inventoryCheck    InventoryCheck @relation(fields: [inventoryCheckId], references: [id])
+  scopes            InventoryClosingScope[]
+  signers           InventoryClosingSigner[]
+  reports           InventoryReportFile[]
+
+  @@index([inventoryCheckId])
+  @@index([status])
+  @@index([closingDate])
+}
+
+model InventoryClosingScope {
+  id              Int       @id @default(autoincrement())
+  closingId       Int
+  scopeType       String    // DAILY, SESSION, DEPARTMENT, PROJECT, LOCATION, FULL
+  sessionId       Int?
+  departmentId    Int?
+  locationId      Int?
+  projectValue    String?
+  scopeDate       DateTime?
+  scopeLabel      String?
+  itemCount       Int       @default(0)
+  matchedCount    Int       @default(0)
+  differenceCount Int       @default(0)
+  pendingCount    Int       @default(0)
+  extraCount      Int       @default(0)
+  missingCount    Int       @default(0)
+  damagedCount    Int       @default(0)
+  status          String    @default("PARTIAL") // PARTIAL, COMPLETE
+  lockedAt        DateTime?
+  lockedBy        String?
+  createdAt       DateTime  @default(now())
+
+  closing         InventoryClosingRecord @relation(fields: [closingId], references: [id], onDelete: Cascade)
+  session         InventorySession?      @relation(fields: [sessionId], references: [id])
+  inventoryItems  InventoryItem[]
+  inventoryDetails InventoryDetail[]
+
+  @@index([closingId])
+  @@index([scopeType, scopeDate])
+  @@index([sessionId])
+  @@index([departmentId, scopeDate])
+  @@index([locationId, scopeDate])
+  @@index([projectValue, scopeDate])
+}
+
+model InventoryClosingSigner {
+  id             Int       @id @default(autoincrement())
+  closingId      Int
+  signerRole     String    // CHECKER, DEPARTMENT_REP, INVENTORY_HEAD, ACCOUNTANT, DIRECTOR, OTHER
+  fullName       String
+  position       String?
+  department     String?
+  signatureImage String?
+  signedAt       DateTime?
+  signStatus     String    @default("PENDING") // PENDING, SIGNED, REJECTED
+  note           String?
+  createdAt      DateTime  @default(now())
+
+  closing        InventoryClosingRecord @relation(fields: [closingId], references: [id], onDelete: Cascade)
+
+  @@index([closingId])
+  @@index([signerRole])
+  @@index([signStatus])
+}
+
+model InventoryReportFile {
+  id                Int      @id @default(autoincrement())
+  closingId         Int
+  inventoryCheckId  Int
+  reportCode        String
+  reportType        String
+  fileName          String
+  fileUrl           String
+  fileType          String
+  template          String?
+  paperSize         String?
+  orientation       String?
+  includeSignatures Boolean  @default(false)
+  includePhotos     Boolean  @default(false)
+  language          String   @default("vi")
+  parametersJson    Json?
+  version           Int      @default(1)
+  isOutdated        Boolean  @default(false)
+  createdBy         String
+  createdAt         DateTime @default(now())
+  rowCount          Int      @default(0)
+  checksum          String?
+
+  closing           InventoryClosingRecord @relation(fields: [closingId], references: [id], onDelete: Cascade)
+
+  @@index([closingId])
+  @@index([inventoryCheckId])
+  @@index([reportType])
+  @@index([isOutdated])
 }
 
 
