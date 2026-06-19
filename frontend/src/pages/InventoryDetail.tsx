@@ -2589,13 +2589,13 @@ export const InventoryDetail: React.FC = () => {
     const expQuality = 'Tốt'; // expected quality/condition is typically 'Tốt' or GOOD
 
     // Actual values (fall back to expected if not edited)
-    const actLoc = editData.actualLocation !== undefined ? editData.actualLocation : expLoc;
-    const actDept = editData.actualDepartment !== undefined ? editData.actualDepartment : expDept;
-    const actProj = editData.actualProject !== undefined ? editData.actualProject : expProj;
-    const actUser = editData.actualUser !== undefined ? editData.actualUser : expUser;
-    const actSerial = editData.serial !== undefined ? editData.serial : expSerial;
-    const actStatusRaw = editData.actualStatus !== undefined ? editData.actualStatus : expStatus;
-    const actQualityRaw = editData.quality !== undefined ? editData.quality : 'GOOD';
+    const actLoc = editData.actualLocation !== undefined ? editData.actualLocation : (item.actualLocation || expLoc);
+    const actDept = editData.actualDepartment !== undefined ? editData.actualDepartment : (item.actualDepartment || expDept);
+    const actProj = editData.actualProject !== undefined ? editData.actualProject : (item.actualProject || expProj);
+    const actUser = editData.actualUser !== undefined ? editData.actualUser : (item.actualUser || expUser);
+    const actSerial = editData.serial !== undefined ? editData.serial : (item.actualSerial || item.serial || expSerial);
+    const actStatusRaw = editData.actualStatus !== undefined ? editData.actualStatus : (item.actualStatus || expStatus);
+    const actQualityRaw = editData.quality !== undefined ? editData.quality : (item.quality || 'GOOD');
 
     // Mismatches
     const locMismatch = expLoc !== actLoc;

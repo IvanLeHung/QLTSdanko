@@ -1400,6 +1400,63 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
     return true;
   };
 
+  const firstValue = (...values: any[]) => {
+    const value = values.find(v => v !== null && v !== undefined && String(v).trim() !== '');
+    return value === undefined ? 'N/A' : value;
+  };
+
+  const buildSessionBatchItem = (detail: any, asset: any, barcode: string, extra: any = {}) => ({
+    id: detail.id,
+    assetId: detail.assetId,
+    barcode,
+    assetName: asset?.assetName || detail.assetName || 'Tài sản',
+    expectedLocation: firstValue(detail.bookLocationName, asset?.locationName, 'Trong kho'),
+    expectedUser: firstValue(detail.bookUserName, asset?.currentUserName),
+    expectedStatus: firstValue(asset?.status, 'IN_STOCK'),
+    expectedSerial: firstValue(detail.serialNumber, asset?.serialNumber),
+    expectedDepartment: firstValue(detail.bookDepartmentName, asset?.departmentName),
+    expectedProject: firstValue(detail.session?.projectName, asset?.projectName),
+    actualLocation: detail.actualLocationName || '',
+    actualUser: detail.actualUserName || '',
+    actualDepartment: detail.actualDepartmentName || '',
+    actualProject: detail.actualProjectName || '',
+    actualStatus: detail.resultStatus || '',
+    actualSerial: detail.serialNumber || asset?.serialNumber || '',
+    checkStatus: detail.checkStatus || 'PENDING',
+    checkedAt: detail.checkedAt,
+    checkedBy: detail.checkedBy || '',
+    resultStatus: detail.resultStatus,
+    batchId: detail.batchId,
+    outOfBookStatus: detail.outOfBookStatus,
+    ...extra
+  });
+
+  const buildCheckBatchItem = (item: any, asset: any, barcode: string, extra: any = {}) => ({
+    id: item.id,
+    assetId: item.assetId,
+    barcode,
+    assetName: asset?.assetName || 'Tài sản',
+    expectedLocation: firstValue(item.expectedLocation, asset?.locationName, 'Trong kho'),
+    expectedUser: firstValue(asset?.currentUserName),
+    expectedStatus: firstValue(item.expectedStatus, asset?.status, 'IN_STOCK'),
+    expectedSerial: firstValue(asset?.serialNumber),
+    expectedDepartment: firstValue(asset?.departmentName),
+    expectedProject: firstValue(asset?.projectName),
+    actualLocation: item.actualLocation || '',
+    actualUser: item.actualUserName || '',
+    actualDepartment: item.actualDepartment || '',
+    actualProject: item.actualProject || '',
+    actualStatus: item.actualStatus || '',
+    actualSerial: item.actualSerialNumber || '',
+    checkStatus: item.checkStatus || 'PENDING',
+    checkedAt: item.checkedAt,
+    checkedBy: item.checkedBy || '',
+    resultStatus: item.result || item.resultStatus,
+    batchId: item.batchId,
+    outOfBookStatus: item.outOfBookStatus,
+    ...extra
+  });
+
   // Process barcodes individually
   for (const barcode of uniqueBarcodesList) {
     try {
@@ -1528,7 +1585,7 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
             }
           });
           alreadyChecked++;
-          alreadyCheckedItems.push({ id: detail.id, barcode, assetName: asset.assetName, checkStatus: 'CHECKED', checkedAt: detail.checkedAt });
+          alreadyCheckedItems.push(buildSessionBatchItem(detail, asset, barcode, { checkStatus: 'CHECKED', checkedAt: detail.checkedAt }));
           continue;
         }
 
@@ -1605,7 +1662,7 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
           });
 
           autoSaved++;
-          autoSavedItems.push({ id: detail.id, barcode, assetName: asset.assetName, checkStatus: 'MATCH_PENDING_CONFIRM' });
+          autoSavedItems.push(buildSessionBatchItem(detail, asset, barcode, { checkStatus: 'MATCH_PENDING_CONFIRM', resultStatus: 'MATCH' }));
         } else {
           await prisma.inventoryScanLog.create({
             data: {
@@ -1636,7 +1693,7 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
           });
 
           needReview++;
-          reviewItems.push({ id: detail.id, barcode, assetName: asset.assetName, reason: discrepancyAction, checkStatus: 'NEED_REVIEW' });
+          reviewItems.push(buildSessionBatchItem(detail, asset, barcode, { reason: discrepancyAction, checkStatus: 'NEED_REVIEW', resultStatus: dbResultStatus }));
         }
       } 
       // 3. Mode CHECK (Main inventory campaign)
@@ -1710,7 +1767,7 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
             }
           });
           alreadyChecked++;
-          alreadyCheckedItems.push({ id: item.id, barcode, assetName: asset.assetName, checkStatus: 'CHECKED', checkedAt: item.checkedAt, checkedBy: item.checkedBy });
+          alreadyCheckedItems.push(buildCheckBatchItem(item, asset, barcode, { checkStatus: 'CHECKED', checkedAt: item.checkedAt, checkedBy: item.checkedBy }));
           continue;
         }
 
@@ -1788,7 +1845,7 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
           });
 
           autoSaved++;
-          autoSavedItems.push({ id: item.id, barcode, assetName: asset.assetName, checkStatus: 'MATCH_PENDING_CONFIRM' });
+          autoSavedItems.push(buildCheckBatchItem(item, asset, barcode, { checkStatus: 'MATCH_PENDING_CONFIRM', resultStatus: 'MATCH' }));
         } else {
           await prisma.inventoryScanLog.create({
             data: {
@@ -1820,7 +1877,7 @@ router.post('/batch-scan-process', authenticateToken, async (req: any, res) => {
           });
 
           needReview++;
-          reviewItems.push({ id: item.id, barcode, assetName: asset.assetName, reason: discrepancyAction, checkStatus: 'NEED_REVIEW' });
+          reviewItems.push(buildCheckBatchItem(item, asset, barcode, { reason: discrepancyAction, checkStatus: 'NEED_REVIEW', resultStatus: dbResultStatus }));
         }
       }
     } catch (itemErr: any) {
@@ -2024,7 +2081,7 @@ router.get('/pending-batches', authenticateToken, async (req: any, res) => {
               expectedLocation: item.expectedLocation || item.asset?.locationName || 'Trong kho',
               expectedUser: item.asset?.currentUserName || 'N/A',
               expectedStatus: item.expectedStatus || item.asset?.status || 'N/A',
-              expectedSerial: item.actualSerialNumber || item.asset?.serialNumber || 'N/A',
+              expectedSerial: item.asset?.serialNumber || 'N/A',
               expectedDepartment: item.asset?.departmentName || 'N/A',
               expectedProject: item.asset?.projectName || 'N/A',
               actualLocation: item.actualLocation || '',
@@ -2032,6 +2089,7 @@ router.get('/pending-batches', authenticateToken, async (req: any, res) => {
               actualDepartment: item.actualDepartment || '',
               actualProject: item.actualProject || '',
               actualStatus: item.actualStatus || '',
+              actualSerial: item.actualSerialNumber || '',
               checkStatus: item.checkStatus || 'PENDING',
               checkedAt: item.checkedAt,
               checkedBy: item.checkedBy || '',
