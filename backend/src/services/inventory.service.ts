@@ -336,11 +336,24 @@ export class InventoryService {
 
   static async startInventoryVisit(sessionId: number) {
     return await prisma.$transaction(async (tx) => {
-      const session = await tx.inventorySession.findUnique({ where: { id: sessionId }, include: { details: true } });
+      const session = await tx.inventorySession.findUnique({
+        where: { id: sessionId },
+        include: {
+          filter: true,
+          details: { select: { id: true } }
+        }
+      });
       if (!session) throw new Error('Không tìm thấy phiên kiểm kê tài sản.');
 
       if (session.details.length === 0) {
-        const where = this.buildAssetInventoryScopeWhere(session.departmentName || undefined, session.locationName || undefined);
+        let where = this.buildAssetInventoryScopeWhere(session.departmentName || undefined, session.locationName || undefined);
+        if (session.filter?.filterJson) {
+          try {
+            where = this.buildQueryFromFilters(JSON.parse(session.filter.filterJson));
+          } catch (error) {
+            console.warn('Invalid inventory session filter JSON, fallback to basic scope:', error);
+          }
+        }
         const assets = await tx.asset.findMany({ where, orderBy: { assetCode: 'asc' } });
         if (assets.length > 0) {
           await tx.inventoryDetail.createMany({

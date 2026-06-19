@@ -26,6 +26,11 @@ const upload = multer({ storage });
 
 const router = Router();
 
+const isMissingInventoryClosingMigration = (error: any) => {
+  const text = `${error?.code || ''} ${error?.message || ''} ${error?.meta?.column || ''}`;
+  return text.includes('P2022') || text.includes('lockedAt') || text.includes('lockedBy') || text.includes('closingScopeId') || text.includes('InventoryClosing');
+};
+
 router.post('/upload-photo', authenticateToken, upload.single('photo'), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ message: 'Không nhận được file ảnh' });
@@ -84,6 +89,11 @@ router.post('/sessions/:sessionId/start', authenticateToken, async (req, res) =>
     const session = await InventoryService.startInventoryVisit(Number(req.params.sessionId));
     res.json(session);
   } catch (error: any) {
+    if (isMissingInventoryClosingMigration(error)) {
+      return res.status(503).json({
+        message: 'Database chưa chạy migration 20260619090000_add_inventory_closing. Cần chạy Prisma migration trên DB production/staging rồi thử lại.'
+      });
+    }
     res.status(400).json({ message: error.message });
   }
 });
