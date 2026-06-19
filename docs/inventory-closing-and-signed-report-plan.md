@@ -1,4 +1,4 @@
-# Inventory Closing & Signed Report Plan V2
+# Inventory Closing & Signed Report Plan V3
 
 ## Mục tiêu
 
@@ -210,6 +210,78 @@ Logic đề xuất:
 
 ## API đề xuất
 
+### Response format chuẩn
+
+Tất cả API closing nên dùng cùng response envelope để frontend xử lý lỗi/alert thống nhất:
+
+```json
+{
+  "success": true,
+  "data": {},
+  "message": "OK"
+}
+```
+
+Với lỗi nghiệp vụ:
+
+```json
+{
+  "success": false,
+  "error": {
+    "code": "CLOSING_SCOPE_OVERLAP",
+    "message": "Phạm vi chốt bị overlap với biên bản BBKK-2026-001",
+    "details": {}
+  }
+}
+```
+
+Response đề xuất cho `POST /api/inventory/:id/closing/validate-scope`:
+
+```json
+{
+  "success": true,
+  "data": {
+    "isValid": false,
+    "overlaps": [
+      {
+        "existingClosingCode": "BBKK-2026-001",
+        "existingScope": {
+          "id": "scope-123",
+          "type": "DEPARTMENT",
+          "departmentId": "dept-it",
+          "departmentName": "Phòng IT",
+          "scopeDate": "2026-06-15"
+        },
+        "overlappingItems": [
+          {
+            "itemId": "item-456",
+            "assetCode": "TS-2026-001",
+            "assetName": "Laptop Dell XPS",
+            "currentStatus": "LOCKED"
+          }
+        ],
+        "overlapPercentage": 45
+      }
+    ],
+    "suggestions": [
+      "Phòng IT ngày 15/06 đã có biên bản chốt",
+      "Điều chỉnh phạm vi hoặc yêu cầu mở lại biên bản BBKK-2026-001"
+    ]
+  }
+}
+```
+
+### Error codes
+
+- `CLOSING_SCOPE_OVERLAP`: HTTP `409`, phạm vi bị overlap với biên bản đã chốt.
+- `CLOSING_PENDING_ITEMS`: HTTP `422`, còn tài sản chưa kiểm kê hoặc chưa xử lý.
+- `CLOSING_INSUFFICIENT_SIGNERS`: HTTP `422`, thiếu người ký bắt buộc.
+- `ITEM_LOCKED`: HTTP `423`, item/detail đã bị khóa bởi biên bản chốt.
+- `REOPEN_NOT_ALLOWED`: HTTP `403`, không đủ điều kiện mở lại.
+- `MAX_REOPEN_EXCEEDED`: HTTP `403`, vượt quá số lần mở lại cho phép.
+- `INVALID_CLOSING_TRANSITION`: HTTP `409`, chuyển trạng thái không hợp lệ.
+- `REPORT_GENERATION_FAILED`: HTTP `500`, sinh báo cáo lỗi.
+
 ### Core closing
 
 - `POST /api/inventory/:id/closing/validate`
@@ -246,6 +318,48 @@ Logic đề xuất:
 
 - `GET /api/inventory/:id/audit-log`
 - `GET /api/inventory/closing-records/:closingId/history`
+
+## State Machine
+
+Trạng thái closing phải được validate tập trung ở service layer, không để từng endpoint tự xử lý rời rạc.
+
+| From | To | Điều kiện |
+| --- | --- | --- |
+| `DRAFT` | `PENDING_SIGN` | Đã có scope hợp lệ và đủ danh sách người ký bắt buộc |
+| `DRAFT` | `CANCELLED` | Người tạo hoặc Admin hủy |
+| `PENDING_SIGN` | `SIGNED` | Tất cả người ký bắt buộc đã ký |
+| `PENDING_SIGN` | `DRAFT` | Admin rút lại để sửa |
+| `PENDING_SIGN` | `CANCELLED` | Admin hủy |
+| `SIGNED` | `FINAL` | Không còn pending item hoặc force close có lý do |
+| `SIGNED` | `CANCELLED` | Admin hủy trước khi final |
+| `FINAL` | `REOPENED` | Trong 24h hoặc `SUPER_ADMIN`, có lý do |
+| `REOPENED` | `DRAFT` | Unlock scope và chỉnh lại hồ sơ |
+| `REOPENED` | `PENDING_SIGN` | Re-close với người ký giữ nguyên hoặc cập nhật |
+
+Quy tắc bổ sung:
+
+- `FINAL` là immutable, chỉ được thay đổi qua workflow reopen.
+- `REOPENED` yêu cầu approval nếu tổ chức bật approval workflow.
+- `reopenCount` tối đa 3 lần, trừ `SUPER_ADMIN`.
+- Mọi transition phải ghi audit log.
+
+## Event & Notification
+
+Các event cần emit để mở rộng thông báo, audit, automation và tích hợp sau này:
+
+- `closing:created`: tạo audit log, thông báo người liên quan.
+- `closing:ready_for_sign`: gửi nhắc ký, tạo approval/sign task.
+- `closing:signed`: cập nhật tiến độ ký.
+- `closing:finalized`: khóa item, sinh báo cáo async, thông báo stakeholder.
+- `closing:reopened`: unlock item, đánh dấu report cũ outdated, tạo audit/incident.
+- `closing:high_discrepancy`: tạo alert quản lý, gợi ý kiểm kê lại.
+- `closing:report_generated`: cập nhật report status và gửi thông báo file sẵn sàng.
+
+Kênh thông báo:
+
+- In-app notification.
+- Email ở phase sau.
+- Mobile push ở phase sau nếu mobile app đã bật.
 
 ## UI Flow đề xuất
 
@@ -286,9 +400,12 @@ Step 4: Xác nhận và chốt
 
 - Tiến độ chốt theo ngày: đã chốt/tổng ngày.
 - Tiến độ chốt theo phòng ban: `CLOSED`, `IN_PROGRESS`, `PENDING`.
+- Tiến độ chốt theo phiên kiểm kê.
 - Cảnh báo scope đang bị khóa.
 - Cảnh báo report đã cũ sau khi reopen.
 - Nút xem lịch sử mở lại và lịch sử file xuất.
+- Trạng thái sinh báo cáo: `idle`, `generating`, `completed`, `failed`.
+- Danh sách lỗi validate: pending items, overlap warnings, missing signers.
 
 ## Báo cáo cần chuẩn hóa
 
@@ -350,6 +467,35 @@ Triển khai theo hướng an toàn dữ liệu:
   - `inventory_closing_scopes.location_id, scope_date`
   - `inventory_closing_scopes.project_id, scope_date`
 
+## Cache Strategy
+
+Chỉ cache dữ liệu đọc nhiều, không cache dữ liệu dùng để finalize.
+
+Cache keys đề xuất:
+
+- `closing:record:{closingId}`
+- `closing:summary:{inventoryId}`
+- `closing:available-scopes:{inventoryId}`
+- `closing:progress:{inventoryId}`
+
+Invalidation:
+
+- Khi item/detail thay đổi: clear `summary`, `available-scopes`, `progress`.
+- Khi closing finalize: clear `record`, `summary`, `progress`.
+- Khi reopen: clear `record`, `summary`, `available-scopes`, `progress`.
+- Khi report generated: clear `record` và report list.
+
+## Database Guard
+
+Ưu tiên guard ở service layer. Database trigger chỉ dùng nếu cần khóa cứng ở production.
+
+Trigger optional:
+
+- Chặn update `inventory_details` nếu `locked_at` và `closing_scope_id` đã có.
+- Tự đánh dấu `inventory_report_files.is_outdated = true` khi closing chuyển từ `FINAL` sang `REOPENED`.
+
+Lưu ý: nếu dùng Prisma migration, trigger cần được quản lý rõ trong migration SQL và test kỹ trên staging.
+
 ## Phân phase triển khai
 
 ### Phase A: Core Closing - 2 tuần
@@ -357,6 +503,8 @@ Triển khai theo hướng an toàn dữ liệu:
 Week 1:
 
 - Migration model closing/scope/signer/report file.
+- Error handling framework và error codes.
+- State machine validation.
 - Basic API create/list/detail closing.
 - Summary calculation từ DB.
 
@@ -366,6 +514,8 @@ Week 2:
 - Validate pending items.
 - Lock/unlock dữ liệu theo scope.
 - Audit log cho chốt/mở lại.
+- Event emit cơ bản: created, finalized, reopened.
+- Performance test với dataset lớn.
 
 ### Phase B: Signing & Report Storage - 2 tuần
 
@@ -389,6 +539,7 @@ Week 5:
 - Chốt từng phần theo ngày/session/phòng ban/vị trí/dự án.
 - Suggested scopes.
 - Batch close.
+- Cache layer cho progress và available scopes.
 
 Week 6:
 
@@ -396,6 +547,7 @@ Week 6:
 - Request/approve reopen.
 - Reopen history.
 - Mark report outdated khi reopen.
+- Load test và tối ưu query.
 
 ### Phase D: UI Wizard & Polish - 2 tuần
 
@@ -412,9 +564,35 @@ Week 8:
 - Tablet/mobile responsive.
 - Regression test.
 
-Tổng: 8 tuần. Có thể rút xuống 6 tuần nếu team mạnh và ưu tiên Phase A/B trước.
+### Phase E: Monitoring & Stabilization - tùy chọn 1 tuần
+
+- Monitoring dashboard cho closing failures, report generation failures và reopen events.
+- Alert rule cho chốt lỗi, report lỗi, discrepancy cao.
+- Performance tuning.
+- Hoàn thiện tài liệu vận hành.
+
+Tổng: 8 tuần cho Phase A-D. Có thể thêm 1 tuần Phase E nếu triển khai production quy mô lớn.
 
 ## Regression Test
+
+### Unit tests
+
+- Detect scope overlap chính xác.
+- Calculate summary từ DB.
+- Validate mandatory signers.
+- Prevent closing with pending items.
+- Force close bắt buộc có lý do.
+- Validate state transition.
+
+### Integration tests
+
+- `POST /closing` tạo record và lock items.
+- `POST /closing` bị overlap trả `409`.
+- `POST /sign` validate signer role.
+- `POST /reopen` unlock đúng scope.
+- Report generated lưu checksum và metadata.
+
+### E2E tests
 
 - Tạo đợt kiểm kê.
 - Tạo phiên kiểm kê.
@@ -436,6 +614,55 @@ Tổng: 8 tuần. Có thể rút xuống 6 tuần nếu team mạnh và ưu tiê
 - Report cũ sau reopen phải bị đánh dấu outdated.
 - Audit log đầy đủ.
 - Hai user cùng chốt một scope: chỉ một giao dịch thành công.
+
+### Performance tests
+
+- Chốt 10.000 item trong thời gian chấp nhận được, mục tiêu dưới 30 giây trên staging.
+- 100 request đọc progress đồng thời trong lúc closing đang chạy.
+- Sinh report 5.000 item, mục tiêu dưới 10 giây nếu dùng async worker phù hợp.
+
+## Rollback Strategy
+
+Phase A rollback:
+
+- Disable API routes closing.
+- Drop hoặc bỏ dùng bảng closing mới nếu chưa có dữ liệu thật.
+- Remove lock columns sau khi backup nếu cần rollback schema.
+- Clear cache liên quan.
+
+Phase B rollback:
+
+- Export/lưu lại toàn bộ report đã sinh trước khi rollback.
+- Giữ file trong storage nhưng disable truy cập UI nếu cần.
+- Revert signing flow, không xóa dữ liệu ký nếu đã phát sinh hồ sơ thật.
+
+Nguyên tắc chung:
+
+- Không xóa biên bản/report đã final trên production nếu chưa có backup và phê duyệt.
+- Rollback feature flag trước, rollback schema sau.
+
+## Documentation Requirements
+
+Technical:
+
+- API documentation hoặc Swagger/OpenAPI.
+- Database schema diagram.
+- State machine diagram.
+- Sequence diagram cho finalize, reopen, report generation.
+
+Business:
+
+- User manual cho quy trình chốt kiểm kê.
+- Role & permission matrix.
+- Report templates guide.
+- Troubleshooting guide.
+
+Operations:
+
+- Deployment checklist.
+- Monitoring & alerting setup.
+- Backup & recovery procedure.
+- Performance baseline metrics.
 
 ## Rủi ro và lưu ý
 
