@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { ConfigService } from './config.service';
 
 const VALID_SCOPE_TYPES = ['FULL', 'DAILY', 'SESSION', 'DEPARTMENT', 'LOCATION', 'PROJECT'];
 const LARGE_SCOPE_THRESHOLD = 50000;
@@ -58,6 +59,10 @@ function endOfDay(value: Date) {
 }
 
 function vietnamDayRange(value: string | Date | undefined, fieldName: string) {
+  const timezone = ConfigService.getBusinessHours().timezone;
+  if (timezone !== 'Asia/Ho_Chi_Minh') {
+    console.warn(`Inventory closing date range currently uses +07:00 semantics; configured timezone is ${timezone}.`);
+  }
   if (!value) {
     throw new InventoryClosingError('INVALID_CLOSING_INPUT', `${fieldName} không hợp lệ`, 422);
   }
@@ -332,12 +337,16 @@ export class InventoryClosingService {
 
     const summaries = [];
     const overlaps = [];
+    const checkedOutOfScheduledScope: any[] = [];
 
     for (const scope of normalizedScopes) {
       const refs = await this.resolveScopeRefs(scope);
       const dailyBreakdown = String(scope.scopeType).toUpperCase() === 'DAILY'
         ? await this.getDailySessionBreakdown(inventoryCheckId, scope)
         : undefined;
+      if (String(scope.scopeType).toUpperCase() === 'DAILY') {
+        checkedOutOfScheduledScope.push(...await this.getCheckedOutOfScheduledScope(inventoryCheckId, scope));
+      }
       const rows = await this.getScopeRows(inventoryCheckId, scope, refs);
       if (rows.length === 0) {
         throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Phạm vi chốt không có tài sản', 422, { scope });
@@ -358,6 +367,7 @@ export class InventoryClosingService {
       scopeSummary: mergedSummary,
       canCloseNormally: mergedSummary.group3_pendingConfirm === 0 && mergedSummary.group4_unchecked === 0,
       hasBlockingItems: mergedSummary.group3_pendingConfirm > 0 || mergedSummary.group4_unchecked > 0,
+      checkedOutOfScheduledScope,
       suggestions: overlaps.length > 0
         ? ['Điều chỉnh phạm vi chốt hoặc yêu cầu mở lại biên bản đang khóa dữ liệu.']
         : [],
@@ -377,6 +387,7 @@ export class InventoryClosingService {
     if (scopes.length === 0) {
       throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Cần ít nhất một phạm vi chốt', 422);
     }
+    await this.assertNoDuplicateFinalClosing(inventoryCheckId, scopes);
 
     const validation = await this.validateScope(inventoryCheckId, scopes);
     if (!validation.isValid) {
@@ -809,14 +820,26 @@ export class InventoryClosingService {
     }
 
     const deadlineRange = vietnamDayRange(input.deadline, 'deadline');
+    const deadlineConfig = ConfigService.getUnresolvedDeadlineConfig();
+    const businessConfig = ConfigService.getBusinessHours();
     const todayRange = vietnamDayRange(new Date().toISOString().slice(0, 10), 'today');
     if (deadlineRange.start.getTime() < todayRange.start.getTime()) {
       throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Deadline xử lý tồn đọng không được là ngày quá khứ', 422);
     }
+    if (deadlineConfig.minNextWorkingDayAfterEndTime) {
+      const [endHour, endMinute] = businessConfig.businessHours.endTime.split(':').map(Number);
+      const now = new Date();
+      const localNow = new Date(now.toLocaleString('en-US', { timeZone: businessConfig.timezone }));
+      const closingDay = vietnamDayRange(closingDate.toISOString().slice(0, 10), 'closingDate');
+      const afterBusinessEnd = localNow.getHours() > endHour || (localNow.getHours() === endHour && localNow.getMinutes() >= endMinute);
+      if (afterBusinessEnd && deadlineRange.start.getTime() <= closingDay.start.getTime()) {
+        throw new InventoryClosingError('INVALID_CLOSING_INPUT', `Deadline xử lý tồn đọng phải sau ngày chốt nếu force close sau ${businessConfig.businessHours.endTime}`, 422);
+      }
+    }
     const maxDeadline = new Date(closingDate);
-    maxDeadline.setDate(maxDeadline.getDate() + 30);
+    maxDeadline.setDate(maxDeadline.getDate() + deadlineConfig.maxDaysAfterClosingDate);
     if (deadlineRange.start.getTime() > maxDeadline.getTime()) {
-      throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Deadline xử lý tồn đọng không được vượt quá 30 ngày kể từ ngày chốt.', 422);
+      throw new InventoryClosingError('INVALID_CLOSING_INPUT', `Deadline xử lý tồn đọng không được vượt quá ${deadlineConfig.maxDaysAfterClosingDate} ngày kể từ ngày chốt.`, 422);
     }
 
     return {
@@ -832,6 +855,35 @@ export class InventoryClosingService {
     const year = new Date().getFullYear();
     const count = await prisma.inventoryClosingRecord.count({ where: { inventoryCheckId } });
     return `BBKK-${year}-${inventoryCode}-${String(count + 1).padStart(3, '0')}`;
+  }
+
+  private static async assertNoDuplicateFinalClosing(inventoryCheckId: number, scopes: ClosingScopeInput[]) {
+    for (const scope of scopes) {
+      const scopeType = String(scope.scopeType || '').toUpperCase();
+      if (scopeType !== 'DAILY') continue;
+      const range = vietnamDayRange(scope.scopeDate, 'scopeDate');
+      const existing = await prisma.inventoryClosingRecord.findFirst({
+        where: {
+          inventoryCheckId,
+          status: 'FINAL',
+          scopes: {
+            some: {
+              scopeType: 'DAILY',
+              scopeDate: { gte: range.start, lte: range.end },
+            },
+          },
+        },
+        select: { id: true, closingCode: true, closingDate: true },
+      });
+      if (existing) {
+        throw new InventoryClosingError(
+          'CLOSING_ALREADY_FINALIZED',
+          `Ngày ${range.dateKey} đã có biên bản chốt FINAL (${existing.closingCode}). Cần reopen trước khi chốt lại.`,
+          409,
+          { existingClosingId: existing.id, existingClosingCode: existing.closingCode }
+        );
+      }
+    }
   }
 
   private static serializeScope(scope: ClosingScopeInput, refs: ScopeRefs) {
@@ -981,6 +1033,47 @@ export class InventoryClosingService {
         summary,
       };
     });
+  }
+
+  private static async getCheckedOutOfScheduledScope(inventoryCheckId: number, scope: ClosingScopeInput) {
+    const range = vietnamDayRange(scope.scopeDate, 'scopeDate');
+    const rows = await prisma.inventoryDetail.findMany({
+      where: {
+        checkedAt: { gte: range.start, lte: range.end },
+        session: {
+          inventoryCheckId,
+          OR: [
+            { scheduledDate: { lt: range.start } },
+            { scheduledDate: { gt: range.end } },
+          ],
+        },
+      },
+      select: {
+        id: true,
+        assetCode: true,
+        assetName: true,
+        checkedAt: true,
+        checkStatus: true,
+        resultStatus: true,
+        session: { select: { id: true, scheduledDate: true, departmentName: true, locationName: true } },
+      },
+      take: 100,
+      orderBy: { checkedAt: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      inventoryDetailId: row.id,
+      assetCode: row.assetCode,
+      assetName: row.assetName,
+      checkedAt: row.checkedAt,
+      checkStatus: row.checkStatus,
+      resultStatus: row.resultStatus,
+      sessionId: row.session.id,
+      sessionScheduledDate: row.session.scheduledDate,
+      departmentName: row.session.departmentName,
+      locationName: row.session.locationName,
+      warning: 'CHECKED_OUT_OF_SCHEDULED_SCOPE',
+    }));
   }
 
   private static async collectUnresolvedRows(

@@ -560,17 +560,36 @@ export class InventoryService {
   static async getInventoryVisitReport(sessionId: number) {
     const session = await this.getInventoryVisitDetail(sessionId);
     const details = session.details || [];
-    const matched = details.filter((d: any) => d.resultStatus === 'MATCH').length;
+    const inScopeDetails = details.filter((d: any) => d.resultStatus !== 'EXTRA');
+    const checkedDetails = details.filter((d: any) => Boolean(d.checkedAt));
+    const pendingDetails = checkedDetails.filter((d: any) => ['MATCH_PENDING_CONFIRM', 'NEED_REVIEW', 'ACTUAL_UPDATED'].includes(String(d.checkStatus || '').toUpperCase()));
+    const surplusDetails = details.filter((d: any) => d.resultStatus === 'EXTRA' || d.outOfBookStatus === 'REGISTERED');
+    const matchedDetails = checkedDetails.filter((d: any) => d.resultStatus === 'MATCH' && !pendingDetails.some((p: any) => p.id === d.id));
+    const mismatchDetails = checkedDetails.filter((d: any) => d.resultStatus && !['MATCH', 'EXTRA'].includes(d.resultStatus));
+    const uncheckedDetails = inScopeDetails.filter((d: any) => !d.checkedAt);
     return {
       title: `BIÊN BẢN KIỂM KÊ ${session.departmentName || session.locationName || 'TÀI SẢN'} NGÀY ${session.scheduledDate.toLocaleDateString('vi-VN')}`,
       session,
       summary: {
-        bookTotal: details.filter((d: any) => d.resultStatus !== 'EXTRA').length,
-        actualTotal: details.filter((d: any) => d.resultStatus !== 'MISSING').length,
-        matched,
-        deviations: details.length - matched
+        totalInScope: inScopeDetails.length,
+        checkedCount: checkedDetails.length,
+        uncheckedCount: uncheckedDetails.length,
+        pendingCount: pendingDetails.length,
+        matchedCount: matchedDetails.length,
+        mismatchCount: mismatchDetails.length,
+        surplusCount: surplusDetails.length,
+        missingCount: checkedDetails.filter((d: any) => d.resultStatus === 'MISSING').length,
+        damagedCount: checkedDetails.filter((d: any) => d.resultStatus === 'DAMAGED').length,
+        totalAfterCheck: inScopeDetails.length + surplusDetails.length,
+        bookTotal: inScopeDetails.length,
+        actualTotal: checkedDetails.length,
+        matched: matchedDetails.length,
+        deviations: mismatchDetails.length
       },
-      deviations: details.filter((d: any) => d.resultStatus !== 'MATCH'),
+      checkedItems: checkedDetails,
+      uncheckedItems: uncheckedDetails,
+      surplusItems: surplusDetails,
+      deviations: mismatchDetails,
       signatures: ['Đại diện phòng ban', 'Người kiểm kê', 'Trưởng HCNS']
     };
   }

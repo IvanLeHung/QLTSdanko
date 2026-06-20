@@ -6589,7 +6589,13 @@ export const InventoryDetail: React.FC = () => {
                 Đóng
               </button>
               <button
-                onClick={() => window.print()}
+                onClick={() => {
+                  if ((activeSessionReport.summary.checkedCount || activeSessionReport.summary.actualTotal || 0) === 0) {
+                    toast.error('Phiên kiểm kê chưa có tài sản nào được kiểm kê. Không thể in biên bản hoàn thành kiểm kê.');
+                    return;
+                  }
+                  window.print();
+                }}
                 className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-bold text-xs uppercase flex items-center gap-2 cursor-pointer"
               >
                 <FileText className="h-4 w-4" /> In biên bản
@@ -6627,22 +6633,28 @@ export const InventoryDetail: React.FC = () => {
 
             <div className="grid grid-cols-4 gap-3 text-center">
               <div className="border border-slate-200 rounded-xl p-3 bg-white">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Tổng sổ sách</p>
-                <p className="text-lg font-black text-slate-950 mt-1">{activeSessionReport.summary.bookTotal}</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Tổng trong phạm vi</p>
+                <p className="text-lg font-black text-slate-950 mt-1">{activeSessionReport.summary.totalInScope ?? activeSessionReport.summary.bookTotal}</p>
               </div>
               <div className="border border-slate-200 rounded-xl p-3 bg-white">
-                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Tổng thực tế</p>
-                <p className="text-lg font-black text-slate-955 mt-1">{activeSessionReport.summary.actualTotal}</p>
+                <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Đã kiểm kê</p>
+                <p className="text-lg font-black text-slate-955 mt-1">{activeSessionReport.summary.checkedCount ?? activeSessionReport.summary.actualTotal}</p>
               </div>
               <div className="border border-slate-200 rounded-xl p-3 bg-white">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Trùng khớp</p>
-                <p className="text-lg font-black text-emerald-600 mt-1">{activeSessionReport.summary.matched}</p>
+                <p className="text-lg font-black text-emerald-600 mt-1">{activeSessionReport.summary.matchedCount ?? activeSessionReport.summary.matched}</p>
               </div>
               <div className="border border-slate-200 rounded-xl p-3 bg-white">
                 <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider">Chênh lệch</p>
-                <p className="text-lg font-black text-rose-600 mt-1">{activeSessionReport.summary.deviations}</p>
+                <p className="text-lg font-black text-rose-600 mt-1">{activeSessionReport.summary.mismatchCount ?? activeSessionReport.summary.deviations}</p>
               </div>
             </div>
+
+            {(activeSessionReport.summary.checkedCount || activeSessionReport.summary.actualTotal || 0) === 0 && (
+              <div className="bg-amber-50 border border-amber-200 text-amber-800 rounded-2xl p-4 text-xs font-bold">
+                Phiên kiểm kê chưa có tài sản nào được kiểm kê. Chỉ có thể xem/phụ lục danh sách chưa kiểm, không in biên bản hoàn thành.
+              </div>
+            )}
 
             <div className="space-y-2">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">Danh sách đối soát chi tiết</h3>
@@ -6658,7 +6670,7 @@ export const InventoryDetail: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {(activeSessionReport.session.details || []).map((d: any) => {
+                    {((activeSessionReport.checkedItems || []).length > 0 ? activeSessionReport.checkedItems : []).map((d: any) => {
                       const isExtra = d.resultStatus === 'EXTRA';
                       const isMissing = d.resultStatus === 'MISSING';
                       return (
@@ -6677,10 +6689,26 @@ export const InventoryDetail: React.FC = () => {
                         </tr>
                       );
                     })}
+                    {(!activeSessionReport.checkedItems || activeSessionReport.checkedItems.length === 0) && (
+                      <tr>
+                        <td colSpan={5} className="p-6 text-center text-slate-400 font-bold">
+                          Chưa có tài sản nào được kiểm kê trong phiên/ngày này.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
             </div>
+
+            {activeSessionReport.uncheckedItems && activeSessionReport.uncheckedItems.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-xs font-black uppercase tracking-wider text-slate-500">Phụ lục tài sản chưa kiểm</h3>
+                <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 text-xs font-bold text-slate-600">
+                  Còn {activeSessionReport.uncheckedItems.length} tài sản chưa kiểm trong phạm vi phiên. Không tính các tài sản này là khớp.
+                </div>
+              </div>
+            )}
 
             {activeSessionReport.deviations && activeSessionReport.deviations.length > 0 && (
               <div className="space-y-2">
