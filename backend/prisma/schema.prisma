@@ -529,7 +529,7 @@ model InventoryItem {
   note             String?
   result              String?        // MATCHED, MISSING, EXTRA, DAMAGED, WRONG_LOCATION, NEED_REVIEW
   photos              String[]
-  checkStatus         String         @default("PENDING") // PENDING, CHECKED, SCANNED, MATCH_PENDING_CONFIRM, NEED_REVIEW, ACTUAL_UPDATED
+  checkStatus         String         @default("PENDING") // PENDING, CHECKED, SCANNED, MATCH_PENDING_CONFIRM, NEED_REVIEW, ACTUAL_UPDATED, UNRESOLVED_AT_CLOSING
   checkedAt           DateTime?
   checkedBy           String?
   actualUserName      String?
@@ -611,7 +611,7 @@ model InventoryDetail {
   createdAt          DateTime          @default(now())
 
   actualProjectName  String?
-  checkStatus        String            @default("PENDING") // PENDING, CHECKED, SCANNED, MATCH_PENDING_CONFIRM, NEED_REVIEW, ACTUAL_UPDATED
+  checkStatus        String            @default("PENDING") // PENDING, CHECKED, SCANNED, MATCH_PENDING_CONFIRM, NEED_REVIEW, ACTUAL_UPDATED, UNRESOLVED_AT_CLOSING
   checkedBy          String?
   batchId            String?
   outOfBookStatus    String?           // IGNORED, REGISTERED
@@ -646,7 +646,12 @@ model InventoryClosingRecord {
   differencePercent Float    @default(0)
   summaryJson       Json?
   closingNote       String?
+  forceClose        Boolean  @default(false)
   forceCloseReason  String?
+  forcedAt          DateTime?
+  forcedBy          String?
+  unresolvedHandlingJson Json?
+  unresolvedItemsJson Json?
   version           Int      @default(1)
   reopenCount       Int      @default(0)
   reopenHistory     Json     @default("[]")

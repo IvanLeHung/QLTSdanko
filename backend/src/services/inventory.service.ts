@@ -315,6 +315,9 @@ export class InventoryService {
     const assets = await prisma.asset.findMany({ where, orderBy: { assetCode: 'asc' } });
     const assetCountPlan = assets.length;
     const inspectionMembers = normalizeInspectionMembers(data.inspectionMembers || data.members);
+    if (inspectionMembers.length === 0) {
+      throw new Error('Vui lòng nhập ít nhất một thành viên đoàn kiểm kê.');
+    }
     const departmentRepresentatives = normalizeDepartmentRepresentatives(data.departmentRepresentatives);
     if (departmentRepresentatives.length === 0) {
       throw new Error('Vui lòng khai báo đại diện ký biên bản cho phiên kiểm kê.');
@@ -326,7 +329,20 @@ export class InventoryService {
 
     const inspectionLeaderId = data.inspectionLeaderId ? Number(data.inspectionLeaderId) : null;
     const inspectionLeaderName = normalizeText(data.inspectionLeaderName || data.checkerName);
+    if (!inspectionLeaderName) {
+      throw new Error('Vui lòng nhập trưởng đoàn kiểm kê.');
+    }
     const inspectionTeamName = normalizeText(data.inspectionTeamName || data.teamName);
+    if (!inspectionTeamName) {
+      throw new Error('Vui lòng nhập đội kiểm kê.');
+    }
+    const memberNameKeys = inspectionMembers.map((member) => member.fullName.toLowerCase());
+    if (new Set(memberNameKeys).size !== memberNameKeys.length) {
+      throw new Error('Thành viên đoàn kiểm kê bị trùng tên.');
+    }
+    if (memberNameKeys.includes(inspectionLeaderName.toLowerCase())) {
+      throw new Error('Thành viên đoàn kiểm kê không được trùng với trưởng đoàn.');
+    }
     const representativeName = departmentRepresentatives.length > 0
       ? departmentRepresentatives.map((rep) => `${rep.departmentName ? `${rep.departmentName}: ` : ''}${rep.representativeName}${rep.position ? ` - ${rep.position}` : ''}`).join('; ')
       : normalizeText(data.representativeName) || null;

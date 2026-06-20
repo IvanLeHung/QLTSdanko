@@ -506,6 +506,19 @@ export const InventoryDetail: React.FC = () => {
       toast.error('Vui lòng nhập đội kiểm kê.');
       return false;
     }
+    const normalizedMembers = sessionMembers.map((name) => name.trim()).filter(Boolean);
+    if (normalizedMembers.length === 0) {
+      toast.error('Vui lòng nhập ít nhất một thành viên đoàn kiểm kê.');
+      return false;
+    }
+    if (new Set(normalizedMembers.map((name) => name.toLowerCase())).size !== normalizedMembers.length) {
+      toast.error('Thành viên đoàn kiểm kê bị trùng tên.');
+      return false;
+    }
+    if (normalizedMembers.some((name) => name.toLowerCase() === sessionForm.checkerName.trim().toLowerCase())) {
+      toast.error('Thành viên đoàn kiểm kê không được trùng với trưởng đoàn.');
+      return false;
+    }
     if (departmentRepresentatives.length === 0) {
       toast.error('Vui lòng khai báo đại diện ký biên bản.');
       return false;
@@ -6431,10 +6444,18 @@ export const InventoryDetail: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => {
-                          if (newMemberName.trim()) {
-                            setSessionMembers(prev => [...prev, newMemberName.trim()]);
-                            setNewMemberName('');
+                          const memberName = newMemberName.trim();
+                          if (!memberName) return;
+                          if (memberName.toLowerCase() === sessionForm.checkerName.trim().toLowerCase()) {
+                            toast.error('Thành viên không được trùng với trưởng đoàn.');
+                            return;
                           }
+                          if (sessionMembers.some((name) => name.trim().toLowerCase() === memberName.toLowerCase())) {
+                            toast.error('Thành viên này đã có trong đoàn kiểm kê.');
+                            return;
+                          }
+                          setSessionMembers(prev => [...prev, memberName]);
+                          setNewMemberName('');
                         }}
                         className="bg-slate-900 hover:bg-slate-850 text-white px-6 py-2.5 rounded-xl font-bold text-sm uppercase cursor-pointer"
                       >
