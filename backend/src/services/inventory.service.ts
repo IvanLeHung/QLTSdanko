@@ -335,11 +335,13 @@ export class InventoryService {
   }
 
   static async startInventoryVisit(sessionId: number) {
-    return await prisma.$transaction(async (tx) => {
-      const session = await tx.inventorySession.findUnique({ where: { id: sessionId }, include: { details: true } });
+    await prisma.$transaction(async (tx) => {
+      const session = await tx.inventorySession.findUnique({ where: { id: sessionId } });
       if (!session) throw new Error('Không tìm thấy phiên kiểm kê tài sản.');
 
-      if (session.details.length === 0) {
+      const detailsCount = await tx.inventoryDetail.count({ where: { sessionId } });
+
+      if (detailsCount === 0) {
         const where = this.buildAssetInventoryScopeWhere(session.departmentName || undefined, session.locationName || undefined);
         const assets = await tx.asset.findMany({ where, orderBy: { assetCode: 'asc' } });
         if (assets.length > 0) {
@@ -365,11 +367,17 @@ export class InventoryService {
       }
 
       await tx.inventoryCheck.update({ where: { id: session.inventoryCheckId }, data: { status: 'IN_PROGRESS' } });
-      return await tx.inventorySession.update({
+      await tx.inventorySession.update({
         where: { id: sessionId },
-        data: { status: 'IN_PROGRESS' },
-        include: { details: { include: { asset: true } } }
+        data: { status: 'IN_PROGRESS' }
       });
+    }, {
+      timeout: 15000
+    });
+
+    return await prisma.inventorySession.findUnique({
+      where: { id: sessionId },
+      include: { details: { include: { asset: true } } }
     });
   }
 
