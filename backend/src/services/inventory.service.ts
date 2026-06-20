@@ -447,11 +447,17 @@ export class InventoryService {
       }
 
       await tx.inventoryCheck.update({ where: { id: session.inventoryCheckId }, data: { status: 'IN_PROGRESS' } });
-      return await tx.inventorySession.update({
+      await tx.inventorySession.update({
         where: { id: sessionId },
-        data: { status: 'IN_PROGRESS' },
-        include: { details: { include: { asset: true } } }
+        data: { status: 'IN_PROGRESS' }
       });
+    }, {
+      timeout: 15000
+    });
+
+    return await prisma.inventorySession.findUnique({
+      where: { id: sessionId },
+      include: { details: { include: { asset: true } } }
     });
   }
 
