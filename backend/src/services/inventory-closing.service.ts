@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import prisma from '../utils/prisma';
+import { ConfigService } from './config.service';
 
 const VALID_SCOPE_TYPES = ['FULL', 'DAILY', 'SESSION', 'DEPARTMENT', 'LOCATION', 'PROJECT'];
 const LARGE_SCOPE_THRESHOLD = 50000;
@@ -57,6 +58,25 @@ function endOfDay(value: Date) {
   return date;
 }
 
+function vietnamDayRange(value: string | Date | undefined, fieldName: string) {
+  const timezone = ConfigService.getBusinessHours().timezone;
+  if (timezone !== 'Asia/Ho_Chi_Minh') {
+    console.warn(`Inventory closing date range currently uses +07:00 semantics; configured timezone is ${timezone}.`);
+  }
+  if (!value) {
+    throw new InventoryClosingError('INVALID_CLOSING_INPUT', `${fieldName} không hợp lệ`, 422);
+  }
+  const dateKey = value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateKey)) {
+    throw new InventoryClosingError('INVALID_CLOSING_INPUT', `${fieldName} không hợp lệ`, 422);
+  }
+  return {
+    start: new Date(`${dateKey}T00:00:00+07:00`),
+    end: new Date(`${dateKey}T23:59:59.999+07:00`),
+    dateKey,
+  };
+}
+
 function parseDate(value: string | Date | undefined, fieldName: string) {
   if (!value) return undefined;
   const date = value instanceof Date ? value : new Date(value);
@@ -98,16 +118,22 @@ function normalizeScope(scope: ClosingScopeInput): ClosingScopeInput {
   };
 }
 
-function classifyRow(row: { checkStatus?: string | null; resultStatus?: string | null; result?: string | null }) {
+function classifyRow(row: { checkStatus?: string | null; resultStatus?: string | null; result?: string | null; checkedAt?: Date | string | null }) {
   const status = String(row.checkStatus || '').toUpperCase();
   const result = String(row.resultStatus || row.result || '').toUpperCase();
-  const pending = !status || ['PENDING', 'NEED_REVIEW', 'MATCH_PENDING_CONFIRM'].includes(status);
+  const checked = Boolean(row.checkedAt);
+  const group3 = checked && ['NEED_REVIEW', 'MATCH_PENDING_CONFIRM', 'ACTUAL_UPDATED'].includes(status);
+  const group4 = !checked;
+  const pending = group3 || group4 || !status || ['PENDING', 'NEED_REVIEW', 'MATCH_PENDING_CONFIRM'].includes(status);
   const missing = result === 'MISSING';
   const extra = result === 'EXTRA';
   const damaged = result === 'DAMAGED';
-  const matched = !pending && ['MATCH', 'MATCHED', ''].includes(result);
+  const mismatch = ['MISMATCH', 'WRONG_LOCATION', 'WRONG_USER', 'WRONG_STATUS', 'DAMAGED', 'MISSING', 'NEED_REVIEW'].includes(result);
+  const matched = checked && !group3 && ['MATCH', 'MATCHED', 'SURPLUS', 'EXTRA', ''].includes(result);
   const discrepancy = !matched && !pending;
-  return { pending, matched, discrepancy, missing, extra, damaged };
+  const group2 = checked && !group3 && (mismatch || damaged || missing || discrepancy);
+  const group1 = checked && !group2 && !group3;
+  return { pending, matched, discrepancy, missing, extra, damaged, group1, group2, group3, group4 };
 }
 
 function mergeSummaries(parts: Array<ReturnType<typeof summarizeRows>>) {
@@ -119,6 +145,17 @@ function mergeSummaries(parts: Array<ReturnType<typeof summarizeRows>>) {
     extraItems: 0,
     damagedItems: 0,
     pendingItems: 0,
+    group1_confirmed: 0,
+    group1_match: 0,
+    group1_surplus: 0,
+    group2_mismatch: 0,
+    group2_mismatch_count: 0,
+    group2_damaged_count: 0,
+    group2_missing_count: 0,
+    group3_pendingConfirm: 0,
+    group3_matchPendingConfirm_count: 0,
+    group3_needReview_count: 0,
+    group4_unchecked: 0,
     differencePercent: 0,
   };
 
@@ -130,6 +167,17 @@ function mergeSummaries(parts: Array<ReturnType<typeof summarizeRows>>) {
     summary.extraItems += part.extraItems;
     summary.damagedItems += part.damagedItems;
     summary.pendingItems += part.pendingItems;
+    summary.group1_confirmed += part.group1_confirmed;
+    summary.group1_match += part.group1_match;
+    summary.group1_surplus += part.group1_surplus;
+    summary.group2_mismatch += part.group2_mismatch;
+    summary.group2_mismatch_count += part.group2_mismatch_count;
+    summary.group2_damaged_count += part.group2_damaged_count;
+    summary.group2_missing_count += part.group2_missing_count;
+    summary.group3_pendingConfirm += part.group3_pendingConfirm;
+    summary.group3_matchPendingConfirm_count += part.group3_matchPendingConfirm_count;
+    summary.group3_needReview_count += part.group3_needReview_count;
+    summary.group4_unchecked += part.group4_unchecked;
   }
 
   summary.differencePercent = summary.totalItems > 0
@@ -139,7 +187,7 @@ function mergeSummaries(parts: Array<ReturnType<typeof summarizeRows>>) {
   return summary;
 }
 
-function summarizeRows(rows: Array<{ checkStatus?: string | null; resultStatus?: string | null; result?: string | null }>) {
+function summarizeRows(rows: Array<{ checkStatus?: string | null; resultStatus?: string | null; result?: string | null; checkedAt?: Date | string | null }>) {
   const summary = {
     totalItems: rows.length,
     matchedItems: 0,
@@ -148,6 +196,17 @@ function summarizeRows(rows: Array<{ checkStatus?: string | null; resultStatus?:
     extraItems: 0,
     damagedItems: 0,
     pendingItems: 0,
+    group1_confirmed: 0,
+    group1_match: 0,
+    group1_surplus: 0,
+    group2_mismatch: 0,
+    group2_mismatch_count: 0,
+    group2_damaged_count: 0,
+    group2_missing_count: 0,
+    group3_pendingConfirm: 0,
+    group3_matchPendingConfirm_count: 0,
+    group3_needReview_count: 0,
+    group4_unchecked: 0,
     differencePercent: 0,
   };
 
@@ -159,6 +218,17 @@ function summarizeRows(rows: Array<{ checkStatus?: string | null; resultStatus?:
     if (cls.missing) summary.missingItems += 1;
     if (cls.extra) summary.extraItems += 1;
     if (cls.damaged) summary.damagedItems += 1;
+    if (cls.group1) summary.group1_confirmed += 1;
+    if (cls.group1 && !cls.extra) summary.group1_match += 1;
+    if (cls.group1 && cls.extra) summary.group1_surplus += 1;
+    if (cls.group2) summary.group2_mismatch += 1;
+    if (cls.group2 && !cls.damaged && !cls.missing) summary.group2_mismatch_count += 1;
+    if (cls.group2 && cls.damaged) summary.group2_damaged_count += 1;
+    if (cls.group2 && cls.missing) summary.group2_missing_count += 1;
+    if (cls.group3) summary.group3_pendingConfirm += 1;
+    if (cls.group3 && String(row.checkStatus || '').toUpperCase() === 'MATCH_PENDING_CONFIRM') summary.group3_matchPendingConfirm_count += 1;
+    if (cls.group3 && String(row.checkStatus || '').toUpperCase() !== 'MATCH_PENDING_CONFIRM') summary.group3_needReview_count += 1;
+    if (cls.group4) summary.group4_unchecked += 1;
   }
 
   summary.differencePercent = summary.totalItems > 0
@@ -267,24 +337,37 @@ export class InventoryClosingService {
 
     const summaries = [];
     const overlaps = [];
+    const checkedOutOfScheduledScope: any[] = [];
 
     for (const scope of normalizedScopes) {
       const refs = await this.resolveScopeRefs(scope);
+      const dailyBreakdown = String(scope.scopeType).toUpperCase() === 'DAILY'
+        ? await this.getDailySessionBreakdown(inventoryCheckId, scope)
+        : undefined;
+      if (String(scope.scopeType).toUpperCase() === 'DAILY') {
+        checkedOutOfScheduledScope.push(...await this.getCheckedOutOfScheduledScope(inventoryCheckId, scope));
+      }
       const rows = await this.getScopeRows(inventoryCheckId, scope, refs);
       if (rows.length === 0) {
         throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Phạm vi chốt không có tài sản', 422, { scope });
       }
       const summary = summarizeRows(rows);
-      summaries.push({ scope: this.serializeScope(scope, refs), summary });
+      summaries.push({ scope: this.serializeScope(scope, refs), summary, ...(dailyBreakdown ? { sessionBreakdown: dailyBreakdown } : {}) });
 
       const scopeOverlaps = await this.findOverlaps(inventoryCheckId, scope, refs);
       overlaps.push(...scopeOverlaps);
     }
 
+    const mergedSummary = mergeSummaries(summaries.map((item: any) => item.summary));
+
     return {
       isValid: overlaps.length === 0,
       overlaps,
       summaries,
+      scopeSummary: mergedSummary,
+      canCloseNormally: mergedSummary.group3_pendingConfirm === 0 && mergedSummary.group4_unchecked === 0,
+      hasBlockingItems: mergedSummary.group3_pendingConfirm > 0 || mergedSummary.group4_unchecked > 0,
+      checkedOutOfScheduledScope,
       suggestions: overlaps.length > 0
         ? ['Điều chỉnh phạm vi chốt hoặc yêu cầu mở lại biên bản đang khóa dữ liệu.']
         : [],
@@ -304,6 +387,7 @@ export class InventoryClosingService {
     if (scopes.length === 0) {
       throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Cần ít nhất một phạm vi chốt', 422);
     }
+    await this.assertNoDuplicateFinalClosing(inventoryCheckId, scopes);
 
     const validation = await this.validateScope(inventoryCheckId, scopes);
     if (!validation.isValid) {
@@ -444,13 +528,26 @@ export class InventoryClosingService {
       }
     }
 
-    const pendingItems = record.scopes.reduce((sum, scope) => sum + scope.pendingCount, 0);
+    const currentScopeStates = await Promise.all(record.scopes.map(async (scope: any) => {
+      const scopeInput = this.scopeModelToInput(scope);
+      const refs = await this.resolveScopeRefs(scopeInput);
+      const rows = await this.getScopeRows(record.inventoryCheckId, scopeInput, refs);
+      const summary = summarizeRows(rows);
+      return { scopeId: scope.id, summary };
+    }));
+    const currentTotalSummary = mergeSummaries(currentScopeStates.map(scope => scope.summary));
+    const pendingItems = currentScopeStates.reduce((sum, scope) => sum + scope.summary.pendingItems, 0);
+    const forceClose = Boolean(data.forceClose);
+    const forceCloseReason = String(data.forceCloseReason || data.forceReason || '').trim();
     if (pendingItems > 0) {
-      const reason = String(data.forceCloseReason || '').trim();
-      if (reason.length < 20) {
+      if (!forceClose) {
+        throw new InventoryClosingError('CLOSING_PENDING_ITEMS', `Còn ${pendingItems} tài sản chưa xử lý, không thể chốt thường`, 422, { pendingItems, forceCloseRequired: true });
+      }
+      if (forceCloseReason.length < 20) {
         throw new InventoryClosingError('CLOSING_PENDING_ITEMS', `Còn ${pendingItems} tài sản chưa xử lý, cần lý do force close tối thiểu 20 ký tự`, 422, { pendingItems });
       }
     }
+    const unresolvedHandling = forceClose ? this.validateUnresolvedHandling(data.unresolvedHandling, pendingItems, record.closingDate) : null;
 
     if (record.totalItems > LARGE_SCOPE_THRESHOLD) {
       const actor = actorName(user);
@@ -458,7 +555,11 @@ export class InventoryClosingService {
         where: { id: closingId },
         data: {
           status: 'PROCESSING',
-          forceCloseReason: data.forceCloseReason || record.forceCloseReason,
+          forceClose,
+          forceCloseReason: forceCloseReason || record.forceCloseReason,
+          forcedAt: forceClose ? new Date() : record.forcedAt,
+          forcedBy: forceClose ? actor : record.forcedBy,
+          unresolvedHandlingJson: unresolvedHandling || record.unresolvedHandlingJson || undefined,
           version: { increment: 1 },
         },
       });
@@ -475,15 +576,22 @@ export class InventoryClosingService {
 
     const actor = actorName(user);
     const now = new Date();
+    const unresolvedItems: any[] = [];
 
     return prisma.$transaction(async tx => {
       for (const scope of record.scopes) {
+        const currentState = currentScopeStates.find(item => item.scopeId === scope.id);
         const scopeInput = this.scopeModelToInput(scope);
         const refs = await this.resolveScopeRefs(scopeInput, tx);
         await this.assertNoLockedOverlap(record.inventoryCheckId, scopeInput, refs, closingId, tx);
 
         const itemWhere = await this.buildItemWhere(record.inventoryCheckId, scopeInput, refs);
         const detailWhere = await this.buildDetailWhere(record.inventoryCheckId, scopeInput, refs);
+
+        const unresolvedRows = forceClose
+          ? await this.collectUnresolvedRows(record.inventoryCheckId, scopeInput, refs, scope.id, unresolvedHandling, tx)
+          : [];
+        unresolvedItems.push(...unresolvedRows);
 
         await tx.inventoryDetail.updateMany({
           where: { ...detailWhere, closingScopeId: null },
@@ -495,7 +603,20 @@ export class InventoryClosingService {
         });
         await tx.inventoryClosingScope.update({
           where: { id: scope.id },
-          data: { lockedAt: now, lockedBy: actor, status: 'COMPLETE' },
+          data: {
+            lockedAt: now,
+            lockedBy: actor,
+            status: 'COMPLETE',
+            ...(currentState ? {
+              itemCount: currentState.summary.totalItems,
+              matchedCount: currentState.summary.matchedItems,
+              differenceCount: currentState.summary.discrepancyItems,
+              pendingCount: currentState.summary.pendingItems,
+              extraCount: currentState.summary.extraItems,
+              missingCount: currentState.summary.missingItems,
+              damagedCount: currentState.summary.damagedItems,
+            } : {}),
+          },
         });
       }
 
@@ -505,7 +626,20 @@ export class InventoryClosingService {
           status: 'FINAL',
           closedAt: now,
           closedBy: actor,
-          forceCloseReason: data.forceCloseReason || record.forceCloseReason,
+          totalItems: currentTotalSummary.totalItems,
+          matchedItems: currentTotalSummary.matchedItems,
+          discrepancyItems: currentTotalSummary.discrepancyItems,
+          missingItems: currentTotalSummary.missingItems,
+          extraItems: currentTotalSummary.extraItems,
+          damagedItems: currentTotalSummary.damagedItems,
+          differencePercent: currentTotalSummary.differencePercent,
+          summaryJson: currentTotalSummary,
+          forceClose,
+          forceCloseReason: forceCloseReason || record.forceCloseReason,
+          forcedAt: forceClose ? now : record.forcedAt,
+          forcedBy: forceClose ? actor : record.forcedBy,
+          unresolvedHandlingJson: unresolvedHandling || record.unresolvedHandlingJson || undefined,
+          unresolvedItemsJson: unresolvedItems.length > 0 ? unresolvedItems : record.unresolvedItemsJson || undefined,
           version: { increment: 1 },
         },
         include: { scopes: true, signers: true, reports: true },
@@ -516,7 +650,7 @@ export class InventoryClosingService {
           entityType: 'INVENTORY_CLOSING',
           entityId: closingId,
           action: 'COMPLETE',
-          details: JSON.stringify({ closingCode: record.closingCode, totalItems: record.totalItems }),
+          details: JSON.stringify({ closingCode: record.closingCode, totalItems: record.totalItems, forceClose, unresolvedItemCount: unresolvedItems.length }),
           performedBy: actor,
         },
       });
@@ -662,10 +796,94 @@ export class InventoryClosingService {
     }
   }
 
+  private static validateUnresolvedHandling(input: any, pendingItems: number, closingDate: Date) {
+    if (pendingItems === 0) return null;
+    if (!input || typeof input !== 'object') {
+      throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Force close có tài sản tồn đọng cần khai báo unresolvedHandling', 422);
+    }
+
+    const nextAction = String(input.nextAction || '').trim().toUpperCase();
+    if (!['MANUAL_FOLLOW_UP', 'CREATE_FOLLOW_UP_SESSION'].includes(nextAction)) {
+      if (nextAction === 'AUTO_CREATE_FOLLOW_UP_SESSION') {
+        throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Chức năng tự động tạo phiên bổ sung chưa được hỗ trợ. Vui lòng chọn MANUAL_FOLLOW_UP hoặc CREATE_FOLLOW_UP_SESSION.', 422);
+      }
+      throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'unresolvedHandling.nextAction không hợp lệ', 422);
+    }
+
+    const assignedTo = String(input.assignedTo || '').trim();
+    const note = String(input.note || '').trim();
+    if (!assignedTo) {
+      throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'unresolvedHandling.assignedTo là bắt buộc', 422);
+    }
+    if (!note) {
+      throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'unresolvedHandling.note là bắt buộc', 422);
+    }
+
+    const deadlineRange = vietnamDayRange(input.deadline, 'deadline');
+    const deadlineConfig = ConfigService.getUnresolvedDeadlineConfig();
+    const businessConfig = ConfigService.getBusinessHours();
+    const todayRange = vietnamDayRange(new Date().toISOString().slice(0, 10), 'today');
+    if (deadlineRange.start.getTime() < todayRange.start.getTime()) {
+      throw new InventoryClosingError('INVALID_CLOSING_INPUT', 'Deadline xử lý tồn đọng không được là ngày quá khứ', 422);
+    }
+    if (deadlineConfig.minNextWorkingDayAfterEndTime) {
+      const [endHour, endMinute] = businessConfig.businessHours.endTime.split(':').map(Number);
+      const now = new Date();
+      const localNow = new Date(now.toLocaleString('en-US', { timeZone: businessConfig.timezone }));
+      const closingDay = vietnamDayRange(closingDate.toISOString().slice(0, 10), 'closingDate');
+      const afterBusinessEnd = localNow.getHours() > endHour || (localNow.getHours() === endHour && localNow.getMinutes() >= endMinute);
+      if (afterBusinessEnd && deadlineRange.start.getTime() <= closingDay.start.getTime()) {
+        throw new InventoryClosingError('INVALID_CLOSING_INPUT', `Deadline xử lý tồn đọng phải sau ngày chốt nếu force close sau ${businessConfig.businessHours.endTime}`, 422);
+      }
+    }
+    const maxDeadline = new Date(closingDate);
+    maxDeadline.setDate(maxDeadline.getDate() + deadlineConfig.maxDaysAfterClosingDate);
+    if (deadlineRange.start.getTime() > maxDeadline.getTime()) {
+      throw new InventoryClosingError('INVALID_CLOSING_INPUT', `Deadline xử lý tồn đọng không được vượt quá ${deadlineConfig.maxDaysAfterClosingDate} ngày kể từ ngày chốt.`, 422);
+    }
+
+    return {
+      nextAction,
+      assignedTo,
+      deadline: deadlineRange.dateKey,
+      note,
+      followUpStatus: 'PENDING_FOLLOW_UP',
+    };
+  }
+
   private static async generateClosingCode(inventoryCheckId: number, inventoryCode: string) {
     const year = new Date().getFullYear();
     const count = await prisma.inventoryClosingRecord.count({ where: { inventoryCheckId } });
     return `BBKK-${year}-${inventoryCode}-${String(count + 1).padStart(3, '0')}`;
+  }
+
+  private static async assertNoDuplicateFinalClosing(inventoryCheckId: number, scopes: ClosingScopeInput[]) {
+    for (const scope of scopes) {
+      const scopeType = String(scope.scopeType || '').toUpperCase();
+      if (scopeType !== 'DAILY') continue;
+      const range = vietnamDayRange(scope.scopeDate, 'scopeDate');
+      const existing = await prisma.inventoryClosingRecord.findFirst({
+        where: {
+          inventoryCheckId,
+          status: 'FINAL',
+          scopes: {
+            some: {
+              scopeType: 'DAILY',
+              scopeDate: { gte: range.start, lte: range.end },
+            },
+          },
+        },
+        select: { id: true, closingCode: true, closingDate: true },
+      });
+      if (existing) {
+        throw new InventoryClosingError(
+          'CLOSING_ALREADY_FINALIZED',
+          `Ngày ${range.dateKey} đã có biên bản chốt FINAL (${existing.closingCode}). Cần reopen trước khi chốt lại.`,
+          409,
+          { existingClosingId: existing.id, existingClosingCode: existing.closingCode }
+        );
+      }
+    }
   }
 
   private static serializeScope(scope: ClosingScopeInput, refs: ScopeRefs) {
@@ -714,8 +932,7 @@ export class InventoryClosingService {
     if (scopeType === 'FULL') return base;
     if (scopeType === 'SESSION') return { id: -1 };
     if (scopeType === 'DAILY') {
-      const day = parseDate(scope.scopeDate, 'scopeDate')!;
-      return { ...base, checkedAt: { gte: startOfDay(day), lte: endOfDay(day) } };
+      return { id: -1 };
     }
     if (scopeType === 'DEPARTMENT') {
       return { ...base, OR: [{ actualDepartment: refs.departmentName }, { asset: { departmentName: refs.departmentName } }] };
@@ -735,13 +952,9 @@ export class InventoryClosingService {
     if (scopeType === 'FULL') return base;
     if (scopeType === 'SESSION') return { sessionId: scope.sessionId };
     if (scopeType === 'DAILY') {
-      const day = parseDate(scope.scopeDate, 'scopeDate')!;
+      const range = vietnamDayRange(scope.scopeDate, 'scopeDate');
       return {
-        ...base,
-        OR: [
-          { checkedAt: { gte: startOfDay(day), lte: endOfDay(day) } },
-          { session: { inventoryCheckId, scheduledDate: { gte: startOfDay(day), lte: endOfDay(day) } } },
-        ],
+        session: { inventoryCheckId, scheduledDate: { gte: range.start, lte: range.end } },
       };
     }
     if (scopeType === 'DEPARTMENT') {
@@ -760,16 +973,202 @@ export class InventoryClosingService {
     const [details, items] = await Promise.all([
       prisma.inventoryDetail.findMany({
         where: await this.buildDetailWhere(inventoryCheckId, scope, refs),
-        select: { id: true, assetCode: true, assetName: true, checkStatus: true, resultStatus: true },
+        select: { id: true, assetCode: true, assetName: true, checkStatus: true, resultStatus: true, checkedAt: true },
       }),
       prisma.inventoryItem.findMany({
         where: await this.buildItemWhere(inventoryCheckId, scope, refs),
-        select: { id: true, assetCode: true, checkStatus: true, result: true },
+        select: { id: true, assetCode: true, checkStatus: true, result: true, checkedAt: true },
       }),
     ]);
 
+    if (String(scope.scopeType).toUpperCase() === 'DAILY') return details;
     if (details.length > 0) return details;
     return items.map(item => ({ ...item, assetName: item.assetCode }));
+  }
+
+  private static async getDailySessionBreakdown(inventoryCheckId: number, scope: ClosingScopeInput) {
+    const range = vietnamDayRange(scope.scopeDate, 'scopeDate');
+    const sessions = await prisma.inventorySession.findMany({
+      where: {
+        inventoryCheckId,
+        scheduledDate: { gte: range.start, lte: range.end },
+      },
+      select: {
+        id: true,
+        scheduledDate: true,
+        departmentName: true,
+        locationName: true,
+        checkerName: true,
+        assetCountPlan: true,
+        _count: { select: { details: true } },
+        details: {
+          select: { id: true, checkStatus: true, resultStatus: true, checkedAt: true },
+        },
+      },
+      orderBy: [{ scheduledDate: 'asc' }, { id: 'asc' }],
+    });
+
+    if (sessions.length === 0) {
+      throw new InventoryClosingError(
+        'INVALID_CLOSING_INPUT',
+        `Không có phiên kiểm kê nào được lập trong ngày ${range.dateKey}. Không được chốt biên bản ngày trống.`,
+        422,
+        { scopeDate: range.dateKey }
+      );
+    }
+
+    return sessions.map((session) => {
+      const summary = summarizeRows(session.details);
+      return {
+        sessionId: session.id,
+        scheduledDate: session.scheduledDate,
+        departmentName: session.departmentName,
+        locationName: session.locationName,
+        checkerName: session.checkerName,
+        plannedItems: session.assetCountPlan,
+        scopedItems: session._count.details,
+        checkedItems: session.details.filter((detail) => Boolean(detail.checkedAt)).length,
+        pendingItems: summary.pendingItems,
+        discrepancyItems: summary.discrepancyItems,
+        summary,
+      };
+    });
+  }
+
+  private static async getCheckedOutOfScheduledScope(inventoryCheckId: number, scope: ClosingScopeInput) {
+    const range = vietnamDayRange(scope.scopeDate, 'scopeDate');
+    const rows = await prisma.inventoryDetail.findMany({
+      where: {
+        checkedAt: { gte: range.start, lte: range.end },
+        session: {
+          inventoryCheckId,
+          OR: [
+            { scheduledDate: { lt: range.start } },
+            { scheduledDate: { gt: range.end } },
+          ],
+        },
+      },
+      select: {
+        id: true,
+        assetCode: true,
+        assetName: true,
+        checkedAt: true,
+        checkStatus: true,
+        resultStatus: true,
+        session: { select: { id: true, scheduledDate: true, departmentName: true, locationName: true } },
+      },
+      take: 100,
+      orderBy: { checkedAt: 'asc' },
+    });
+
+    return rows.map((row) => ({
+      inventoryDetailId: row.id,
+      assetCode: row.assetCode,
+      assetName: row.assetName,
+      checkedAt: row.checkedAt,
+      checkStatus: row.checkStatus,
+      resultStatus: row.resultStatus,
+      sessionId: row.session.id,
+      sessionScheduledDate: row.session.scheduledDate,
+      departmentName: row.session.departmentName,
+      locationName: row.session.locationName,
+      warning: 'CHECKED_OUT_OF_SCHEDULED_SCOPE',
+    }));
+  }
+
+  private static async collectUnresolvedRows(
+    inventoryCheckId: number,
+    scope: ClosingScopeInput,
+    refs: ScopeRefs,
+    closingScopeId: number,
+    handling: any,
+    tx: any
+  ) {
+    const detailWhere = await this.buildDetailWhere(inventoryCheckId, scope, refs);
+    const itemWhere = await this.buildItemWhere(inventoryCheckId, scope, refs);
+    const unresolvedFilter = {
+      OR: [
+        { checkedAt: null },
+        { checkStatus: { in: ['PENDING', 'NEED_REVIEW', 'MATCH_PENDING_CONFIRM', 'ACTUAL_UPDATED'] } },
+      ],
+    };
+
+    const [details, items] = await Promise.all([
+      tx.inventoryDetail.findMany({
+        where: { AND: [detailWhere, unresolvedFilter] },
+        select: {
+          id: true,
+          assetCode: true,
+          assetName: true,
+          checkStatus: true,
+          resultStatus: true,
+          checkedAt: true,
+          bookDepartmentName: true,
+          actualDepartmentName: true,
+        },
+      }),
+      tx.inventoryItem.findMany({
+        where: { AND: [itemWhere, unresolvedFilter] },
+        select: {
+          id: true,
+          assetCode: true,
+          checkStatus: true,
+          result: true,
+          resultStatus: true,
+          checkedAt: true,
+          actualDepartment: true,
+          asset: { select: { assetName: true, departmentName: true } },
+        },
+      }),
+    ]);
+
+    const unresolvedItems = [
+      ...details.map((detail: any) => ({
+        itemType: 'InventoryDetail',
+        inventoryDetailId: detail.id,
+        assetCode: detail.assetCode,
+        assetName: detail.assetName,
+        departmentName: detail.actualDepartmentName || detail.bookDepartmentName || null,
+        previousStatus: detail.checkStatus || 'PENDING',
+        previousResult: detail.resultStatus || null,
+        closingStatus: 'UNRESOLVED_AT_CLOSING',
+        unresolvedReason: detail.checkedAt ? 'PENDING_CONFIRM_AT_CLOSING' : 'UNCHECKED_AT_CLOSING',
+        followUpStatus: 'PENDING_FOLLOW_UP',
+        assignedTo: handling?.assignedTo || null,
+        deadline: handling?.deadline || null,
+        closingScopeId,
+      })),
+      ...items.map((item: any) => ({
+        itemType: 'InventoryItem',
+        inventoryItemId: item.id,
+        assetCode: item.assetCode,
+        assetName: item.asset?.assetName || item.assetCode,
+        departmentName: item.actualDepartment || item.asset?.departmentName || null,
+        previousStatus: item.checkStatus || 'PENDING',
+        previousResult: item.resultStatus || item.result || null,
+        closingStatus: 'UNRESOLVED_AT_CLOSING',
+        unresolvedReason: item.checkedAt ? 'PENDING_CONFIRM_AT_CLOSING' : 'UNCHECKED_AT_CLOSING',
+        followUpStatus: 'PENDING_FOLLOW_UP',
+        assignedTo: handling?.assignedTo || null,
+        deadline: handling?.deadline || null,
+        closingScopeId,
+      })),
+    ];
+
+    if (details.length > 0) {
+      await tx.inventoryDetail.updateMany({
+        where: { id: { in: details.map((detail: any) => detail.id) } },
+        data: { checkStatus: 'UNRESOLVED_AT_CLOSING' },
+      });
+    }
+    if (items.length > 0) {
+      await tx.inventoryItem.updateMany({
+        where: { id: { in: items.map((item: any) => item.id) } },
+        data: { checkStatus: 'UNRESOLVED_AT_CLOSING' },
+      });
+    }
+
+    return unresolvedItems;
   }
 
   private static async findOverlaps(inventoryCheckId: number, scope: ClosingScopeInput, refs: ScopeRefs) {

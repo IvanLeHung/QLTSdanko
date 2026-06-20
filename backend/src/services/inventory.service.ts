@@ -1,6 +1,38 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
 
+const normalizeText = (value: any) => String(value || '').trim();
+
+const normalizeInspectionMembers = (members: any) => {
+  if (!Array.isArray(members)) return [];
+  return members
+    .map((member) => {
+      if (typeof member === 'string') {
+        return { userId: null, fullName: normalizeText(member), position: null };
+      }
+      return {
+        userId: member?.userId ? Number(member.userId) : null,
+        fullName: normalizeText(member?.fullName || member?.name),
+        position: normalizeText(member?.position) || null
+      };
+    })
+    .filter((member) => member.fullName);
+};
+
+const normalizeDepartmentRepresentatives = (representatives: any) => {
+  if (!Array.isArray(representatives)) return [];
+  return representatives
+    .map((rep) => ({
+      departmentId: rep?.departmentId ? Number(rep.departmentId) : null,
+      departmentName: normalizeText(rep?.departmentName),
+      representativeUserId: rep?.representativeUserId ? Number(rep.representativeUserId) : null,
+      representativeName: normalizeText(rep?.representativeName),
+      position: normalizeText(rep?.position) || null,
+      isManual: Boolean(rep?.isManual)
+    }))
+    .filter((rep) => rep.departmentName || rep.representativeName);
+};
+
 export class InventoryService {
   static async createInventorySession(data: {
     inventoryName: string;
@@ -282,6 +314,38 @@ export class InventoryService {
     const where = this.buildQueryFromFilters(data.filters);
     const assets = await prisma.asset.findMany({ where, orderBy: { assetCode: 'asc' } });
     const assetCountPlan = assets.length;
+    const inspectionMembers = normalizeInspectionMembers(data.inspectionMembers || data.members);
+    if (inspectionMembers.length === 0) {
+      throw new Error('Vui lòng nhập ít nhất một thành viên đoàn kiểm kê.');
+    }
+    const departmentRepresentatives = normalizeDepartmentRepresentatives(data.departmentRepresentatives);
+    if (departmentRepresentatives.length === 0) {
+      throw new Error('Vui lòng khai báo đại diện ký biên bản cho phiên kiểm kê.');
+    }
+    const missingRepresentative = departmentRepresentatives.find((rep) => !rep.representativeName);
+    if (missingRepresentative) {
+      throw new Error(`Vui lòng chọn hoặc nhập đại diện ký biên bản cho ${missingRepresentative.departmentName || 'phòng ban kiểm kê'}.`);
+    }
+
+    const inspectionLeaderId = data.inspectionLeaderId ? Number(data.inspectionLeaderId) : null;
+    const inspectionLeaderName = normalizeText(data.inspectionLeaderName || data.checkerName);
+    if (!inspectionLeaderName) {
+      throw new Error('Vui lòng nhập trưởng đoàn kiểm kê.');
+    }
+    const inspectionTeamName = normalizeText(data.inspectionTeamName || data.teamName);
+    if (!inspectionTeamName) {
+      throw new Error('Vui lòng nhập đội kiểm kê.');
+    }
+    const memberNameKeys = inspectionMembers.map((member) => member.fullName.toLowerCase());
+    if (new Set(memberNameKeys).size !== memberNameKeys.length) {
+      throw new Error('Thành viên đoàn kiểm kê bị trùng tên.');
+    }
+    if (memberNameKeys.includes(inspectionLeaderName.toLowerCase())) {
+      throw new Error('Thành viên đoàn kiểm kê không được trùng với trưởng đoàn.');
+    }
+    const representativeName = departmentRepresentatives.length > 0
+      ? departmentRepresentatives.map((rep) => `${rep.departmentName ? `${rep.departmentName}: ` : ''}${rep.representativeName}${rep.position ? ` - ${rep.position}` : ''}`).join('; ')
+      : normalizeText(data.representativeName) || null;
 
     return await prisma.$transaction(async (tx) => {
       const session = await tx.inventorySession.create({
@@ -292,8 +356,13 @@ export class InventoryService {
           projectName: data.projectName || null,
           departmentName: data.departmentName || null,
           locationName: data.locationName || null,
-          checkerName: data.checkerName || null,
-          representativeName: data.representativeName || null,
+          checkerName: inspectionLeaderName || null,
+          representativeName,
+          inspectionLeaderId,
+          inspectionLeaderName: inspectionLeaderName || null,
+          inspectionTeamName: inspectionTeamName || null,
+          inspectionMembersJson: inspectionMembers.length > 0 ? inspectionMembers : undefined,
+          departmentRepresentativesJson: departmentRepresentatives.length > 0 ? departmentRepresentatives : undefined,
           assetCountPlan,
           note: data.note || null,
           status: 'PENDING'
@@ -335,14 +404,25 @@ export class InventoryService {
   }
 
   static async startInventoryVisit(sessionId: number) {
-    await prisma.$transaction(async (tx) => {
-      const session = await tx.inventorySession.findUnique({ where: { id: sessionId } });
+    return await prisma.$transaction(async (tx) => {
+      const session = await tx.inventorySession.findUnique({
+        where: { id: sessionId },
+        include: {
+          filter: true,
+          details: { select: { id: true } }
+        }
+      });
       if (!session) throw new Error('Không tìm thấy phiên kiểm kê tài sản.');
 
-      const detailsCount = await tx.inventoryDetail.count({ where: { sessionId } });
-
-      if (detailsCount === 0) {
-        const where = this.buildAssetInventoryScopeWhere(session.departmentName || undefined, session.locationName || undefined);
+      if (session.details.length === 0) {
+        let where = this.buildAssetInventoryScopeWhere(session.departmentName || undefined, session.locationName || undefined);
+        if (session.filter?.filterJson) {
+          try {
+            where = this.buildQueryFromFilters(JSON.parse(session.filter.filterJson));
+          } catch (error) {
+            console.warn('Invalid inventory session filter JSON, fallback to basic scope:', error);
+          }
+        }
         const assets = await tx.asset.findMany({ where, orderBy: { assetCode: 'asc' } });
         if (assets.length > 0) {
           await tx.inventoryDetail.createMany({
@@ -486,17 +566,36 @@ export class InventoryService {
   static async getInventoryVisitReport(sessionId: number) {
     const session = await this.getInventoryVisitDetail(sessionId);
     const details = session.details || [];
-    const matched = details.filter((d: any) => d.resultStatus === 'MATCH').length;
+    const inScopeDetails = details.filter((d: any) => d.resultStatus !== 'EXTRA');
+    const checkedDetails = details.filter((d: any) => Boolean(d.checkedAt));
+    const pendingDetails = checkedDetails.filter((d: any) => ['MATCH_PENDING_CONFIRM', 'NEED_REVIEW', 'ACTUAL_UPDATED'].includes(String(d.checkStatus || '').toUpperCase()));
+    const surplusDetails = details.filter((d: any) => d.resultStatus === 'EXTRA' || d.outOfBookStatus === 'REGISTERED');
+    const matchedDetails = checkedDetails.filter((d: any) => d.resultStatus === 'MATCH' && !pendingDetails.some((p: any) => p.id === d.id));
+    const mismatchDetails = checkedDetails.filter((d: any) => d.resultStatus && !['MATCH', 'EXTRA'].includes(d.resultStatus));
+    const uncheckedDetails = inScopeDetails.filter((d: any) => !d.checkedAt);
     return {
       title: `BIÊN BẢN KIỂM KÊ ${session.departmentName || session.locationName || 'TÀI SẢN'} NGÀY ${session.scheduledDate.toLocaleDateString('vi-VN')}`,
       session,
       summary: {
-        bookTotal: details.filter((d: any) => d.resultStatus !== 'EXTRA').length,
-        actualTotal: details.filter((d: any) => d.resultStatus !== 'MISSING').length,
-        matched,
-        deviations: details.length - matched
+        totalInScope: inScopeDetails.length,
+        checkedCount: checkedDetails.length,
+        uncheckedCount: uncheckedDetails.length,
+        pendingCount: pendingDetails.length,
+        matchedCount: matchedDetails.length,
+        mismatchCount: mismatchDetails.length,
+        surplusCount: surplusDetails.length,
+        missingCount: checkedDetails.filter((d: any) => d.resultStatus === 'MISSING').length,
+        damagedCount: checkedDetails.filter((d: any) => d.resultStatus === 'DAMAGED').length,
+        totalAfterCheck: inScopeDetails.length + surplusDetails.length,
+        bookTotal: inScopeDetails.length,
+        actualTotal: checkedDetails.length,
+        matched: matchedDetails.length,
+        deviations: mismatchDetails.length
       },
-      deviations: details.filter((d: any) => d.resultStatus !== 'MATCH'),
+      checkedItems: checkedDetails,
+      uncheckedItems: uncheckedDetails,
+      surplusItems: surplusDetails,
+      deviations: mismatchDetails,
       signatures: ['Đại diện phòng ban', 'Người kiểm kê', 'Trưởng HCNS']
     };
   }
