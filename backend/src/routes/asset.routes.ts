@@ -99,11 +99,6 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
           { attachments: { contains: searchString, mode: 'insensitive' } },
           { technicalSpecsJson: { contains: searchString, mode: 'insensitive' } },
           { originalInvoiceItemName: { contains: searchString, mode: 'insensitive' } },
-          { actualProject: { contains: searchString, mode: 'insensitive' } },
-          { actualDepartment: { contains: searchString, mode: 'insensitive' } },
-          { batchId: { contains: searchString, mode: 'insensitive' } },
-          { resultStatus: { contains: searchString, mode: 'insensitive' } },
-          { outOfBookStatus: { contains: searchString, mode: 'insensitive' } },
           { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
         ]
       });
@@ -521,11 +516,6 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
         { attachments: { contains: searchString, mode: 'insensitive' } },
         { technicalSpecsJson: { contains: searchString, mode: 'insensitive' } },
         { originalInvoiceItemName: { contains: searchString, mode: 'insensitive' } },
-        { actualProject: { contains: searchString, mode: 'insensitive' } },
-        { actualDepartment: { contains: searchString, mode: 'insensitive' } },
-        { batchId: { contains: searchString, mode: 'insensitive' } },
-        { resultStatus: { contains: searchString, mode: 'insensitive' } },
-        { outOfBookStatus: { contains: searchString, mode: 'insensitive' } },
         { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
       ]
     });
@@ -1429,11 +1419,6 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
         { attachments: { contains: searchString, mode: 'insensitive' } },
         { technicalSpecsJson: { contains: searchString, mode: 'insensitive' } },
         { originalInvoiceItemName: { contains: searchString, mode: 'insensitive' } },
-        { actualProject: { contains: searchString, mode: 'insensitive' } },
-        { actualDepartment: { contains: searchString, mode: 'insensitive' } },
-        { batchId: { contains: searchString, mode: 'insensitive' } },
-        { resultStatus: { contains: searchString, mode: 'insensitive' } },
-        { outOfBookStatus: { contains: searchString, mode: 'insensitive' } },
         { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
       ]
     });
