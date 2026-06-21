@@ -245,12 +245,24 @@ async function main() {
   // --- ADMIN USER ---
   const adminUser = await prisma.user.upsert({
     where: { username: 'admin' },
-    update: {}, // Do not overwrite existing password hash on database seed runs
+    update: {
+      passwordHash,
+      isActive: true,
+      status: 'ACTIVE',
+      failedLoginCount: 0,
+      lockedUntil: null,
+      mustChangePassword: false
+    },
     create: { 
       username: 'admin', 
       passwordHash, 
       fullName: 'Administrator', 
-      role: 'ADMIN' 
+      role: 'ADMIN',
+      isActive: true,
+      status: 'ACTIVE',
+      failedLoginCount: 0,
+      lockedUntil: null,
+      mustChangePassword: false
     },
   });
 
