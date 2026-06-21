@@ -126,7 +126,7 @@ export class ToolInvoicePostService {
         let branchName = company.name;
         if (company.address) {
           if (company.address.toLowerCase().includes('hà nội')) branchName = 'Hà Nội';
-          else if (company.address.toLowerCase().includes('bắc giang')) branchName = 'Bắc Giang';
+          else if (company.address.toLowerCase().includes('bắc ninh')) branchName = 'Bắc Ninh';
           else if (company.address.toLowerCase().includes('hồ chí minh') || company.address.toLowerCase().includes('hcm')) branchName = 'Hồ Chí Minh';
           else if (company.address.toLowerCase().includes('thái nguyên')) branchName = 'Thái Nguyên';
         }

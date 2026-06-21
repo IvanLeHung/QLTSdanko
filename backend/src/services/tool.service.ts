@@ -190,7 +190,7 @@ export class ToolService {
       else if (branchClean.includes('hồ chí minh') || branchClean.includes('hcm')) donviCode = 'HCM';
       else if (branchClean.includes('đà nẵng')) donviCode = 'DN';
       else if (branchClean.includes('thái nguyên')) donviCode = 'TN';
-      else if (branchClean.includes('bắc giang')) donviCode = 'BG';
+      else if (branchClean.includes('bắc ninh')) donviCode = 'BN';
       else if (branchClean.includes('tuyên quang')) donviCode = 'TQ';
       else if (branchClean.includes('thanh hóa')) donviCode = 'TH';
       else if (branchClean.includes('phú thọ')) donviCode = 'PT';

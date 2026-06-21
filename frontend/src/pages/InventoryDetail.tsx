@@ -75,7 +75,7 @@ const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
     'Danko Avenue': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho'],
     'Danko Sun River': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
   },
-  'Bắc Giang': {
+  'Bắc Ninh': {
     'Danko Riverside': ['Văn phòng Bán hàng', 'Văn phòng BQLDA', 'Kho']
   },
   'Tuyên Quang': {
