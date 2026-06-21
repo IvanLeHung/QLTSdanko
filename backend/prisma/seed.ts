@@ -7,6 +7,34 @@ dotenv.config();
 
 const prisma = new PrismaClient();
 
+async function replaceBacGiangData() {
+  await prisma.$executeRawUnsafe(`
+    DO $$
+    DECLARE
+      col record;
+    BEGIN
+      FOR col IN
+        SELECT table_schema, table_name, column_name
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND data_type IN ('text', 'character varying')
+      LOOP
+        EXECUTE format(
+          'UPDATE %I.%I SET %I = REPLACE(%I, %L, %L) WHERE %I LIKE %L',
+          col.table_schema,
+          col.table_name,
+          col.column_name,
+          col.column_name,
+          'Bắc Giang',
+          'Bắc Ninh',
+          col.column_name,
+          '%Bắc Giang%'
+        );
+      END LOOP;
+    END $$;
+  `);
+}
+
 
 async function main() {
   const passwordHash = await bcrypt.hash('admin123', 10);
@@ -280,6 +308,8 @@ async function main() {
     update: { scopeType: 'ALL' },
     create: { userId: adminUser.id, scopeType: 'ALL' }
   });
+
+  await replaceBacGiangData();
 
   // --- STAFF USER FOR TESTING ---
   const staffRole = await prisma.role.findUnique({ where: { name: 'STAFF' } });
