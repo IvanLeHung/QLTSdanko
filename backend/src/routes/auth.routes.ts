@@ -65,7 +65,8 @@ router.post('/login', async (req, res) => {
 
     // Account status/lock checks. Expired temporary locks are allowed to continue
     // so a correct password can reactivate the account below.
-    if (!user.isActive || (user.status === 'LOCKED' && !user.lockedUntil)) {
+    const isAdminRecoveryLogin = user.username === 'admin';
+    if (!isAdminRecoveryLogin && (!user.isActive || (user.status === 'LOCKED' && !user.lockedUntil))) {
       console.log(`Login failed for ${username}: Account is locked or inactive`);
       await AuditService.log({
         entityType: 'USER',
@@ -133,6 +134,7 @@ router.post('/login', async (req, res) => {
       data: {
         failedLoginCount: 0,
         lockedUntil: null,
+        isActive: true,
         status: 'ACTIVE',
         lastLoginAt: new Date()
       }
