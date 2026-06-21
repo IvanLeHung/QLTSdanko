@@ -177,51 +177,78 @@ export class InventoryService {
   static buildQueryFromFilters(filters: any) {
     const where: any = { isDeleted: false };
     if (!filters) return where;
+    const andClauses: any[] = [];
+    const cleanList = (value: any) => Array.isArray(value)
+      ? value.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+    const textContainsAny = (field: string, values: string[]) => values.map((value) => ({
+      [field]: { contains: value, mode: 'insensitive' }
+    }));
 
     // Company
-    if (filters.companyNames && Array.isArray(filters.companyNames) && filters.companyNames.length > 0) {
-      where.companyName = { in: filters.companyNames };
+    const companyNames = cleanList(filters.companyNames);
+    if (companyNames.length > 0) {
+      andClauses.push({ OR: textContainsAny('companyName', companyNames) });
     }
 
     // City
-    if (filters.cityNames && Array.isArray(filters.cityNames) && filters.cityNames.length > 0) {
-      where.cityName = { in: filters.cityNames };
+    const cityNames = cleanList(filters.cityNames);
+    if (cityNames.length > 0) {
+      andClauses.push({
+        OR: [
+          ...textContainsAny('cityName', cityNames),
+          ...textContainsAny('locationName', cityNames)
+        ]
+      });
     }
 
     // Project
-    if (filters.projectNames && Array.isArray(filters.projectNames) && filters.projectNames.length > 0) {
-      where.projectName = { in: filters.projectNames };
+    const projectNames = cleanList(filters.projectNames);
+    if (projectNames.length > 0) {
+      andClauses.push({
+        OR: [
+          ...textContainsAny('projectName', projectNames),
+          ...textContainsAny('locationName', projectNames)
+        ]
+      });
     }
 
     // Location
-    if (filters.locationNames && Array.isArray(filters.locationNames) && filters.locationNames.length > 0) {
-      where.locationName = { in: filters.locationNames };
+    const locationNames = cleanList(filters.locationNames);
+    if (locationNames.length > 0) {
+      andClauses.push({ OR: textContainsAny('locationName', locationNames) });
     }
 
     // Department
-    if (filters.departmentNames && Array.isArray(filters.departmentNames) && filters.departmentNames.length > 0) {
-      where.departmentName = { in: filters.departmentNames };
+    const departmentNames = cleanList(filters.departmentNames);
+    if (departmentNames.length > 0) {
+      andClauses.push({ OR: textContainsAny('departmentName', departmentNames) });
     }
 
     // User
-    if (filters.currentUserNames && Array.isArray(filters.currentUserNames) && filters.currentUserNames.length > 0) {
-      where.currentUserName = { in: filters.currentUserNames };
+    const currentUserNames = cleanList(filters.currentUserNames);
+    if (currentUserNames.length > 0) {
+      andClauses.push({ OR: textContainsAny('currentUserName', currentUserNames) });
     }
 
     // Asset Categories / Groups (Level 1, 2, 3)
-    if (filters.level1Names && Array.isArray(filters.level1Names) && filters.level1Names.length > 0) {
-      where.level1Name = { in: filters.level1Names };
+    const level1Names = cleanList(filters.level1Names);
+    if (level1Names.length > 0) {
+      where.level1Name = { in: level1Names };
     }
-    if (filters.level2Names && Array.isArray(filters.level2Names) && filters.level2Names.length > 0) {
-      where.level2Name = { in: filters.level2Names };
+    const level2Names = cleanList(filters.level2Names);
+    if (level2Names.length > 0) {
+      where.level2Name = { in: level2Names };
     }
-    if (filters.level3Names && Array.isArray(filters.level3Names) && filters.level3Names.length > 0) {
-      where.level3Name = { in: filters.level3Names };
+    const level3Names = cleanList(filters.level3Names);
+    if (level3Names.length > 0) {
+      where.level3Name = { in: level3Names };
     }
 
     // Status
-    if (filters.statuses && Array.isArray(filters.statuses) && filters.statuses.length > 0) {
-      where.status = { in: filters.statuses };
+    const statuses = cleanList(filters.statuses);
+    if (statuses.length > 0) {
+      where.status = { in: statuses };
     }
 
     // Advanced checks:
@@ -230,10 +257,10 @@ export class InventoryService {
       if (filters.hasSerial === true || filters.hasSerial === 'true') {
         where.serialNumber = { not: null, notIn: [''] };
       } else if (filters.hasSerial === false || filters.hasSerial === 'false') {
-        where.OR = [
+        andClauses.push({ OR: [
           { serialNumber: null },
           { serialNumber: '' }
-        ];
+        ]});
       }
     }
 
@@ -251,11 +278,15 @@ export class InventoryService {
       if (filters.hasCode === true || filters.hasCode === 'true') {
         where.assetCode = { not: null, notIn: [''] };
       } else if (filters.hasCode === false || filters.hasCode === 'false') {
-        where.OR = [
+        andClauses.push({ OR: [
           { assetCode: null },
           { assetCode: '' }
-        ];
+        ]});
       }
+    }
+
+    if (andClauses.length > 0) {
+      where.AND = andClauses;
     }
 
     return where;

@@ -751,7 +751,7 @@ export const InventoryDetail: React.FC = () => {
     }
   };
 
-  const handlePreviewAssets = async () => {
+  const fetchPreviewAssets = async () => {
     setPreviewLoading(true);
     setPreviewAssetsCount(null);
     try {
@@ -769,11 +769,17 @@ export const InventoryDetail: React.FC = () => {
       if (res.data.total > 10000) {
         toast.warning("Bạn đang tạo phiên kiểm kê với hơn 10.000 tài sản. Hệ thống sẽ tạo phiên ở chế độ nền.");
       }
+      return res.data.total as number;
     } catch (err) {
       toast.error("Không thể xem trước tài sản");
+      return null;
     } finally {
       setPreviewLoading(false);
     }
+  };
+
+  const handlePreviewAssets = async () => {
+    await fetchPreviewAssets();
   };
 
   const handleCreateSession = async (e: React.FormEvent) => {
@@ -783,6 +789,12 @@ export const InventoryDetail: React.FC = () => {
     setCreationProgress(0);
     setCreationStatusText("Khởi tạo cấu hình phiên...");
     try {
+      const resolvedPreviewCount = previewAssetsCount ?? await fetchPreviewAssets();
+      if (resolvedPreviewCount === null) {
+        setSubmitting(false);
+        setCreationProgress(null);
+        return;
+      }
       let deptNameVal = sessionForm.departmentName;
       let locNameVal = sessionForm.locationName;
       if (scopeSelection === 'FILTER') {
@@ -819,11 +831,11 @@ export const InventoryDetail: React.FC = () => {
           .map((rep) => `${rep.departmentName}: ${rep.representativeName}${rep.position ? ` - ${rep.position}` : ''}`)
           .join('; '),
         scopeType: scopeSelection,
-        expectedAssetCount: previewAssetsCount || 0,
+        expectedAssetCount: resolvedPreviewCount,
         filters: sessionFilters
       };
 
-      const totalAssets = previewAssetsCount || 156;
+      const totalAssets = resolvedPreviewCount;
       let currentProgress = 0;
       
       const interval = setInterval(() => {
@@ -5913,10 +5925,14 @@ export const InventoryDetail: React.FC = () => {
                   </button>
                   {wizardStep < 3 ? (
                     <button
-                      onClick={() => {
+                      onClick={async () => {
                         if (wizardStep === 1) {
-                          if (scopeSelection === 'FILTER' && previewAssetsCount === 0) {
-                            toast.warning("Không có tài sản nào khớp với bộ lọc đang chọn! Hãy bấm 'Xem trước tài sản' hoặc điều chỉnh bộ lọc.");
+                          const resolvedPreviewCount = previewAssetsCount ?? await fetchPreviewAssets();
+                          if (resolvedPreviewCount === null) {
+                            return;
+                          }
+                          if (scopeSelection === 'FILTER' && resolvedPreviewCount === 0) {
+                            toast.warning("Không có tài sản nào khớp với bộ lọc đang chọn! Hãy điều chỉnh bộ lọc.");
                             return;
                           }
                           if (scopeSelection === 'COMPANY' && !sessionForm.companyName) {
@@ -6538,7 +6554,9 @@ export const InventoryDetail: React.FC = () => {
                   <div className="bg-emerald-50/50 border border-emerald-200 rounded-2xl p-5 space-y-3">
                     <div className="flex items-center justify-between font-black text-sm text-slate-800">
                       <span>Tổng tài sản dự kiến kiểm kê:</span>
-                      <span className="text-base text-emerald-650 font-black">{previewAssetsCount || 156} tài sản</span>
+                      <span className="text-base text-emerald-650 font-black">
+                        {previewAssetsCount !== null ? `${previewAssetsCount} tài sản` : 'Đang tính...'}
+                      </span>
                     </div>
                     {Object.keys(previewBreakdown).length > 0 && (
                       <div className="grid grid-cols-3 gap-3 text-xs font-bold text-emerald-700">
