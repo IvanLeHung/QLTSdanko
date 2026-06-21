@@ -63,27 +63,23 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Tên đăng nhập hoặc mật khẩu không đúng.' });
     }
 
-    // Account status/lock checks
-    if (user.status === 'LOCKED' || !user.isActive) {
-      // Check if locked temporarily or manually
-      if (user.lockedUntil && new Date() < new Date(user.lockedUntil)) {
-        // Handled below in the lockedUntil check
-      } else {
-        console.log(`Login failed for ${username}: Account is locked or inactive`);
-        await AuditService.log({
-          entityType: 'USER',
-          entityId: user.id,
-          action: 'LOGIN_FAILED',
-          details: { reason: 'Tài khoản bị khóa thủ công hoặc không hoạt động' },
-          performedBy: username
-        });
-        return res.status(401).json({ message: 'Tài khoản của bạn đã bị khóa hoặc ngừng hoạt động. Vui lòng liên hệ Admin.' });
-      }
-    }
-
     if (user.lockedUntil && new Date() < new Date(user.lockedUntil)) {
       console.log(`Login failed for ${username}: Account is temporarily locked`);
       return res.status(401).json({ message: 'Tài khoản tạm khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau.' });
+    }
+
+    // Account status/lock checks. Expired temporary locks are allowed to continue
+    // so a correct password can reactivate the account below.
+    if (!user.isActive || (user.status === 'LOCKED' && !user.lockedUntil)) {
+      console.log(`Login failed for ${username}: Account is locked or inactive`);
+      await AuditService.log({
+        entityType: 'USER',
+        entityId: user.id,
+        action: 'LOGIN_FAILED',
+        details: { reason: 'Tài khoản bị khóa thủ công hoặc không hoạt động' },
+        performedBy: username
+      });
+      return res.status(401).json({ message: 'Tài khoản của bạn đã bị khóa hoặc ngừng hoạt động. Vui lòng liên hệ Admin.' });
     }
 
     const validPassword = await bcrypt.compare(password, user.passwordHash);
