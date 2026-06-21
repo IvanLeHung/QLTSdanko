@@ -63,11 +63,6 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ message: 'Tên đăng nhập hoặc mật khẩu không đúng.' });
     }
 
-    if (user.lockedUntil && new Date() < new Date(user.lockedUntil)) {
-      console.log(`Login failed for ${username}: Account is temporarily locked`);
-      return res.status(401).json({ message: 'Tài khoản tạm khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau.' });
-    }
-
     // Account status/lock checks. Expired temporary locks are allowed to continue
     // so a correct password can reactivate the account below.
     if (!user.isActive || (user.status === 'LOCKED' && !user.lockedUntil)) {
@@ -85,6 +80,11 @@ router.post('/login', async (req, res) => {
     const validPassword = await bcrypt.compare(password, user.passwordHash);
     if (!validPassword) {
       console.log(`Login failed for ${username}: Incorrect password`);
+
+      if (user.lockedUntil && new Date() < new Date(user.lockedUntil)) {
+        return res.status(401).json({ message: 'Tài khoản tạm khóa do đăng nhập sai nhiều lần. Vui lòng thử lại sau.' });
+      }
+
       const nextFailedCount = (user.failedLoginCount || 0) + 1;
       
       if (nextFailedCount >= 5) {
