@@ -643,6 +643,17 @@ export const InventoryDetail: React.FC = () => {
 
   // Single Item Check modal state
   const [selectedItemForCheck, setSelectedItemForCheck] = useState<any>(null);
+  const [quickEditItem, setQuickEditItem] = useState<any>(null);
+  const [quickEditForm, setQuickEditForm] = useState<any>({
+    actualUserName: '',
+    actualCityName: '',
+    actualProjectName: '',
+    actualLocationName: '',
+    actualDepartmentName: '',
+    condition: 'GOOD',
+    resultStatus: 'MATCH',
+    note: ''
+  });
 
   const playBeep = (type: 'success' | 'warning' = 'success') => {
     try {
@@ -1491,6 +1502,164 @@ export const InventoryDetail: React.FC = () => {
       return activeSession.details?.find((d: any) => d.id === rawLog.inventorySessionDetailId) || null;
     } else {
       return session?.items?.find((i: any) => i.id === rawLog.inventoryItemId) || null;
+    }
+  };
+
+  const displayValue = (value: any, fallback = 'N/A') => {
+    const normalized = String(value ?? '').trim();
+    return normalized || fallback;
+  };
+
+  const getAssetCode = (item: any) => item?.assetCode || item?.asset?.assetCode || item?.rawLog?.assetCode || item?.rawLog?.barcode || 'N/A';
+  const getAssetName = (item: any) => item?.assetName || item?.asset?.assetName || item?.rawLog?.assetName || 'Tài sản';
+  const getBookUser = (item: any) => item?.bookUserName || item?.asset?.currentUserName || item?.expectedUserName || '';
+  const getActualUser = (item: any) => item?.actualUserName || item?.actualUser || '';
+  const getBookDepartment = (item: any) => item?.bookDepartmentName || item?.asset?.departmentName || item?.expectedDepartmentName || '';
+  const getActualDepartment = (item: any) => item?.actualDepartmentName || '';
+  const getBookCity = (item: any) => item?.bookCityName || item?.asset?.cityName || item?.expectedCityName || '';
+  const getActualCity = (item: any) => item?.actualCityName || '';
+  const getBookProject = (item: any) => item?.bookProjectName || item?.asset?.projectName || item?.expectedProjectName || '';
+  const getActualProject = (item: any) => item?.actualProjectName || '';
+  const getBookLocation = (item: any) => item?.bookLocationName || item?.expectedLocation || item?.asset?.locationName || '';
+  const getActualLocation = (item: any) => item?.actualLocationName || item?.actualLocation || '';
+
+  const formatInventoryPath = (city?: string, project?: string, location?: string) => {
+    const parts = [city, project, location].map((part) => String(part || '').trim()).filter(Boolean);
+    return parts.length ? parts.join(' / ') : 'N/A';
+  };
+
+  const getInventoryResultLabel = (status?: string) => {
+    switch (status) {
+      case 'MATCH':
+      case 'MATCHED':
+        return 'Khớp';
+      case 'WRONG_LOCATION':
+        return 'Sai vị trí';
+      case 'WRONG_USER':
+        return 'Sai người dùng';
+      case 'WRONG_STATUS':
+        return 'Sai trạng thái';
+      case 'DAMAGED':
+        return 'Hỏng';
+      case 'MISSING':
+        return 'Thiếu/Mất';
+      case 'EXTRA':
+        return 'Ngoài sổ';
+      default:
+        return status || 'Chưa rõ';
+    }
+  };
+
+  const getInventoryResultClass = (status?: string) => {
+    if (status === 'MATCH' || status === 'MATCHED') return 'bg-emerald-50 text-emerald-650 border-emerald-150';
+    if (status === 'MISSING' || status === 'DAMAGED') return 'bg-rose-50 text-rose-650 border-rose-150';
+    if (status === 'WRONG_LOCATION' || status === 'WRONG_USER' || status === 'WRONG_STATUS') return 'bg-amber-50 text-amber-650 border-amber-150';
+    return 'bg-slate-100 text-slate-600 border-slate-250';
+  };
+
+  const buildInventoryChanges = (item: any) => {
+    const fields = [
+      { label: 'Người dùng', before: getBookUser(item), after: getActualUser(item) },
+      { label: 'Thành phố', before: getBookCity(item), after: getActualCity(item) },
+      { label: 'Dự án', before: getBookProject(item), after: getActualProject(item) },
+      { label: 'Vị trí', before: getBookLocation(item), after: getActualLocation(item) },
+      { label: 'Phòng ban', before: getBookDepartment(item), after: getActualDepartment(item) },
+      { label: 'Tình trạng', before: 'Tốt', after: item?.condition || item?.appearance || item?.quality || '' }
+    ];
+
+    return fields
+      .map((field) => ({
+        ...field,
+        before: displayValue(field.before),
+        after: displayValue(field.after)
+      }))
+      .filter((field) => field.before !== field.after && field.after !== 'N/A');
+  };
+
+  const recentInventoryResults = useMemo(() => {
+    const checkedDetails = activeSession?.details
+      ?.filter((item: any) => item.checkedAt)
+      ?.map((item: any) => ({ ...item, sourceType: 'detail' }))
+      ?.sort((a: any, b: any) => new Date(b.checkedAt || 0).getTime() - new Date(a.checkedAt || 0).getTime()) || [];
+
+    if (checkedDetails.length > 0) return checkedDetails.slice(0, 30);
+
+    return scanHistory
+      .map((history) => findItemForLog(history.rawLog) || { ...history, sourceType: 'log' })
+      .filter(Boolean)
+      .slice(0, 30);
+  }, [activeSession?.details, scanHistory]);
+
+  const openQuickInventoryEdit = (item: any) => {
+    setQuickEditItem(item);
+    setQuickEditForm({
+      actualUserName: getActualUser(item) || getBookUser(item),
+      actualCityName: getActualCity(item) || getBookCity(item),
+      actualProjectName: getActualProject(item) || getBookProject(item),
+      actualLocationName: getActualLocation(item) || getBookLocation(item),
+      actualDepartmentName: getActualDepartment(item) || getBookDepartment(item),
+      condition: item?.condition || item?.appearance || item?.quality || 'GOOD',
+      resultStatus: item?.resultStatus || item?.result || 'MATCH',
+      note: item?.note || ''
+    });
+  };
+
+  const handleSaveQuickInventoryEdit = async () => {
+    if (!quickEditItem) return;
+    setSubmitting(true);
+    try {
+      if (activeSession) {
+        await api.post(`/inventory/session-details/${quickEditItem.id}`, {
+          actualUserName: quickEditForm.actualUserName,
+          actualDepartmentName: quickEditForm.actualDepartmentName,
+          actualLocationName: quickEditForm.actualLocationName,
+          resultStatus: quickEditForm.resultStatus,
+          note: quickEditForm.note
+        });
+
+        setActiveSession((prev: any) => prev ? {
+          ...prev,
+          details: (prev.details || []).map((detail: any) => detail.id === quickEditItem.id ? {
+            ...detail,
+            actualUserName: quickEditForm.actualUserName,
+            actualCityName: quickEditForm.actualCityName,
+            actualProjectName: quickEditForm.actualProjectName,
+            actualLocationName: quickEditForm.actualLocationName,
+            actualDepartmentName: quickEditForm.actualDepartmentName,
+            condition: quickEditForm.condition,
+            resultStatus: quickEditForm.resultStatus,
+            note: quickEditForm.note,
+            checkedAt: detail.checkedAt || new Date().toISOString()
+          } : detail)
+        } : prev);
+      } else {
+        await api.post(`/inventory/item/${quickEditItem.id}/check`, {
+          status: 'CHECKED',
+          actualLocation: quickEditForm.actualLocationName,
+          actualUserName: quickEditForm.actualUserName,
+          checkCondition: quickEditForm.resultStatus === 'MISSING' ? 'MISSING' : 'FOUND',
+          quality: quickEditForm.condition,
+          note: quickEditForm.note
+        });
+      }
+
+      toast.success('Đã lưu chỉnh sửa kết quả kiểm kê');
+      setQuickEditItem(null);
+      setQuickEditForm({
+        actualUserName: '',
+        actualCityName: '',
+        actualProjectName: '',
+        actualLocationName: '',
+        actualDepartmentName: '',
+        condition: 'GOOD',
+        resultStatus: 'MATCH',
+        note: ''
+      });
+      setTimeout(() => scanInputRef.current?.focus(), 100);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể lưu chỉnh sửa kiểm kê');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -3570,53 +3739,38 @@ export const InventoryDetail: React.FC = () => {
                     </div>
                   </div>
 
-                  {/* LỊCH SỬ QUÉT GẦN NHẤT */}
+                  {/* TIẾN ĐỘ KIỂM KÊ */}
                   <div className="bg-white p-6 rounded-3xl border border-slate-200/80 shadow-sm space-y-3">
-                    <h4 className="font-black text-[10px] uppercase tracking-widest text-[#0F1720]">Lịch sử quét gần nhất</h4>
-                    <div className="max-h-90 overflow-y-auto space-y-3 pr-1">
-                      {scanHistory.map((h) => {
-                        const isDuplicated = h.result === 'DUPLICATE_IGNORED';
-                        return (
-                          <div key={h.id} className="p-3 bg-slate-50 hover:bg-slate-100/70 border border-slate-200 rounded-2xl relative transition-all">
-                            <div className="flex justify-between items-start">
-                              <span className="font-mono text-xs font-black text-slate-800">{h.assetCode}</span>
-                              <span className="text-[10px] text-slate-400">{h.scannedAt}</span>
-                            </div>
-                            <p className="text-[11px] font-bold text-slate-600 mt-1 truncate max-w-[200px]" title={h.assetName}>
-                              {h.assetName}
-                            </p>
-                            <div className="flex items-center justify-between mt-2">
-                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
-                                h.result === 'Khớp (Tự động)' || h.result === 'MATCH_AUTO_SAVED'
-                                  ? 'bg-emerald-50 text-emerald-600 border border-emerald-200'
-                                  : isDuplicated
-                                  ? 'bg-slate-100 text-slate-500 border border-slate-250'
-                                  : 'bg-amber-50 text-amber-600 border border-amber-200'
-                              }`}>
-                                {h.result === 'Khớp (Tự động)' || h.result === 'MATCH_AUTO_SAVED' ? 'Khớp (Tự động)' : isDuplicated ? 'Bỏ qua (Trùng)' : h.result}
-                              </span>
-                              {!isDuplicated && (
-                                <button
-                                  type="button"
-                                  onClick={() => {
-                                    setUndoTargetItem(findItemForLog(h.rawLog) || { id: h.rawLog.inventoryItemId || h.rawLog.inventorySessionDetailId || h.id });
-                                    setUndoReason('');
-                                    setShowUndoModal(true);
-                                  }}
-                                  className="text-[10px] font-black uppercase text-rose-600 hover:text-rose-700 transition"
-                                >
-                                  Hoàn tác
-                                </button>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                      {scanHistory.length === 0 && (
-                        <div className="p-6 text-center text-slate-400 text-xs italic">
-                          Chưa có lượt quét nào trong phiên.
-                        </div>
-                      )}
+                    <div className="flex justify-between items-center">
+                      <h4 className="font-black text-[10px] uppercase tracking-widest text-[#0F1720]">Tiến độ kiểm kê</h4>
+                      <span className="text-[10px] font-black text-primary-650">
+                        {stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0}%
+                      </span>
+                    </div>
+                    <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
+                      <div
+                        className="bg-primary-600 h-full rounded-full transition-all duration-500"
+                        style={{ width: `${stats.total > 0 ? (stats.checked / stats.total) * 100 : 0}%` }}
+                      />
+                    </div>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                        <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Đã kiểm</span>
+                        <span className="text-lg font-black text-slate-900">{stats.checked}/{stats.total}</span>
+                      </div>
+                      <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+                        <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">Tốc độ quét</span>
+                        <span className="text-lg font-black text-slate-900">{getScanSpeed()}</span>
+                        <span className="ml-1 text-[9px] font-bold text-slate-400">TS/giờ</span>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-150 rounded-2xl p-3">
+                        <span className="block text-[9px] font-black text-amber-600 uppercase tracking-wider">Sai lệch vị trí</span>
+                        <span className="text-lg font-black text-amber-700">{stats.wrongLocation}</span>
+                      </div>
+                      <div className="bg-rose-50 border border-rose-150 rounded-2xl p-3">
+                        <span className="block text-[9px] font-black text-rose-600 uppercase tracking-wider">Thiếu/Mất</span>
+                        <span className="text-lg font-black text-rose-700">{stats.missing}</span>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -3780,72 +3934,111 @@ export const InventoryDetail: React.FC = () => {
                       </div>
                     </div>
                   ) : (
-                    <div className="h-full min-h-[350px] bg-slate-50 border border-slate-200 rounded-3xl flex flex-col items-center justify-center p-8 text-center relative overflow-hidden">
-                      {successFlashItem ? (
-                        <div className="space-y-4">
-                          <div className="w-16 h-16 bg-emerald-100 border border-emerald-300 rounded-full flex items-center justify-center mx-auto text-emerald-600">
-                            <Check className="h-8 w-8" />
-                          </div>
-                          <h3 className="font-black text-emerald-700 text-base uppercase tracking-wider">
-                            Quét thành công!
-                          </h3>
-                          <div className="bg-white p-4 rounded-2xl border border-slate-200 max-w-sm mx-auto shadow-sm">
-                            <p className="font-mono text-xs font-black text-slate-800">
-                              {successFlashItem.assetCode || successFlashItem.asset?.assetCode}
-                            </p>
-                            <p className="text-xs text-slate-500 font-bold mt-1">
-                              {activeSession ? successFlashItem.assetName : successFlashItem.asset?.assetName}
-                            </p>
-                            <span className="mt-2 inline-block px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-50 text-emerald-600 border border-emerald-200">
-                              Tự động khớp & lưu sổ sách
-                            </span>
-                          </div>
+                    <div className="h-full min-h-[350px] bg-white border border-slate-200 rounded-3xl p-5 lg:p-6 shadow-sm">
+                      <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-3 border-b border-slate-100 pb-4 mb-4">
+                        <div>
+                          <h3 className="text-sm font-black uppercase tracking-widest text-[#0F1720]">Lịch sử quét mã / kết quả kiểm kê gần nhất</h3>
+                          <p className="text-xs text-slate-500 font-bold mt-1">
+                            Theo dõi kết quả vừa kiểm, dữ liệu trong sổ và dữ liệu thực tế trong ngày.
+                          </p>
                         </div>
-                      ) : (
-                        <div className="w-full space-y-6">
-                          <ClipboardList className="h-12 w-12 text-slate-350 mx-auto" />
-                          <div className="space-y-2">
-                            <h3 className="font-black text-slate-700 text-sm uppercase tracking-wider">
-                              Tiến độ kiểm kê
-                            </h3>
-                            <p className="text-slate-400 text-xs">
-                              Quét Barcode/QR hoặc nhập mã bên trái để đối soát nhanh.
-                            </p>
-                          </div>
+                        {successFlashItem && (
+                          <span className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-650 border border-emerald-150">
+                            <Check className="h-3.5 w-3.5" /> Vừa quét thành công
+                          </span>
+                        )}
+                      </div>
 
-                          {/* PROGRESS BAR & STATS GAUGE */}
-                          <div className="bg-white p-5 rounded-2xl border border-slate-200 space-y-4 max-w-md mx-auto shadow-sm">
-                            <div className="flex justify-between items-center text-xs font-bold text-slate-600">
-                              <span>Tiến trình</span>
-                              <span>
-                                {stats.checked}/{stats.total} ({stats.total > 0 ? Math.round((stats.checked / stats.total) * 100) : 0}%)
-                              </span>
-                            </div>
-                            <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden">
-                              <div
-                                className="bg-primary-600 h-full rounded-full transition-all duration-500"
-                                style={{ width: `${stats.total > 0 ? (stats.checked / stats.total) * 100 : 0}%` }}
-                              />
-                            </div>
+                      <div className="max-h-[560px] overflow-y-auto pr-1 space-y-4">
+                        {recentInventoryResults.map((item: any) => {
+                          const changes = buildInventoryChanges(item);
+                          const status = item.resultStatus || item.result || item.rawLog?.result || item.rawLog?.action;
+                          const log = item.rawLog;
+                          const isDuplicated = log?.result === 'DUPLICATE_IGNORED' || log?.action === 'DUPLICATE_IGNORED';
 
-                            <div className="grid grid-cols-2 gap-4 border-t pt-4 border-slate-100">
-                              <div className="text-center">
-                                <span className="block text-[10px] font-bold text-slate-400 uppercase">Tốc độ quét</span>
-                                <span className="text-lg font-black text-[#0F1720] flex items-center justify-center gap-1 mt-1">
-                                  ⚡ {getScanSpeed()}{' '}
-                                  <span className="text-[10px] text-slate-400 font-bold">TS/giờ</span>
-                                </span>
+                          return (
+                            <div key={`${item.sourceType || 'item'}-${item.id || log?.id || getAssetCode(item)}`} className="rounded-2xl border border-slate-200 bg-slate-50/60 p-4 hover:bg-slate-50 transition-all">
+                              <div className="flex flex-col xl:flex-row xl:items-start xl:justify-between gap-3">
+                                <div className="min-w-0">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="font-mono text-xs font-black text-primary-700 bg-white border border-primary-100 rounded-lg px-2 py-1">
+                                      {getAssetCode(item)}
+                                    </span>
+                                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${getInventoryResultClass(status)}`}>
+                                      {isDuplicated ? 'Trùng mã' : getInventoryResultLabel(status)}
+                                    </span>
+                                  </div>
+                                  <p className="text-sm font-black text-slate-850 mt-2 leading-snug">{getAssetName(item)}</p>
+                                  <p className="text-[11px] font-bold text-slate-500 mt-1">
+                                    Người dùng: <span className="text-slate-800">{displayValue(getActualUser(item) || getBookUser(item), 'Chưa cấp phát')}</span>
+                                  </p>
+                                </div>
+
+                                <div className="flex items-center gap-2 shrink-0">
+                                  {!isDuplicated && (
+                                    <button
+                                      type="button"
+                                      onClick={() => openQuickInventoryEdit(item)}
+                                      className="px-3 py-2 bg-white hover:bg-slate-100 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider border border-slate-200 transition-all"
+                                    >
+                                      Chỉnh sửa
+                                    </button>
+                                  )}
+                                  {log && !isDuplicated && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUndoTargetItem(findItemForLog(log) || { id: log.inventoryItemId || log.inventorySessionDetailId || item.id });
+                                        setUndoReason('');
+                                        setShowUndoModal(true);
+                                      }}
+                                      className="px-3 py-2 bg-rose-50 hover:bg-rose-100 text-rose-650 rounded-xl text-[10px] font-black uppercase tracking-wider border border-rose-150 transition-all"
+                                    >
+                                      Hoàn tác
+                                    </button>
+                                  )}
+                                </div>
                               </div>
-                              <div className="text-center">
-                                <span className="block text-[10px] font-bold text-slate-400 uppercase">Sai lệch vị trí</span>
-                                <span className="text-lg font-black text-amber-600 mt-1 block">
-                                  {stats.wrongLocation}
-                                </span>
+
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+                                <div className="bg-white border border-slate-200 rounded-2xl p-3">
+                                  <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Trong sổ sách</span>
+                                  <p className="text-xs font-bold text-slate-800">{formatInventoryPath(getBookCity(item), getBookProject(item), getBookLocation(item))}</p>
+                                  <p className="text-[11px] font-semibold text-slate-500 mt-1">Phòng ban: {displayValue(getBookDepartment(item))}</p>
+                                </div>
+                                <div className="bg-white border border-slate-200 rounded-2xl p-3">
+                                  <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-1">Thực tế kiểm kê</span>
+                                  <p className="text-xs font-bold text-slate-800">{formatInventoryPath(getActualCity(item) || getBookCity(item), getActualProject(item) || getBookProject(item), getActualLocation(item) || getBookLocation(item))}</p>
+                                  <p className="text-[11px] font-semibold text-slate-500 mt-1">Phòng ban: {displayValue(getActualDepartment(item) || getBookDepartment(item))}</p>
+                                </div>
+                              </div>
+
+                              <div className="mt-3">
+                                <span className="block text-[9px] font-black text-slate-400 uppercase tracking-wider mb-2">Thay đổi ghi nhận</span>
+                                {changes.length > 0 ? (
+                                  <div className="flex flex-wrap gap-2">
+                                    {changes.map((change) => (
+                                      <span key={`${change.label}-${change.before}-${change.after}`} className="px-2 py-1 rounded-lg bg-amber-50 border border-amber-150 text-[10px] font-bold text-amber-700">
+                                        {change.label}: {change.before} → {change.after}
+                                      </span>
+                                    ))}
+                                  </div>
+                                ) : (
+                                  <p className="text-[11px] font-bold text-emerald-650">Không có thay đổi so với sổ sách.</p>
+                                )}
                               </div>
                             </div>
+                          );
+                        })}
+
+                        {recentInventoryResults.length === 0 && (
+                          <div className="min-h-[260px] flex flex-col items-center justify-center text-center p-8 border border-dashed border-slate-200 rounded-3xl bg-slate-50">
+                            <ClipboardList className="h-12 w-12 text-slate-350 mb-4" />
+                            <h3 className="font-black text-slate-700 text-sm uppercase tracking-wider">Chưa có kết quả kiểm kê</h3>
+                            <p className="text-slate-400 text-xs mt-2">Quét Barcode/QR hoặc nhập mã ở cột trái để bắt đầu ghi nhận.</p>
                           </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
@@ -4523,6 +4716,124 @@ export const InventoryDetail: React.FC = () => {
           </div>
         </div>
       )}
+      {quickEditItem && (
+        <BaseModal
+          isOpen={!!quickEditItem}
+          onClose={() => setQuickEditItem(null)}
+          title="Chỉnh sửa kết quả kiểm kê"
+          size="form"
+        >
+          <div className="space-y-5">
+            <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4">
+              <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">Tài sản</p>
+              <p className="font-mono text-sm font-black text-primary-700 mt-1">{getAssetCode(quickEditItem)}</p>
+              <p className="text-sm font-bold text-slate-800 mt-1">{getAssetName(quickEditItem)}</p>
+              <p className="text-[11px] text-slate-500 font-bold mt-2">
+                Chỉnh sửa này chỉ lưu dữ liệu thực tế của bản ghi kiểm kê, không cập nhật sổ tài sản chính.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Người sử dụng thực tế</label>
+                <input
+                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-primary-500"
+                  value={quickEditForm.actualUserName}
+                  onChange={(e) => setQuickEditForm({ ...quickEditForm, actualUserName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Phòng ban thực tế</label>
+                <input
+                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-primary-500"
+                  value={quickEditForm.actualDepartmentName}
+                  onChange={(e) => setQuickEditForm({ ...quickEditForm, actualDepartmentName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Thành phố thực tế</label>
+                <input
+                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-primary-500"
+                  value={quickEditForm.actualCityName}
+                  onChange={(e) => setQuickEditForm({ ...quickEditForm, actualCityName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Dự án thực tế</label>
+                <input
+                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-primary-500"
+                  value={quickEditForm.actualProjectName}
+                  onChange={(e) => setQuickEditForm({ ...quickEditForm, actualProjectName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Vị trí thực tế</label>
+                <input
+                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-primary-500"
+                  value={quickEditForm.actualLocationName}
+                  onChange={(e) => setQuickEditForm({ ...quickEditForm, actualLocationName: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Kết quả kiểm kê</label>
+                <select
+                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-primary-500"
+                  value={quickEditForm.resultStatus}
+                  onChange={(e) => setQuickEditForm({ ...quickEditForm, resultStatus: e.target.value })}
+                >
+                  <option value="MATCH">Khớp</option>
+                  <option value="WRONG_LOCATION">Sai vị trí</option>
+                  <option value="WRONG_USER">Sai người sử dụng</option>
+                  <option value="WRONG_STATUS">Sai trạng thái</option>
+                  <option value="DAMAGED">Hỏng</option>
+                  <option value="MISSING">Thiếu/Mất</option>
+                </select>
+              </div>
+              <div>
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Tình trạng tài sản</label>
+                <select
+                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-primary-500"
+                  value={quickEditForm.condition}
+                  onChange={(e) => setQuickEditForm({ ...quickEditForm, condition: e.target.value })}
+                >
+                  <option value="GOOD">Tốt</option>
+                  <option value="NORMAL">Bình thường</option>
+                  <option value="DAMAGED">Hỏng</option>
+                  <option value="MISSING">Mất/Không thấy</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-black uppercase tracking-widest text-slate-400 mb-1">Ghi chú</label>
+                <textarea
+                  className="w-full bg-white border border-slate-250 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-800 outline-none focus:border-primary-500"
+                  rows={3}
+                  value={quickEditForm.note}
+                  onChange={(e) => setQuickEditForm({ ...quickEditForm, note: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setQuickEditItem(null)}
+                className="px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase tracking-widest transition-all"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveQuickInventoryEdit}
+                disabled={submitting}
+                className="px-5 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white text-xs font-black uppercase tracking-widest transition-all"
+              >
+                Lưu kết quả
+              </button>
+            </div>
+          </div>
+        </BaseModal>
+      )}
+
       {selectedItemForCheck && (
         <BaseModal
           isOpen={!!selectedItemForCheck}
