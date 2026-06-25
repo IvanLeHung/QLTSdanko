@@ -105,6 +105,16 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [updateAllSameName, setUpdateAllSameName] = useState(false);
   const [isCompanyRevealed, setIsCompanyRevealed] = useState(false);
   const [showAssignInfoModal, setShowAssignInfoModal] = useState(false);
+  const [isAssignInfoEditing, setIsAssignInfoEditing] = useState(false);
+  const [assignInfoForm, setAssignInfoForm] = useState<any>({
+    currentUserName: '',
+    currentPosition: '',
+    currentUserPhone: '',
+    departmentName: '',
+    locationName: '',
+    cityName: '',
+    note: ''
+  });
   const [showLinkInvoiceModal, setShowLinkInvoiceModal] = useState(false);
   const [showInvoiceDetailsModal, setShowInvoiceDetailsModal] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
@@ -121,6 +131,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       setMode('view');
       setActiveTab('info');
       setShowAssignInfoModal(false);
+      setIsAssignInfoEditing(false);
       setShowLinkInvoiceModal(false);
       setShowInvoiceDetailsModal(false);
       setSelectedInvoiceId(null);
@@ -228,6 +239,58 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       <p className="text-sm font-bold text-slate-800 leading-snug">{emptyText(value)}</p>
     </div>
   );
+
+  const openAssignInfoEditor = () => {
+    setAssignInfoForm({
+      currentUserName: asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName || '',
+      currentPosition: asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition || '',
+      currentUserPhone: currentAssignmentPhone || '',
+      departmentName: asset.departmentName || latestAssignment?.newDepartmentName || latestHandover?.recipientDepartment || '',
+      locationName: asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation || '',
+      cityName: asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity || '',
+      note: ''
+    });
+    setIsAssignInfoEditing(true);
+  };
+
+  const cancelAssignInfoEditor = () => {
+    setIsAssignInfoEditing(false);
+    setAssignInfoForm({
+      currentUserName: '',
+      currentPosition: '',
+      currentUserPhone: '',
+      departmentName: '',
+      locationName: '',
+      cityName: '',
+      note: ''
+    });
+  };
+
+  const handleSaveAssignInfo = async () => {
+    if (!asset) return;
+    const updates: any = {
+      currentUserName: assignInfoForm.currentUserName.trim() || null,
+      currentPosition: assignInfoForm.currentPosition.trim() || null,
+      currentUserPhone: assignInfoForm.currentUserPhone.trim() || null,
+      departmentName: assignInfoForm.departmentName.trim() || null,
+      locationName: assignInfoForm.locationName.trim() || null,
+      cityName: assignInfoForm.cityName.trim() || null,
+      reason: assignInfoForm.note.trim() || 'Bổ sung/chỉnh sửa thông tin cấp phát từ popup người đang sử dụng'
+    };
+
+    setIsSaving(true);
+    try {
+      await api.patch(`/assets/${asset.id}/assignment-info`, updates);
+      toast.success('Đã lưu thông tin cấp phát và ghi log');
+      cancelAssignInfoEditor();
+      await fetchAssetDetail();
+      onAction?.('refresh', asset.id);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể lưu thông tin cấp phát');
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   const handleUpdateProgress = async () => {
     if (!currentOpenTicket) return;
@@ -1434,7 +1497,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       {/* ASSIGNMENT QUICK VIEW */}
       {showAssignInfoModal && asset && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => setShowAssignInfoModal(false)} />
+          <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => { cancelAssignInfoEditor(); setShowAssignInfoModal(false); }} />
           <div className="relative w-full max-w-3xl bg-white rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="px-7 py-6 border-b border-slate-100 flex items-start justify-between">
               <div className="flex items-center space-x-4">
@@ -1447,13 +1510,24 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                   <p className="text-xs font-bold text-slate-400 mt-1">{asset.assetCode} • {asset.assetName}</p>
                 </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setShowAssignInfoModal(false)}
-                className="h-10 w-10 rounded-2xl border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center transition-all"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {hasPermission('ASSET_UPDATE') && !isAssignInfoEditing && (
+                  <button
+                    type="button"
+                    onClick={openAssignInfoEditor}
+                    className="h-10 px-4 rounded-2xl border border-primary-100 bg-primary-50 text-primary-650 hover:bg-primary-100 flex items-center justify-center gap-2 text-[10px] font-black uppercase tracking-widest transition-all"
+                  >
+                    <Edit3 className="h-4 w-4" /> Chỉnh sửa
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => { cancelAssignInfoEditor(); setShowAssignInfoModal(false); }}
+                  className="h-10 w-10 rounded-2xl border border-slate-200 text-slate-400 hover:text-slate-700 hover:bg-slate-50 flex items-center justify-center transition-all"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
             <div className="p-7 space-y-6">
@@ -1464,14 +1538,72 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                     Hiện tại
                   </span>
                 </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <InfoRow label="Họ tên người nhận" value={asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName} icon={User} />
-                  <InfoRow label="Chức vụ" value={asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition} icon={Tag} />
-                  <InfoRow label="Số điện thoại" value={currentAssignmentPhone} icon={Info} />
-                  <InfoRow label="Phòng ban" value={asset.departmentName || latestAssignment?.newDepartmentName || latestHandover?.recipientDepartment} icon={Building2} />
-                  <InfoRow label="Vị trí / kho bàn giao đến" value={asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation} icon={MapPin} />
-                  <InfoRow label="Tỉnh / thành phố" value={asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity} icon={MapPin} />
-                </div>
+                {isAssignInfoEditing ? (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      {[
+                        { key: 'currentUserName', label: 'Họ tên người nhận', icon: User },
+                        { key: 'currentPosition', label: 'Chức vụ', icon: Tag },
+                        { key: 'currentUserPhone', label: 'Số điện thoại', icon: Info },
+                        { key: 'departmentName', label: 'Phòng ban', icon: Building2 },
+                        { key: 'locationName', label: 'Vị trí / kho bàn giao đến', icon: MapPin },
+                        { key: 'cityName', label: 'Tỉnh / thành phố', icon: MapPin }
+                      ].map(({ key, label, icon: Icon }) => (
+                        <div key={key} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
+                            <Icon className="mr-2 h-3.5 w-3.5" />
+                            {label}
+                          </label>
+                          <input
+                            value={assignInfoForm[key] || ''}
+                            onChange={(e) => setAssignInfoForm({ ...assignInfoForm, [key]: e.target.value })}
+                            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100">
+                      <label className="text-[10px] font-black uppercase tracking-widest text-amber-700 flex items-center mb-1.5">
+                        <MessageSquare className="mr-2 h-3.5 w-3.5" />
+                        Ghi chú / lý do chỉnh sửa
+                      </label>
+                      <textarea
+                        value={assignInfoForm.note || ''}
+                        onChange={(e) => setAssignInfoForm({ ...assignInfoForm, note: e.target.value })}
+                        placeholder="Ví dụ: Bổ sung số điện thoại người nhận theo biên bản bàn giao..."
+                        rows={3}
+                        className="w-full bg-white border border-amber-150 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50"
+                      />
+                    </div>
+                    <div className="flex justify-end gap-3">
+                      <button
+                        type="button"
+                        onClick={cancelAssignInfoEditor}
+                        className="px-5 py-3 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-[10px] font-black uppercase tracking-widest transition-all"
+                      >
+                        Hủy
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveAssignInfo}
+                        disabled={isSaving}
+                        className="px-5 py-3 rounded-xl bg-primary-600 hover:bg-primary-700 disabled:opacity-60 text-white text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2"
+                      >
+                        {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                        Lưu & ghi log
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <InfoRow label="Họ tên người nhận" value={asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName} icon={User} />
+                    <InfoRow label="Chức vụ" value={asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition} icon={Tag} />
+                    <InfoRow label="Số điện thoại" value={currentAssignmentPhone} icon={Info} />
+                    <InfoRow label="Phòng ban" value={asset.departmentName || latestAssignment?.newDepartmentName || latestHandover?.recipientDepartment} icon={Building2} />
+                    <InfoRow label="Vị trí / kho bàn giao đến" value={asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation} icon={MapPin} />
+                    <InfoRow label="Tỉnh / thành phố" value={asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity} icon={MapPin} />
+                  </div>
+                )}
               </section>
 
               <section className="space-y-3">
