@@ -525,6 +525,21 @@ export const AssetList: React.FC = () => {
     }
   };
 
+  const getMissingAssetFields = (asset: any) => {
+    const missing: string[] = [];
+    const isEmpty = (value: any) => {
+      const normalized = String(value ?? '').trim().toLowerCase();
+      return !normalized || normalized === 'n/a' || normalized === 'na' || normalized === '-';
+    };
+
+    if (isEmpty(asset.serialNumber)) missing.push('Serial');
+    if (isEmpty(asset.cityName)) missing.push('Thành phố');
+    if (isEmpty(asset.locationName)) missing.push('Vị trí');
+    if (asset.status === 'ASSIGNED' && isEmpty(asset.currentUserName)) missing.push('Người dùng');
+    if (asset.status === 'ASSIGNED' && isEmpty(asset.departmentName)) missing.push('Phòng ban');
+    return missing;
+  };
+
   const openAssetDetail = (assetId: number, tab: string = 'info') => {
     const asset = assets.find(a => a.id === assetId);
     if (!asset) return;
@@ -648,20 +663,52 @@ export const AssetList: React.FC = () => {
     toast.success(`Đã thêm ${selectedAssetsForPrint.length} tài sản vào danh sách in tem`);
   };
 
+  const downloadBlobResponse = async (response: any, fallbackFileName: string) => {
+    const contentType = String(response.headers?.['content-type'] || '');
+    if (contentType.includes('application/json')) {
+      const text = await response.data.text();
+      const parsed = JSON.parse(text);
+      throw new Error(parsed.message || 'Không thể xuất báo cáo');
+    }
+
+    const disposition = String(response.headers?.['content-disposition'] || '');
+    const matchedFileName = disposition.match(/filename\*?=(?:UTF-8''|")?([^";]+)/i)?.[1];
+    const fileName = matchedFileName ? decodeURIComponent(matchedFileName.replace(/"/g, '')) : fallbackFileName;
+    const blob = new Blob([response.data], { type: contentType || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.setAttribute('download', fileName);
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const getExportErrorMessage = async (err: any, fallback: string) => {
+    const data = err?.response?.data;
+    if (data instanceof Blob) {
+      try {
+        const text = await data.text();
+        if (text) {
+          const parsed = JSON.parse(text);
+          return parsed.message || fallback;
+        }
+      } catch {
+        return fallback;
+      }
+    }
+    return err?.response?.data?.message || err?.message || fallback;
+  };
+
   const handleExportAll = async () => {
     try {
       const response = await api.get('/import/assets/export', { responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `so_tai_san_toan_bo_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await downloadBlobResponse(response, `so_tai_san_toan_bo_${new Date().toISOString().slice(0, 10)}.xlsx`);
       toast.success("Xuất dữ liệu toàn bộ tài sản thành công!");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Lỗi khi tải dữ liệu xuất toàn bộ");
+      toast.error(await getExportErrorMessage(err, "Lỗi khi tải dữ liệu xuất toàn bộ"));
     }
   };
 
@@ -671,17 +718,11 @@ export const AssetList: React.FC = () => {
       delete params.page;
       delete params.limit;
       const response = await api.get('/assets/export-excel', { params, responseType: 'blob' });
-      const url = window.URL.createObjectURL(new Blob([response.data]));
-      const link = document.createElement('a');
-      link.href = url;
-      link.setAttribute('download', `so_tai_san_snapshot_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
+      await downloadBlobResponse(response, `so_tai_san_snapshot_${new Date().toISOString().slice(0, 10)}.xlsx`);
       toast.success("Tải báo cáo sổ tài sản (snapshot) thành công!");
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      toast.error("Lỗi khi tải báo cáo sổ tài sản");
+      toast.error(await getExportErrorMessage(err, "Lỗi khi tải báo cáo sổ tài sản"));
     }
   };
 
@@ -1678,6 +1719,7 @@ export const AssetList: React.FC = () => {
               ) : assets.map((asset) => {
                 const status = getStatusLabel(asset.status);
                 const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
+                const missingFields = getMissingAssetFields(asset);
                 return (
                   <tr 
                     key={asset.id} 
@@ -1700,9 +1742,26 @@ export const AssetList: React.FC = () => {
                       {asset.assetCode}
                     </td>
                     <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
-                      <p className="text-[13px] font-bold text-slate-800 leading-tight whitespace-normal break-words">{asset.assetNameShort || asset.assetName}</p>
-                      <p className="text-[10px] font-medium text-slate-400 leading-tight">Serial: <span className="text-slate-500">{asset.serialNumber || '-'}</span></p>
-                      <p className="xl:hidden text-[10px] font-medium text-slate-400 leading-tight">{asset.cityName || '-'}{asset.locationName ? ` - ${asset.locationName}` : ''}</p>
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-bold text-slate-800 leading-tight whitespace-normal break-words">{asset.assetNameShort || asset.assetName}</p>
+                          <p className="text-[10px] font-medium text-slate-400 leading-tight">Serial: <span className="text-slate-500">{asset.serialNumber || '-'}</span></p>
+                          <p className="xl:hidden text-[10px] font-medium text-slate-400 leading-tight">{asset.cityName || '-'}{asset.locationName ? ` - ${asset.locationName}` : ''}</p>
+                        </div>
+                        {missingFields.length > 0 && (
+                          <button
+                            type="button"
+                            title={`Bổ sung thông tin: ${missingFields.join(', ')}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAssetDetail(asset.id, 'info');
+                            }}
+                            className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition-all"
+                          >
+                            <AlertCircle className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="hidden xl:table-cell px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
                       <p className="text-[13px] font-semibold text-slate-800 leading-tight">{asset.currentUserName || <span className="text-slate-300 font-medium italic">Chưa cấp phát</span>}</p>

@@ -1336,6 +1336,7 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     cityName,
     projectName,
     level4Code,
+    level4Name,
     priceMin,
     priceMax,
     purchaseDateFrom,
@@ -1351,7 +1352,9 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     lastInventoryTo,
     inventoryStatus,
     createdFrom,
-    createdTo
+    createdTo,
+    isAssigned,
+    invoiceBatchId
   } = req.query;
 
   const where: any = { isDeleted: false };
@@ -1432,9 +1435,20 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
   }
 
   if (companyCode) where.companyCode = String(companyCode);
-  if (currentUserName) where.currentUserName = { contains: String(currentUserName), mode: 'insensitive' };
+  if (isAssigned === 'true') {
+    where.currentUserName = { not: null, notIn: ['', 'N/A', 'n/a'] };
+  } else if (isAssigned === 'false') {
+    where.currentUserName = { in: [null, '', 'N/A', 'n/a'] };
+  } else if (currentUserName) {
+    where.currentUserName = { contains: String(currentUserName), mode: 'insensitive' };
+  }
   if (departmentName) where.departmentName = { contains: String(departmentName), mode: 'insensitive' };
-  if (level4Code) where.level4Code = String(level4Code);
+  if (level4Name) {
+    const nameArray = String(level4Name).split(',').filter(Boolean);
+    if (nameArray.length > 0) where.level4Name = { in: nameArray };
+  } else if (level4Code) {
+    where.level4Code = String(level4Code);
+  }
   if (cityName) where.cityName = { contains: String(cityName), mode: 'insensitive' };
   if (projectName) where.projectName = { contains: String(projectName), mode: 'insensitive' };
   if (locationQuery) {
@@ -1488,6 +1502,7 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
   }
 
   if (supplierName) where.supplierName = { contains: String(supplierName), mode: 'insensitive' };
+  if (invoiceBatchId) where.invoiceBatchId = Number(invoiceBatchId);
   if (inventoryStatus) where.lastInventoryStatus = String(inventoryStatus);
   if (hasSerial === 'true') where.serialNumber = { not: null, notIn: ['', 'N/A', 'n/a'] };
   if (hasSerial === 'false') where.serialNumber = { in: [null, '', 'N/A', 'n/a'] };
@@ -1499,9 +1514,16 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
   }
 
   try {
+    const allowedSortFields = new Set([
+      'assetCode', 'assetName', 'serialNumber', 'status', 'currentUserName',
+      'departmentName', 'locationName', 'cityName', 'projectName',
+      'purchasePriceExVat', 'purchaseDate', 'handoverDate', 'updatedAt', 'createdAt'
+    ]);
+    const safeSortBy = allowedSortFields.has(String(sortBy)) ? String(sortBy) : 'updatedAt';
+    const safeSortOrder: 'asc' | 'desc' = String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
     const assets = await prisma.asset.findMany({
       where,
-      orderBy: { [String(sortBy)]: sortOrder }
+      orderBy: { [safeSortBy]: safeSortOrder }
     });
 
     const hasPricePermission = req.user?.roles?.includes('SUPER_ADMIN') || req.user?.permissions?.includes('ASSET_VIEW_PRICE');
@@ -1901,7 +1923,38 @@ router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (re
     orderBy: { createdAt: 'desc' }
   });
 
-  res.json({ ...asset, auditLogs });
+  const latestHandoverDocument = await prisma.handoverDocument.findFirst({
+    where: {
+      items: { some: { assetId: asset.id } },
+      status: { in: ['COMPLETED', 'PENDING_CONFIRMATION', 'DRAFT'] }
+    },
+    orderBy: [
+      { confirmedAt: 'desc' },
+      { documentDate: 'desc' },
+      { createdAt: 'desc' }
+    ],
+    select: {
+      id: true,
+      documentNo: true,
+      type: true,
+      status: true,
+      recipientName: true,
+      recipientPhone: true,
+      recipientPosition: true,
+      recipientDepartment: true,
+      newLocation: true,
+      newCity: true,
+      documentDate: true,
+      confirmedAt: true
+    }
+  });
+
+  res.json({
+    ...asset,
+    auditLogs,
+    latestHandoverDocument,
+    latestAssignmentPhone: latestHandoverDocument?.recipientPhone || null
+  });
 });
 
 export default router;

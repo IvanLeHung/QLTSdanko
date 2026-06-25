@@ -212,6 +212,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
 
   const currentOpenTicket = asset?.repairTickets?.find((t: any) => t.status === 'OPEN' || t.status === 'IN_PROGRESS');
   const latestAssignment = asset?.assignments?.[0];
+  const latestHandover = asset?.latestHandoverDocument;
+  const currentAssignmentPhone = asset?.currentUserPhone || asset?.latestAssignmentPhone || latestHandover?.recipientPhone || latestAssignment?.recipientPhone;
   const emptyText = (value?: string | number | null) => {
     if (value === undefined || value === null || value === '') return '--';
     return String(value);
@@ -1463,12 +1465,12 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                   </span>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <InfoRow label="Họ tên người nhận" value={asset.currentUserName || latestAssignment?.newUserName} icon={User} />
-                  <InfoRow label="Chức vụ" value={asset.currentPosition || latestAssignment?.newPosition} icon={Tag} />
-                  <InfoRow label="Số điện thoại" value={null} icon={Info} />
-                  <InfoRow label="Phòng ban" value={asset.departmentName || latestAssignment?.newDepartmentName} icon={Building2} />
-                  <InfoRow label="Vị trí / kho bàn giao đến" value={asset.locationName || latestAssignment?.newLocationName} icon={MapPin} />
-                  <InfoRow label="Tỉnh / thành phố" value={asset.cityName || latestAssignment?.newCityName} icon={MapPin} />
+                  <InfoRow label="Họ tên người nhận" value={asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName} icon={User} />
+                  <InfoRow label="Chức vụ" value={asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition} icon={Tag} />
+                  <InfoRow label="Số điện thoại" value={currentAssignmentPhone} icon={Info} />
+                  <InfoRow label="Phòng ban" value={asset.departmentName || latestAssignment?.newDepartmentName || latestHandover?.recipientDepartment} icon={Building2} />
+                  <InfoRow label="Vị trí / kho bàn giao đến" value={asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation} icon={MapPin} />
+                  <InfoRow label="Tỉnh / thành phố" value={asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity} icon={MapPin} />
                 </div>
               </section>
 
