@@ -31,7 +31,8 @@ import {
   ChevronDown,
   Trash,
   Loader2,
-  Filter
+  Filter,
+  Edit3
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -538,6 +539,56 @@ export const AssetList: React.FC = () => {
     if (asset.status === 'ASSIGNED' && isEmpty(asset.currentUserName)) missing.push('Người dùng');
     if (asset.status === 'ASSIGNED' && isEmpty(asset.departmentName)) missing.push('Phòng ban');
     return missing;
+  };
+
+  const cleanLocationName = (cityName?: string, locationName?: string) => {
+    const city = String(cityName || '').trim();
+    let location = String(locationName || '').trim();
+    if (city && location.toLowerCase().startsWith(`${city.toLowerCase()}-`)) {
+      location = location.slice(city.length + 1).trim();
+    }
+    if (city && location.toLowerCase().startsWith(`${city.toLowerCase()} /`)) {
+      location = location.slice(city.length + 2).trim();
+    }
+    return location;
+  };
+
+  const isNonStandardLocation = (asset: any) => {
+    const city = String(asset.cityName || '').trim();
+    const location = String(asset.locationName || '').trim();
+    return !!(city && location && location.toLowerCase().startsWith(`${city.toLowerCase()}-`));
+  };
+
+  const getLocationIssues = (asset: any) => {
+    const issues: string[] = [];
+    if (isNonStandardLocation(asset)) issues.push('Vị trí đang lặp tỉnh/thành phố');
+    return issues;
+  };
+
+  const handleNormalizeSelectedLocations = async () => {
+    const targets = selectedAssets.filter(isNonStandardLocation);
+    if (targets.length === 0) {
+      toast.info('Không có tài sản đang chọn bị sai form vị trí.');
+      return;
+    }
+
+    if (!window.confirm(`Chuẩn hóa vị trí cho ${targets.length} tài sản đang chọn?`)) return;
+
+    try {
+      await Promise.all(targets.map((asset: any) => api.patch(`/assets/${asset.id}/assignment-info`, {
+        currentUserName: asset.currentUserName || null,
+        currentPosition: asset.currentPosition || null,
+        departmentName: asset.departmentName || null,
+        cityName: asset.cityName || null,
+        locationName: cleanLocationName(asset.cityName, asset.locationName) || null,
+        reason: 'Chuẩn hóa nhanh form Thành phố/Dự án/Vị trí từ Sổ tài sản'
+      })));
+      toast.success(`Đã chuẩn hóa vị trí cho ${targets.length} tài sản`);
+      clearSelection();
+      fetchAssets();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể chuẩn hóa vị trí hàng loạt');
+    }
   };
 
   const openAssetDetail = (assetId: number, tab: string = 'info') => {
@@ -1560,7 +1611,7 @@ export const AssetList: React.FC = () => {
       {/* BULK ACTION BAR */}
       {selectedIds.length > 0 && (
         <div className="fixed bottom-4 sm:bottom-8 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-10 w-[calc(100vw-1rem)] sm:w-auto max-w-5xl print:hidden">
-          <div className="bg-[#0F172A] text-white px-3 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl flex items-center gap-2 sm:space-x-6 border border-[#1E293B] overflow-x-auto custom-scrollbar">
+          <div className="bg-[#0F172A] text-white px-3 sm:px-6 py-3 sm:py-4 rounded-2xl shadow-2xl flex items-center gap-2 sm:space-x-6 border border-[#1E293B] overflow-visible">
             <div className="flex items-center space-x-3">
               <div className="bg-primary-500 text-white w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold">
                 {selectedIds.length}
@@ -1613,9 +1664,18 @@ export const AssetList: React.FC = () => {
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)}></div>
                     <div className="absolute bottom-full right-0 mb-4 w-48 bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden shadow-2xl z-50 animate-in slide-in-from-bottom-2">
+                       <button
+                         onClick={() => {
+                           setIsMoreMenuOpen(false);
+                           handleNormalizeSelectedLocations();
+                         }}
+                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-cyan-300"
+                       >
+                         <Edit3 className="mr-3 h-4 w-4" /> Chuẩn hóa vị trí
+                       </button>
                        <button 
-                         onClick={() => { 
-                           setIsMoreMenuOpen(false); 
+                          onClick={() => { 
+                            setIsMoreMenuOpen(false); 
                            openModal("TRANSFER_WIZARD", {
                              initialAssetIds: selectedIds,
                              defaultType: 'RECALL',
@@ -1624,12 +1684,25 @@ export const AssetList: React.FC = () => {
                            });
                          }} 
                          className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
+                        >
+                          <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
+                        </button>
+                       <button
+                         onClick={() => {
+                           setIsMoreMenuOpen(false);
+                           openModal("BM_FORM", {
+                             code: 'BM03/QLTS',
+                             data: { asset: selectedAssets[0], assets: selectedAssets },
+                             onSubmit: () => { clearSelection(); fetchAssets(); }
+                           });
+                         }}
+                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-amber-400"
                        >
-                         <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
+                         <AlertCircle className="mr-3 h-4 w-4" /> Báo hỏng
                        </button>
                        <button 
-                         onClick={() => { 
-                           setIsMoreMenuOpen(false); 
+                          onClick={() => { 
+                            setIsMoreMenuOpen(false); 
                            openModal("BM_FORM", {
                              code: 'BM10/QLTS',
                              data: { assets: selectedAssets },
@@ -1637,9 +1710,9 @@ export const AssetList: React.FC = () => {
                            });
                          }} 
                          className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
-                       >
-                         <Wrench className="mr-3 h-4 w-4 text-amber-500" /> Sửa chữa / Bảo trì
-                       </button>
+                        >
+                          <Wrench className="mr-3 h-4 w-4 text-amber-500" /> Sửa chữa / Bảo trì
+                        </button>
                        <button 
                          onClick={() => { 
                            setIsMoreMenuOpen(false); 
@@ -1650,9 +1723,9 @@ export const AssetList: React.FC = () => {
                            });
                          }} 
                          className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400"
-                       >
-                         <Trash2 className="mr-3 h-4 w-4" /> Thanh lý
-                       </button>
+                        >
+                          <Trash2 className="mr-3 h-4 w-4" /> Hủy / Thanh lý
+                        </button>
                        <button 
                          onClick={() => { 
                            setIsMoreMenuOpen(false); 
@@ -1720,6 +1793,8 @@ export const AssetList: React.FC = () => {
                 const status = getStatusLabel(asset.status);
                 const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
                 const missingFields = getMissingAssetFields(asset);
+                const locationIssues = getLocationIssues(asset);
+                const displayLocationName = cleanLocationName(asset.cityName, asset.locationName);
                 return (
                   <tr 
                     key={asset.id} 
@@ -1746,7 +1821,7 @@ export const AssetList: React.FC = () => {
                         <div className="min-w-0">
                           <p className="text-[13px] font-bold text-slate-800 leading-tight whitespace-normal break-words">{asset.assetNameShort || asset.assetName}</p>
                           <p className="text-[10px] font-medium text-slate-400 leading-tight">Serial: <span className="text-slate-500">{asset.serialNumber || '-'}</span></p>
-                          <p className="xl:hidden text-[10px] font-medium text-slate-400 leading-tight">{asset.cityName || '-'}{asset.locationName ? ` - ${asset.locationName}` : ''}</p>
+                          <p className="xl:hidden text-[10px] font-medium text-slate-400 leading-tight">{asset.cityName || '-'}{displayLocationName ? ` - ${displayLocationName}` : ''}</p>
                         </div>
                         {missingFields.length > 0 && (
                           <button
@@ -1768,8 +1843,33 @@ export const AssetList: React.FC = () => {
                       <p className="text-[10px] font-medium text-slate-400 leading-tight">{asset.currentPosition || '-'}</p>
                     </td>
                     <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
-                      <p className="text-[12px] font-semibold text-slate-700 flex items-center"><MapPin className="h-2.5 w-2.5 mr-1 text-slate-400" />{asset.cityName}</p>
-                      <p className="text-[10px] font-medium text-slate-400 ml-3.5">{asset.locationName}</p>
+                      <div className="flex items-start gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[12px] font-semibold text-slate-700 flex items-center">
+                            <MapPin className="h-2.5 w-2.5 mr-1 text-slate-400" />
+                            {asset.cityName || <span className="text-slate-300 italic">Chưa có thành phố</span>}
+                          </p>
+                          <p className={cn(
+                            "text-[10px] font-medium ml-3.5 truncate",
+                            locationIssues.length > 0 ? "text-amber-600" : "text-slate-400"
+                          )}>
+                            {displayLocationName || 'Chưa có vị trí'}
+                          </p>
+                        </div>
+                        {locationIssues.length > 0 && (
+                          <button
+                            type="button"
+                            title={`${locationIssues.join(', ')}. Bấm để chỉnh sửa.`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openAssetDetail(asset.id, 'assignment');
+                            }}
+                            className="mt-0.5 inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-amber-200 bg-amber-50 text-amber-600 hover:bg-amber-100 transition-all"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'status_auto'); }}>
                       <div className="flex flex-col gap-1 items-start">
