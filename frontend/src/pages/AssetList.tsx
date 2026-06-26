@@ -838,6 +838,138 @@ export const AssetList: React.FC = () => {
     toast.success("Xuất dữ liệu Excel tài sản được chọn thành công!");
   };
 
+  const selectedAssetCodesText = () => selectedAssets.map((a: any) => a.assetCode).filter(Boolean).join(', ');
+
+  const handleExportSelectedPdf = () => {
+    if (selectedAssets.length === 0) return;
+    const rows = selectedAssets.map((asset: any, index: number) => `
+      <tr>
+        <td>${index + 1}</td>
+        <td>${asset.assetCode || ''}</td>
+        <td>${asset.assetName || asset.assetNameShort || ''}</td>
+        <td>${asset.serialNumber || ''}</td>
+        <td>${asset.currentUserName || ''}</td>
+        <td>${asset.departmentName || ''}</td>
+        <td>${asset.cityName || ''}</td>
+        <td>${cleanLocationName(asset.cityName, asset.locationName) || ''}</td>
+        <td>${getStatusLabel(asset.status).label}</td>
+      </tr>
+    `).join('');
+
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      toast.error('Trình duyệt đang chặn cửa sổ xuất PDF.');
+      return;
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Báo cáo tài sản đã chọn</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
+            h1 { font-size: 18px; margin: 0 0 8px; text-transform: uppercase; }
+            p { margin: 0 0 16px; font-size: 12px; color: #475569; }
+            table { width: 100%; border-collapse: collapse; font-size: 11px; }
+            th, td { border: 1px solid #cbd5e1; padding: 6px; text-align: left; vertical-align: top; }
+            th { background: #f1f5f9; text-transform: uppercase; font-size: 10px; }
+          </style>
+        </head>
+        <body>
+          <h1>Báo cáo danh sách tài sản đã chọn</h1>
+          <p>Số lượng: ${selectedAssets.length} tài sản • Ngày xuất: ${new Date().toLocaleString('vi-VN')}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>STT</th><th>Mã tài sản</th><th>Tên tài sản</th><th>Serial</th>
+                <th>Người dùng</th><th>Phòng ban</th><th>Thành phố</th><th>Vị trí</th><th>Trạng thái</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+  };
+
+  const openBulkLostForm = () => {
+    const reporter = window.prompt('Người báo mất là ai?');
+    if (!reporter?.trim()) {
+      toast.error('Bắt buộc nhập người báo mất.');
+      return;
+    }
+    const detectedAt = window.prompt('Thời gian phát hiện mất (dd/mm/yyyy hoặc ghi chú thời gian):', new Date().toLocaleDateString('vi-VN'));
+    if (!detectedAt?.trim()) {
+      toast.error('Bắt buộc nhập thời gian phát hiện mất.');
+      return;
+    }
+    openModal("BM_FORM", {
+      code: 'BM13/QLTS',
+      data: {
+        asset: selectedAssets[0],
+        assets: selectedAssets,
+        reporter,
+        lostDetectedDate: detectedAt,
+        note: `Ghi nhận mất hàng loạt: ${selectedAssetCodesText()}`
+      },
+      onSubmit: () => { clearSelection(); fetchAssets(); }
+    });
+  };
+
+  const openBulkLiquidationForm = () => {
+    const reason = window.prompt('Nhập lý do thanh lý tài sản:');
+    if (!reason?.trim()) {
+      toast.error('Bắt buộc nhập lý do thanh lý.');
+      return;
+    }
+    const confirmed = window.confirm(`Xác nhận thanh lý ${selectedAssets.length} tài sản?\n\n${selectedAssetCodesText()}`);
+    if (!confirmed) return;
+    openModal("BM_FORM", {
+      code: 'BM04/QLTS',
+      data: {
+        asset: selectedAssets[0],
+        assets: selectedAssets,
+        reason,
+        note: reason
+      },
+      onSubmit: () => { clearSelection(); fetchAssets(); }
+    });
+  };
+
+  const handleBulkCancelAssets = async () => {
+    const reason = window.prompt('Nhập lý do hủy tài sản. Hành động này không thể hoàn tác trên quy trình vận hành:');
+    if (!reason?.trim()) {
+      toast.error('Bắt buộc nhập lý do hủy tài sản.');
+      return;
+    }
+    const confirmed = window.confirm(`CẢNH BÁO: Hủy ${selectedAssets.length} tài sản và chuyển trạng thái sang Đã thanh lý/loại bỏ.\n\nKhông thể hoàn tác trên quy trình vận hành.\n\nDanh sách: ${selectedAssetCodesText()}\n\nTiếp tục?`);
+    if (!confirmed) return;
+
+    try {
+      await Promise.all(selectedAssets.map((asset: any) => api.patch(`/assets/${asset.id}`, {
+        status: 'DISPOSED',
+        reason: `Hủy tài sản: ${reason}`
+      })));
+      toast.success(`Đã hủy ${selectedAssets.length} tài sản`);
+      clearSelection();
+      fetchAssets();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể hủy tài sản đã chọn');
+    }
+  };
+
+  const handleBulkDeleteAssets = () => {
+    const reason = window.prompt('Nhập lý do xóa/loại khỏi hệ thống:');
+    if (!reason?.trim()) {
+      toast.error('Bắt buộc nhập lý do xóa.');
+      return;
+    }
+    window.alert('Chức năng xóa hàng loạt khỏi hệ thống chưa được bật để tránh mất dữ liệu. Vui lòng dùng Hủy tài sản hoặc xử lý xóa từng tài sản theo hóa đơn nếu đủ điều kiện.');
+  };
+
   const handleSort = (columnKey: string) => {
     const newOrder = (sortBy === columnKey && sortOrder === 'asc') ? 'desc' : 'asc';
     const newParams = new URLSearchParams(searchParams);
@@ -1683,78 +1815,63 @@ export const AssetList: React.FC = () => {
                 {isMoreMenuOpen && (
                   <>
                     <div className="fixed inset-0 z-40" onClick={() => setIsMoreMenuOpen(false)}></div>
-                    <div className="absolute bottom-full right-0 mb-4 w-48 bg-[#0F172A] border border-[#1E293B] rounded-xl overflow-hidden shadow-2xl z-50 animate-in slide-in-from-bottom-2">
-                       <button
-                         onClick={() => {
-                           setIsMoreMenuOpen(false);
-                           handleNormalizeSelectedLocations();
-                         }}
-                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-cyan-300"
-                       >
-                         <Edit3 className="mr-3 h-4 w-4" /> Chuẩn hóa vị trí
-                       </button>
-                       <button 
-                          onClick={() => { 
-                            setIsMoreMenuOpen(false); 
-                           openModal("TRANSFER_WIZARD", {
-                             initialAssetIds: selectedIds,
-                             defaultType: 'RECALL',
-                             source: 'ASSET_DETAIL',
-                             onComplete: () => { clearSelection(); fetchAssets(); }
-                           });
-                         }} 
-                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
-                        >
-                          <RotateCcw className="mr-3 h-4 w-4 text-slate-400" /> Thu hồi
-                        </button>
-                       <button
-                         onClick={() => {
-                           setIsMoreMenuOpen(false);
-                           openModal("BM_FORM", {
-                             code: 'BM03/QLTS',
-                             data: { asset: selectedAssets[0], assets: selectedAssets },
-                             onSubmit: () => { clearSelection(); fetchAssets(); }
-                           });
-                         }}
-                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-amber-400"
-                       >
-                         <AlertCircle className="mr-3 h-4 w-4" /> Báo hỏng
-                       </button>
-                       <button 
-                          onClick={() => { 
-                            setIsMoreMenuOpen(false); 
-                           openModal("BM_FORM", {
-                             code: 'BM10/QLTS',
-                             data: { assets: selectedAssets },
-                             onSubmit: () => { clearSelection(); fetchAssets(); }
-                           });
-                         }} 
-                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-white"
-                        >
-                          <Wrench className="mr-3 h-4 w-4 text-amber-500" /> Sửa chữa / Bảo trì
-                        </button>
-                       <button 
-                         onClick={() => { 
-                           setIsMoreMenuOpen(false); 
-                           openModal("BM_FORM", {
-                             code: 'BM04/QLTS',
-                             data: { asset: selectedAssets[0], assets: selectedAssets },
-                             onSubmit: () => { clearSelection(); fetchAssets(); }
-                           });
-                         }} 
-                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] border-b border-[#1E293B] flex items-center text-rose-400"
-                        >
-                          <Trash2 className="mr-3 h-4 w-4" /> Hủy / Thanh lý
-                        </button>
-                       <button 
-                         onClick={() => { 
-                           setIsMoreMenuOpen(false); 
-                           handleExportSelected(); 
-                         }} 
-                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-emerald-400"
-                       >
-                         <Download className="mr-3 h-4 w-4" /> Xuất Excel
-                       </button>
+                    <div className="absolute bottom-full right-0 mb-4 w-72 bg-[#0F172A] border border-[#1E293B] rounded-2xl overflow-hidden shadow-2xl z-50 animate-in slide-in-from-bottom-2 text-left">
+                      <div className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-widest text-slate-500">Nghiệp vụ</div>
+                      <button onClick={() => { setIsMoreMenuOpen(false); handleBulkPrint(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-white">
+                        <Printer className="mr-3 h-4 w-4 text-primary-400" /> In tem tài sản
+                      </button>
+                      <button onClick={() => { setIsMoreMenuOpen(false); handleExportSelected(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-emerald-400">
+                        <Download className="mr-3 h-4 w-4" /> Xuất Excel
+                      </button>
+                      <button onClick={() => { setIsMoreMenuOpen(false); handleExportSelectedPdf(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-sky-300">
+                        <FileUp className="mr-3 h-4 w-4" /> Xuất PDF
+                      </button>
+
+                      <div className="h-px bg-[#1E293B] my-1"></div>
+                      <div className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-widest text-slate-500">Trạng thái</div>
+                      <button onClick={() => { setIsMoreMenuOpen(false); openBulkLostForm(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-rose-300">
+                        <ShieldAlert className="mr-3 h-4 w-4" /> Ghi nhận mất
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          openModal("BM_FORM", {
+                            code: 'BM03/QLTS',
+                            data: { asset: selectedAssets[0], assets: selectedAssets },
+                            onSubmit: () => { clearSelection(); fetchAssets(); }
+                          });
+                        }}
+                        className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-amber-400"
+                      >
+                        <AlertCircle className="mr-3 h-4 w-4" /> Cập nhật hư hỏng
+                      </button>
+                      <button
+                        onClick={() => {
+                          setIsMoreMenuOpen(false);
+                          openModal("INVENTORY_WIZARD", {
+                            initialAssetIds: selectedIds,
+                            onComplete: () => { clearSelection(); fetchAssets(); }
+                          });
+                        }}
+                        className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-white"
+                      >
+                        <ClipboardCheck className="mr-3 h-4 w-4 text-slate-400" /> Đưa vào kiểm kê lại
+                      </button>
+                      <button onClick={() => { setIsMoreMenuOpen(false); handleNormalizeSelectedLocations(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-cyan-300">
+                        <Edit3 className="mr-3 h-4 w-4" /> Chuẩn hóa vị trí
+                      </button>
+
+                      <div className="h-px bg-[#7F1D1D] my-1"></div>
+                      <div className="px-4 pt-3 pb-1 text-[9px] font-black uppercase tracking-widest text-rose-400">Rủi ro cao</div>
+                      <button onClick={() => { setIsMoreMenuOpen(false); openBulkLiquidationForm(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-orange-950/40 flex items-center text-orange-300">
+                        <Trash2 className="mr-3 h-4 w-4" /> Thanh lý tài sản
+                      </button>
+                      <button onClick={() => { setIsMoreMenuOpen(false); handleBulkCancelAssets(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-rose-950/50 flex items-center text-rose-400">
+                        <Trash className="mr-3 h-4 w-4" /> Hủy tài sản
+                      </button>
+                      <button onClick={() => { setIsMoreMenuOpen(false); handleBulkDeleteAssets(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-rose-950/50 flex items-center text-rose-500">
+                        <X className="mr-3 h-4 w-4" /> Xóa tài sản
+                      </button>
                     </div>
                   </>
                 )}

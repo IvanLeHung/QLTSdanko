@@ -233,7 +233,7 @@ export class RepairService {
         where: { id: ticket.assetId },
         data: { 
           status: finalAssetStatus,
-          lastInventoryCondition: result
+          lastInventoryStatus: `REPAIR:${result}`
         }
       });
 
