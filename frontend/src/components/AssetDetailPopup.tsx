@@ -1107,7 +1107,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         </div>
                         <div className="space-y-1">
                            <p className="text-[10px] font-bold text-slate-400 uppercase">Tình trạng thực tế</p>
-                           <p className="text-sm font-bold text-slate-700">{asset.lastInventoryCondition || 'Hoạt động tốt'}</p>
+                           <p className="text-sm font-bold text-slate-700">{asset.lastInventoryStatus || 'Chưa có dữ liệu'}</p>
                         </div>
                         <div className="space-y-1">
                            <p className="text-[10px] font-bold text-slate-400 uppercase">Người kiểm kê</p>

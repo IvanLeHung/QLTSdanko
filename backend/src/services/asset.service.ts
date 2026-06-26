@@ -2,6 +2,61 @@ import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
 import { parseAndNormalizeLocation } from '../utils/location.util';
 
+const ASSET_UPDATE_FIELDS = new Set([
+  'assetCode',
+  'assetName',
+  'assetNameShort',
+  'assetNameShortSource',
+  'assetNameShortUpdatedAt',
+  'serialNumber',
+  'companyCode',
+  'companyName',
+  'projectName',
+  'level1Code',
+  'level1Name',
+  'level2Code',
+  'level2Name',
+  'level3Code',
+  'level3Name',
+  'level4Code',
+  'level4Name',
+  'runningNo',
+  'runningNoText',
+  'status',
+  'unit',
+  'purchasePriceExVat',
+  'usagePurpose',
+  'supplierName',
+  'supplierTaxCode',
+  'purchaseDate',
+  'currentUserName',
+  'currentPosition',
+  'departmentName',
+  'locationName',
+  'cityName',
+  'handoverDate',
+  'documentNote',
+  'lastInventoryDate',
+  'lastInventoryStatus',
+  'isDeleted',
+  'isLocked',
+  'depreciationEndDate',
+  'attachments',
+  'lastLabelPrint',
+  'technicalSpecsJson',
+  'creationBatchId',
+  'invoiceBatchId',
+  'organizationUnitId',
+  'invoiceLineId',
+  'originalInvoiceItemName'
+]);
+
+function sanitizeAssetUpdates(updates: Record<string, any> = {}) {
+  return Object.fromEntries(
+    Object.entries(updates).filter(([key]) => ASSET_UPDATE_FIELDS.has(key))
+  );
+}
+
 export class AssetService {
   static async generateAssetCodes(
     params: {
@@ -214,6 +269,11 @@ export class AssetService {
     return await prisma.$transaction(async (tx) => {
       const oldAsset = await tx.asset.findUnique({ where: { id } });
       if (!oldAsset) throw new Error('Asset not found');
+
+      updates = sanitizeAssetUpdates(updates);
+      if (Object.keys(updates).length === 0) {
+        return oldAsset;
+      }
 
       // Normalize location if updated
       if (updates.locationName) {
