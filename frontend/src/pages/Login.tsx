@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
@@ -10,9 +10,31 @@ export const Login: React.FC = () => {
   const [password, setPassword] = useState('');
   const [rememberMe, setRememberMe] = useState(false);
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
+  const { login, user } = useAuth();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
+  const getRedirectTarget = () => {
+    const redirect = searchParams.get('redirect');
+    if (!redirect || !redirect.startsWith('/') || redirect.startsWith('//') || redirect.startsWith('/login')) {
+      return '/dashboard';
+    }
+    return redirect;
+  };
+
+  const goAfterLogin = (target: string) => {
+    navigate(target, { replace: true });
+    window.setTimeout(() => {
+      if (window.location.pathname === '/login') {
+        window.location.assign(target);
+      }
+    }, 50);
+  };
+
+  useEffect(() => {
+    if (!user) return;
+    goAfterLogin(user.mustChangePassword ? '/force-change-password' : getRedirectTarget());
+  }, [user]);
 
   // Forgot password form states
   const [isForgotView, setIsForgotView] = useState(false);
@@ -27,9 +49,9 @@ export const Login: React.FC = () => {
       login(res.data.token, res.data.user);
       toast.success("Đăng nhập thành công!");
       if (res.data.user.mustChangePassword) {
-        navigate('/force-change-password');
+        goAfterLogin('/force-change-password');
       } else {
-        navigate(searchParams.get('redirect') || '/dashboard');
+        goAfterLogin(getRedirectTarget());
       }
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Đăng nhập thất bại");
