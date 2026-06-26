@@ -1846,6 +1846,124 @@ router.get('/:id/health', authenticateToken, requirePermission('ASSET_VIEW'), as
   }
 });
 
+router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  const id = Number(req.params.id);
+  const performedBy = req.user?.username || req.user?.fullName || 'system';
+  const {
+    currentUserName,
+    currentPosition,
+    currentUserPhone,
+    departmentName,
+    locationName,
+    cityName,
+    note,
+    reason
+  } = req.body || {};
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const oldAsset = await tx.asset.findUnique({ where: { id } });
+      if (!oldAsset) throw new Error('Asset not found');
+
+      const assetUpdates: any = {
+        currentUserName: currentUserName || null,
+        currentPosition: currentPosition || null,
+        departmentName: departmentName || null,
+        locationName: locationName || null,
+        cityName: cityName || null
+      };
+
+      const updatedAsset = await tx.asset.update({
+        where: { id },
+        data: assetUpdates
+      });
+
+      const latestHandoverDocument = await tx.handoverDocument.findFirst({
+        where: {
+          items: { some: { assetId: id } },
+          status: { in: ['COMPLETED', 'PENDING_CONFIRMATION', 'DRAFT'] }
+        },
+        orderBy: [
+          { confirmedAt: 'desc' },
+          { documentDate: 'desc' },
+          { createdAt: 'desc' }
+        ],
+        select: {
+          id: true,
+          recipientPhone: true,
+          recipientName: true,
+          recipientPosition: true,
+          recipientDepartment: true,
+          newLocation: true,
+          newCity: true
+        }
+      });
+
+      let updatedHandoverDocument = latestHandoverDocument;
+      if (latestHandoverDocument) {
+        updatedHandoverDocument = await tx.handoverDocument.update({
+          where: { id: latestHandoverDocument.id },
+          data: {
+            recipientName: currentUserName || latestHandoverDocument.recipientName,
+            recipientPosition: currentPosition || null,
+            recipientDepartment: departmentName || null,
+            recipientPhone: currentUserPhone || null,
+            newLocation: locationName || null,
+            newCity: cityName || null,
+            note: note || undefined
+          },
+          select: {
+            id: true,
+            recipientPhone: true,
+            recipientName: true,
+            recipientPosition: true,
+            recipientDepartment: true,
+            newLocation: true,
+            newCity: true
+          }
+        });
+      }
+
+      await AuditService.logAssetChange(
+        id,
+        oldAsset,
+        updatedAsset,
+        performedBy,
+        tx,
+        reason || note || 'Bổ sung/chỉnh sửa thông tin cấp phát'
+      );
+
+      const phoneChanged = (latestHandoverDocument?.recipientPhone || '') !== (currentUserPhone || '');
+      if (phoneChanged || note) {
+        await AuditService.log({
+          entityType: 'ASSET',
+          entityId: id,
+          action: 'UPDATE',
+          details: {
+            changes: {
+              ...(phoneChanged ? { currentUserPhone: { old: latestHandoverDocument?.recipientPhone || null, new: currentUserPhone || null } } : {}),
+              ...(note ? { assignmentNote: { old: null, new: note } } : {})
+            },
+            reason: reason || note || 'Bổ sung/chỉnh sửa thông tin cấp phát'
+          },
+          performedBy,
+          tx
+        });
+      }
+
+      return {
+        ...updatedAsset,
+        latestHandoverDocument: updatedHandoverDocument,
+        latestAssignmentPhone: updatedHandoverDocument?.recipientPhone || null
+      };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(error.message === 'Asset not found' ? 404 : 500).json({ message: error.message });
+  }
+});
+
 router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
   const idParam = req.params.id as string;
   let asset = null;

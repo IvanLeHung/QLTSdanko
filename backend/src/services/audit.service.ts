@@ -37,7 +37,7 @@ export class AuditService {
   static async logAssetChange(assetId: number, oldData: any, newData: any, performedBy: string, tx?: any, reason?: string) {
     const changes: Record<string, { old: any; new: any }> = {};
     const fieldsToTrack = [
-      'status', 'currentUserName', 'departmentName', 'locationName', 
+      'status', 'currentUserName', 'currentPosition', 'departmentName', 'locationName', 
       'cityName', 'assetName', 'serialNumber', 'purchasePriceExVat',
       'unit', 'usagePurpose', 'purchaseDate', 'depreciationEndDate',
       'supplierName', 'companyCode', 'assetCode', 'note'
