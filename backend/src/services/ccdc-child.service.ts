@@ -46,6 +46,27 @@ const compact = (value: any) => {
   return value;
 };
 
+const parseChildSequence = (childCode: string) => {
+  const typed = childCode.match(/-(?:I|G|B)(\d+)(?:-SL\d+)?$/i);
+  if (typed) return Number(typed[1]);
+  const legacy = childCode.match(/-(\d+)$/);
+  return legacy ? Number(legacy[1]) : 0;
+};
+
+const childCodePrefixForSplitMode = (splitMode?: string) => {
+  if (splitMode === 'quantity') return 'G';
+  if (splitMode === 'combo') return 'B';
+  return 'I';
+};
+
+const composeChildCode = (parentCode: string, seq: number, splitMode: string | undefined, quantity: number) => {
+  const prefix = childCodePrefixForSplitMode(splitMode);
+  const seqText = String(seq).padStart(2, '0');
+  const qty = Math.max(1, Math.floor(Number(quantity || 1)));
+  const quantitySuffix = prefix === 'I' ? '' : `-SL${qty}`;
+  return `${parentCode}-${prefix}${seqText}${quantitySuffix}`;
+};
+
 export class CCDCChildService {
   static async getParentSummary(parentId: number, txClient?: any) {
     const client = txClient || prisma;
@@ -201,9 +222,9 @@ export class CCDCChildService {
       });
       const rows = Array.isArray(data.items) && data.items.length
         ? data.items
-        : Array.from({ length: data.splitMode === 'quantity' ? 1 : quantity }, () => ({}));
+        : Array.from({ length: data.splitMode === 'quantity' || data.splitMode === 'combo' ? 1 : quantity }, () => ({}));
       const requestedQuantity = rows.reduce((sum: number, row: any) => {
-        const fallbackQuantity = data.splitMode === 'quantity' ? quantity : 1;
+        const fallbackQuantity = data.splitMode === 'quantity' || data.splitMode === 'combo' ? quantity : 1;
         return sum + Math.max(1, Math.floor(Number(row.quantity || fallbackQuantity)));
       }, 0);
       const activeChildQuantity = activeChildren.reduce((sum: number, item: any) => sum + Math.max(1, Math.floor(Number(item.quantity || 1))), 0);
@@ -218,17 +239,16 @@ export class CCDCChildService {
       });
       let maxSeq = 0;
       for (const item of existing) {
-        const match = item.childCode.match(/-(\d+)$/);
-        if (match) maxSeq = Math.max(maxSeq, Number(match[1]));
+        maxSeq = Math.max(maxSeq, parseChildSequence(item.childCode));
       }
 
       const created = [];
       for (let i = 0; i < rows.length; i++) {
         const seq = maxSeq + i + 1;
-        const childCode = `${parent.toolCode}-${String(seq).padStart(2, '0')}`;
         const row = rows[i] || {};
-        const fallbackQuantity = data.splitMode === 'quantity' ? quantity : 1;
+        const fallbackQuantity = data.splitMode === 'quantity' || data.splitMode === 'combo' ? quantity : 1;
         const rowQuantity = Math.max(1, Math.floor(Number(row.quantity || fallbackQuantity)));
+        const childCode = composeChildCode(parent.toolCode, seq, data.splitMode, rowQuantity);
         const purchaseDateValue = row.purchaseDate || data.purchaseDate;
         const child = await tx.cCDCChildItem.create({
           data: {

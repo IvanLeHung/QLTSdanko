@@ -82,6 +82,25 @@ export class ToolService {
     return nhomCode;
   }
 
+  private static resolveToolManagementCode(managementType?: string | null) {
+    const type = String(managementType || 'INDIVIDUAL').toUpperCase();
+    if (type === 'QUANTITY') return 'SL';
+    if (type === 'BUNDLE') return 'CB';
+    return 'I';
+  }
+
+  private static composeToolCode(params: {
+    baseCode: string;
+    runningNoText: string;
+    managementType?: string | null;
+    physicalQuantity?: number | null;
+  }) {
+    const typeCode = this.resolveToolManagementCode(params.managementType);
+    const quantity = Math.max(1, Math.floor(Number(params.physicalQuantity || 1)));
+    const quantitySuffix = typeCode === 'I' ? '' : `-Q${quantity}`;
+    return `${params.baseCode}.${typeCode}.${params.runningNoText}${quantitySuffix}`;
+  }
+
   private static assertCanChangeToolCategory(user?: any) {
     const permissions = new Set<string>(user?.permissions || []);
     const roles = (user?.roles || []).map((role: string) => String(role).toUpperCase());
@@ -115,7 +134,7 @@ export class ToolService {
     return checks.map(([label], index) => counts[index] > 0 ? label : null).filter(Boolean) as string[];
   }
 
-  private static async generateToolCodeWithCounter(params: { category?: string | null; purchaseDate?: Date | null }, tx: any) {
+  private static async generateToolCodeWithCounter(params: { category?: string | null; purchaseDate?: Date | null; managementType?: string | null; physicalQuantity?: number | null }, tx: any) {
     const categoryKey = this.resolveToolCategoryCode(params.category);
     const year = params.purchaseDate ? new Date(params.purchaseDate).getFullYear() : new Date().getFullYear();
     const baseCode = `CCDC.${categoryKey}.${year}`;
@@ -136,7 +155,12 @@ export class ToolService {
     for (let attempt = 0; attempt < 50; attempt++) {
       nextNumber += 1;
       const runningNoText = nextNumber.toString().padStart(5, '0');
-      const toolCode = `${baseCode}.${runningNoText}`;
+      const toolCode = this.composeToolCode({
+        baseCode,
+        runningNoText,
+        managementType: params.managementType,
+        physicalQuantity: params.physicalQuantity
+      });
       const duplicated = await tx.toolEquipment.findUnique({ where: { toolCode }, select: { id: true } });
       if (!duplicated) {
         await tx.toolCodeCounter.update({ where: { id: counterRows[0].id }, data: { currentNumber: nextNumber } });
@@ -147,40 +171,26 @@ export class ToolService {
   }
 
   /**
-   * Generates CCDC tool codes in format: CCDC.{NHOM}.{NAM}.{STT}
-   * STT is a 5-digit zero-padded running number unique to the Nhóm and year.
+   * Generates CCDC tool codes.
+   * New format: CCDC.{NHOM}.{NAM}.{I|SL|CB}.{STT}[-Q{quantity}]
+   * Legacy codes are kept untouched and still counted for the running number.
    */
   static async generateToolCodes(
     params: {
       category?: string | null;
       branchName?: string | null;
       purchaseDate?: Date | null;
+      managementType?: string | null;
+      physicalQuantity?: number | null;
       quantity: number;
     },
     txClient?: any
   ) {
     const client = txClient || prisma;
-    const { category, branchName, purchaseDate, quantity } = params;
+    const { category, branchName, purchaseDate, managementType, physicalQuantity, quantity } = params;
 
     // 1. Resolve NHOM code from Category (e.g. "Event - Âm thanh" -> "EVENT")
-    let nhomCode = 'GEN';
-    if (category) {
-      const parentCat = category.split('-')[0].trim().toLowerCase();
-      if (parentCat.includes('decor')) nhomCode = 'DECOR';
-      else if (parentCat.includes('event')) nhomCode = 'EVENT';
-      else if (parentCat.includes('fb') || parentCat.includes('tiệc') || parentCat.includes('f&b')) nhomCode = 'FNB';
-      else if (parentCat.includes('nội thất')) nhomCode = 'FURNITURE';
-      else if (parentCat.includes('bất động sản') || parentCat.includes('bđs')) nhomCode = 'BDS';
-      else if (parentCat.includes('marketing')) nhomCode = 'MKT';
-      else if (parentCat.includes('media')) nhomCode = 'MEDIA';
-      else if (parentCat.includes('kỹ thuật')) nhomCode = 'TECH';
-      else if (parentCat.includes('kho vận')) nhomCode = 'KHO';
-      else if (parentCat.includes('cntt')) nhomCode = 'CNTT';
-      else if (parentCat.includes('tiêu hao')) nhomCode = 'CONSUMABLE';
-      else if (parentCat.includes('merchandise')) nhomCode = 'MERCH';
-      else if (parentCat.includes('branding')) nhomCode = 'BRAND';
-      else if (parentCat.includes('dịch vụ vận hành')) nhomCode = 'OPS';
-    }
+    const nhomCode = this.resolveToolCategoryCode(category);
 
     // 2. Resolve DONVI code from Branch Name (e.g. "Hà Nội" -> "HN")
     let donviCode = 'HQ';
@@ -226,8 +236,9 @@ export class ToolService {
       let maxSeq = 0;
       for (const tool of existingTools) {
         const parts = tool.toolCode.split('.');
+        const typedSeq = parts.length >= 5 ? parts[4] : '';
         const lastPart = parts[parts.length - 1];
-        const num = parseInt(lastPart, 10);
+        const num = parseInt(typedSeq || lastPart, 10);
         if (!isNaN(num) && num > maxSeq) {
           maxSeq = num;
         }
@@ -256,7 +267,12 @@ export class ToolService {
       const codes = [];
       for (let i = startNumber; i <= endNumber; i++) {
         const seqText = i.toString().padStart(5, '0');
-        const toolCode = `${baseCode}.${seqText}`;
+        const toolCode = this.composeToolCode({
+          baseCode,
+          runningNoText: seqText,
+          managementType,
+          physicalQuantity
+        });
         codes.push({ runningNo: i, runningNoText: seqText, toolCode });
       }
 
@@ -277,6 +293,8 @@ export class ToolService {
       category?: string | null;
       branchName?: string | null;
       purchaseDate?: Date | null;
+      managementType?: string | null;
+      physicalQuantity?: number | null;
     },
     txClient?: any
   ) {
@@ -412,7 +430,9 @@ export class ToolService {
         const gen = await this.generateSingleToolCode({
           category: data.category,
           branchName: data.branchName,
-          purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null
+          purchaseDate: data.purchaseDate ? new Date(data.purchaseDate) : null,
+          managementType: data.managementType || 'INDIVIDUAL',
+          physicalQuantity: data.quantity ? Number(data.quantity) : 1
         }, tx);
         data.toolCode = gen.toolCode;
       }
@@ -607,7 +627,9 @@ export class ToolService {
         });
         const generated = await this.generateToolCodeWithCounter({
           category: newCategory,
-          purchaseDate: updates.purchaseDate ? new Date(updates.purchaseDate) : oldTool.purchaseDate
+          purchaseDate: updates.purchaseDate ? new Date(updates.purchaseDate) : oldTool.purchaseDate,
+          managementType: updates.managementType || oldTool.managementType,
+          physicalQuantity: updates.quantity ? Number(updates.quantity) : oldTool.quantity
         }, tx);
 
         updates.category = newCategory;
@@ -2787,9 +2809,9 @@ export class ToolService {
 
         let maxSuffix = 0;
         for (const child of existingChildren) {
-          const parts = child.toolCode.split('-');
-          const lastPart = parts[parts.length - 1];
-          const num = parseInt(lastPart, 10);
+          const typed = child.toolCode.match(/-(?:I|G|B)(\d+)(?:-SL\d+)?$/i);
+          const legacy = child.toolCode.match(/-(\d+)$/);
+          const num = typed ? Number(typed[1]) : legacy ? Number(legacy[1]) : 0;
           if (!isNaN(num) && num > maxSuffix) {
             maxSuffix = num;
           }
@@ -2804,7 +2826,7 @@ export class ToolService {
 
           // Create qty number of individual tools
           for (let i = 0; i < qty; i++) {
-            const childCode = `${parentTool.toolCode}-${String(nextIndex).padStart(2, '0')}`;
+            const childCode = `${parentTool.toolCode}-I${String(nextIndex).padStart(2, '0')}`;
             nextIndex++;
 
             const norm = parseAndNormalizeLocation(toLoc);
