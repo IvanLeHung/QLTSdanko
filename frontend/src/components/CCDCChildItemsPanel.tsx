@@ -98,6 +98,25 @@ const emptyFilters = {
   lotNumber: ''
 };
 
+const parseChildSequence = (childCode: string) => {
+  const typed = childCode.match(/-(?:I|G|B)(\d+)(?:-SL\d+)?$/i);
+  if (typed) return Number(typed[1]);
+  const legacy = childCode.match(/-(\d+)$/);
+  return legacy ? Number(legacy[1]) : 0;
+};
+
+const childCodePrefixForSplitMode = (splitMode: 'quantity' | 'individual' | 'combo') => {
+  if (splitMode === 'quantity') return 'G';
+  if (splitMode === 'combo') return 'B';
+  return 'I';
+};
+
+const composePreviewChildCode = (parentCode: string, seq: number, splitMode: 'quantity' | 'individual' | 'combo', quantity: number) => {
+  const prefix = childCodePrefixForSplitMode(splitMode);
+  const quantitySuffix = prefix === 'I' ? '' : `-SL${Math.max(1, Math.floor(Number(quantity || 1)))}`;
+  return `${parentCode}-${prefix}${String(seq).padStart(2, '0')}${quantitySuffix}`;
+};
+
 export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool }) => {
   const navigate = useNavigate();
   const [items, setItems] = useState<ChildItem[]>([]);
@@ -126,7 +145,7 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
       .split(/[\n,;]/)
       .map(serial => serial.trim())
       .filter(Boolean);
-    const rowCount = splitMode === 'quantity'
+    const rowCount = splitMode === 'quantity' || splitMode === 'combo'
       ? 1
       : splitMode === 'individual'
         ? Math.max(manualSerials.length, 1)
@@ -134,21 +153,21 @@ export const CCDCChildItemsPanel: React.FC<{ parentTool: any }> = ({ parentTool 
     const existingCodes = new Set(items.map(item => item.childCode));
     let maxSeq = 0;
     for (const item of items) {
-      const match = item.childCode.match(/-(\d+)$/);
-      if (match) maxSeq = Math.max(maxSeq, Number(match[1]));
+      maxSeq = Math.max(maxSeq, parseChildSequence(item.childCode));
     }
     const rows = Array.from({ length: rowCount }).map((_, index) => {
       let seq = maxSeq + index + 1;
-      let childCode = `${parentTool.toolCode}-${String(seq).padStart(2, '0')}`;
+      const rowQuantity = splitMode === 'quantity' || splitMode === 'combo' ? quantity : 1;
+      let childCode = composePreviewChildCode(parentTool.toolCode, seq, splitMode, rowQuantity);
       while (existingCodes.has(childCode)) {
         seq += 1;
-        childCode = `${parentTool.toolCode}-${String(seq).padStart(2, '0')}`;
+        childCode = composePreviewChildCode(parentTool.toolCode, seq, splitMode, rowQuantity);
       }
       existingCodes.add(childCode);
       const common = applyAllRows ? createForm : emptyCreateForm;
       return {
         childCode,
-        quantity: splitMode === 'quantity' ? quantity : 1,
+        quantity: rowQuantity,
         serialNumber: splitMode === 'individual' ? (manualSerials[index] || '') : '',
         color: common.color,
         size: common.size,

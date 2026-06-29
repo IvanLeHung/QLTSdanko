@@ -137,6 +137,8 @@ export class ToolInvoicePostService {
           category: line.category,
           branchName: branchName,
           purchaseDate: new Date(invoice.invoiceDate),
+          managementType: line.managementType,
+          physicalQuantity: line.quantity,
           quantity: totalToGenerate
         }, tx);
 
