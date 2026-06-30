@@ -40,7 +40,9 @@ export class AuditService {
       'status', 'currentUserName', 'currentPosition', 'departmentName', 'locationName', 
       'cityName', 'assetName', 'serialNumber', 'purchasePriceExVat',
       'unit', 'usagePurpose', 'purchaseDate', 'depreciationEndDate',
-      'supplierName', 'companyCode', 'assetCode', 'note'
+      'supplierName', 'companyCode', 'assetCode', 'note',
+      'offboardingAlert', 'offboardingEmployeeName', 'offboardingDate',
+      'expectedRecoveryDate', 'offboardingResolvedAt', 'recoveryPriority'
     ];
 
     for (const field of fieldsToTrack) {

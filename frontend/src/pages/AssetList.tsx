@@ -526,6 +526,47 @@ export const AssetList: React.FC = () => {
     }
   };
 
+  const formatDateShort = (value?: string | Date | null) => {
+    if (!value) return '';
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toLocaleDateString('vi-VN');
+  };
+
+  const getRecoveryAlert = (asset: any) => {
+    if (!asset.offboardingAlert || asset.offboardingResolvedAt || !asset.expectedRecoveryDate) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const dueDate = new Date(asset.expectedRecoveryDate);
+    dueDate.setHours(0, 0, 0, 0);
+    const diffDays = Math.floor((dueDate.getTime() - today.getTime()) / 86400000);
+    const employee = asset.offboardingEmployeeName || asset.currentUserName || 'Nhân sự nghỉ việc';
+    const offboardingDate = formatDateShort(asset.offboardingDate);
+
+    if (diffDays < 0) {
+      return {
+        label: `QUÁ HẠN THU HỒI ${Math.abs(diffDays)} NGÀY`,
+        detail: `${employee}${offboardingDate ? ` nghỉ việc ${offboardingDate}` : ''}`,
+        className: 'bg-red-700 text-white border-red-800'
+      };
+    }
+    if (diffDays === 0) {
+      return {
+        label: 'CẦN THU HỒI',
+        detail: `${employee}${offboardingDate ? ` nghỉ việc ${offboardingDate}` : ''}`,
+        className: 'bg-red-50 text-red-700 border-red-200'
+      };
+    }
+    if (diffDays <= 3) {
+      return {
+        label: `SẮP THU HỒI ${formatDateShort(asset.expectedRecoveryDate)}`,
+        detail: `${employee}${offboardingDate ? ` nghỉ việc ${offboardingDate}` : ''}`,
+        className: 'bg-amber-50 text-amber-700 border-amber-200'
+      };
+    }
+    return null;
+  };
+
   const getMissingAssetFields = (asset: any) => {
     const missing: string[] = [];
     const isEmpty = (value: any) => {
@@ -588,6 +629,97 @@ export const AssetList: React.FC = () => {
       fetchAssets();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể chuẩn hóa vị trí hàng loạt');
+    }
+  };
+
+  const handleBulkOffboardingAlert = async () => {
+    const defaultEmployee = selectedAssets.find((asset: any) => asset.currentUserName)?.currentUserName || '';
+    const employeeName = window.prompt('Nhân sự nghỉ việc:', defaultEmployee);
+    if (!employeeName?.trim()) {
+      toast.error('Bắt buộc nhập nhân sự nghỉ việc.');
+      return;
+    }
+
+    const todayText = new Date().toISOString().slice(0, 10);
+    const offboardingDate = window.prompt('Ngày nghỉ việc (yyyy-mm-dd):', todayText);
+    if (!offboardingDate?.trim()) {
+      toast.error('Bắt buộc nhập ngày nghỉ việc.');
+      return;
+    }
+
+    const expectedRecoveryDate = window.prompt('Ngày cần thu tài sản (yyyy-mm-dd):', offboardingDate);
+    if (!expectedRecoveryDate?.trim()) {
+      toast.error('Bắt buộc nhập ngày cần thu tài sản.');
+      return;
+    }
+
+    const note = window.prompt('Ghi chú (không bắt buộc):', '') || '';
+    if (!window.confirm(`Tạo cảnh báo thu hồi cho toàn bộ tài sản đang gán cho "${employeeName.trim()}"?`)) return;
+
+    try {
+      const res = await api.post('/assets/offboarding-alert', {
+        employeeName: employeeName.trim(),
+        offboardingDate,
+        expectedRecoveryDate,
+        note
+      });
+      toast.success(res.data?.message || 'Đã tạo cảnh báo thu hồi tài sản nghỉ việc.');
+      clearSelection();
+      fetchAssets();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể tạo cảnh báo tài sản nghỉ việc.');
+    }
+  };
+
+  const recoverOffboardingAsset = async (asset: any) => {
+    if (!window.confirm(`Thu hồi tài sản ${asset.assetCode} về kho và đóng cảnh báo nghỉ việc?`)) return;
+    const note = window.prompt('Ghi chú thu hồi:', 'Thu hồi tài sản do nhân sự nghỉ việc') || '';
+    try {
+      await api.patch(`/assets/${asset.id}/offboarding-alert/recover`, { note });
+      toast.success('Đã thu hồi tài sản và đóng cảnh báo.');
+      fetchAssets();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể thu hồi tài sản.');
+    }
+  };
+
+  const extendOffboardingAsset = async (asset: any) => {
+    const defaultDate = asset.expectedRecoveryDate ? new Date(asset.expectedRecoveryDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10);
+    const expectedRecoveryDate = window.prompt('Ngày cần thu tài sản mới (yyyy-mm-dd):', defaultDate);
+    if (!expectedRecoveryDate?.trim()) {
+      toast.error('Bắt buộc nhập ngày cần thu tài sản.');
+      return;
+    }
+    const note = window.prompt('Lý do gia hạn (không bắt buộc):', '') || '';
+    try {
+      await api.patch(`/assets/${asset.id}/offboarding-alert/extend`, { expectedRecoveryDate, note });
+      toast.success('Đã gia hạn ngày thu tài sản.');
+      fetchAssets();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể gia hạn ngày thu.');
+    }
+  };
+
+  const resolveOffboardingAsset = async (asset: any) => {
+    const note = window.prompt('Ghi chú xử lý:', 'Đã xử lý cảnh báo nghỉ việc') || '';
+    try {
+      await api.patch(`/assets/${asset.id}/offboarding-alert/resolve`, { note });
+      toast.success('Đã đánh dấu cảnh báo là đã xử lý.');
+      fetchAssets();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể đánh dấu đã xử lý.');
+    }
+  };
+
+  const clearOffboardingAsset = async (asset: any) => {
+    if (!window.confirm(`Bỏ cảnh báo nghỉ việc khỏi tài sản ${asset.assetCode}?`)) return;
+    const note = window.prompt('Lý do bỏ cảnh báo:', 'Bỏ cảnh báo nghỉ việc') || '';
+    try {
+      await api.patch(`/assets/${asset.id}/offboarding-alert/clear`, { note });
+      toast.success('Đã bỏ cảnh báo nghỉ việc.');
+      fetchAssets();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể bỏ cảnh báo.');
     }
   };
 
@@ -693,6 +825,18 @@ export const AssetList: React.FC = () => {
         break;
       case 'history':
         openAssetDetail(asset.id, 'timeline');
+        break;
+      case 'offboarding_recover':
+        recoverOffboardingAsset(asset);
+        break;
+      case 'offboarding_extend':
+        extendOffboardingAsset(asset);
+        break;
+      case 'offboarding_resolve':
+        resolveOffboardingAsset(asset);
+        break;
+      case 'offboarding_clear':
+        clearOffboardingAsset(asset);
         break;
       default:
         break;
@@ -1812,6 +1956,9 @@ export const AssetList: React.FC = () => {
                       <button onClick={() => { setIsMoreMenuOpen(false); openBulkLostForm(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-rose-300">
                         <ShieldAlert className="mr-3 h-4 w-4" /> Ghi nhận mất
                       </button>
+                      <button onClick={() => { setIsMoreMenuOpen(false); handleBulkOffboardingAlert(); }} className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-red-300">
+                        <AlertCircle className="mr-3 h-4 w-4" /> Báo tài sản nghỉ việc
+                      </button>
                       <button
                         onClick={() => {
                           setIsMoreMenuOpen(false);
@@ -1912,6 +2059,7 @@ export const AssetList: React.FC = () => {
                 const missingFields = getMissingAssetFields(asset);
                 const locationIssues = getLocationIssues(asset);
                 const displayLocationName = cleanLocationName(asset.cityName, asset.locationName);
+                const recoveryAlert = getRecoveryAlert(asset);
                 return (
                   <tr 
                     key={asset.id} 
@@ -1998,6 +2146,11 @@ export const AssetList: React.FC = () => {
                             <Wrench className="h-2.5 w-2.5" /> Đang có phiếu sửa chữa
                           </span>
                         )}
+                        {recoveryAlert && (
+                          <span title={recoveryAlert.detail} className={cn("text-[9px] font-black border px-1.5 py-0.5 rounded-md flex items-center gap-0.5 whitespace-nowrap", recoveryAlert.className)}>
+                            <AlertCircle className="h-2.5 w-2.5" /> {recoveryAlert.label}
+                          </span>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 text-right" onClick={(e) => e.stopPropagation()}>
@@ -2049,9 +2202,18 @@ export const AssetList: React.FC = () => {
                                      />
                                    </Can>
                                  )}
-                                 <Can permission="REPAIR_CREATE"><ActionItem label="Thanh lý" icon={<Trash className="h-4 w-4" />} onClick={() => handleAssetAction('liquidation', asset)} /></Can>
-                                 <div className="h-px bg-[#F1F5F9] my-1"></div>
-                                 <ActionItem label="Nhật ký tài sản" icon={<Activity className="h-4 w-4" />} onClick={() => handleAssetAction('history', asset)} />
+                                  <Can permission="REPAIR_CREATE"><ActionItem label="Thanh lý" icon={<Trash className="h-4 w-4" />} onClick={() => handleAssetAction('liquidation', asset)} /></Can>
+                                  {asset.offboardingAlert && !asset.offboardingResolvedAt && (
+                                    <>
+                                      <div className="h-px bg-[#F1F5F9] my-1"></div>
+                                      <Can permission="ASSET_UPDATE"><ActionItem label="Thu hồi tài sản" icon={<RotateCcw className="h-4 w-4 text-red-500" />} onClick={() => handleAssetAction('offboarding_recover', asset)} /></Can>
+                                      <Can permission="ASSET_UPDATE"><ActionItem label="Gia hạn ngày thu" icon={<Edit3 className="h-4 w-4 text-amber-500" />} onClick={() => handleAssetAction('offboarding_extend', asset)} /></Can>
+                                      <Can permission="ASSET_UPDATE"><ActionItem label="Đánh dấu đã xử lý" icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />} onClick={() => handleAssetAction('offboarding_resolve', asset)} /></Can>
+                                      <Can permission="ASSET_UPDATE"><ActionItem label="Bỏ cảnh báo nghỉ việc" icon={<X className="h-4 w-4 text-slate-400" />} onClick={() => handleAssetAction('offboarding_clear', asset)} /></Can>
+                                    </>
+                                  )}
+                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
+                                  <ActionItem label="Nhật ký tài sản" icon={<Activity className="h-4 w-4" />} onClick={() => handleAssetAction('history', asset)} />
                               </div>
                             </>
                           )}
