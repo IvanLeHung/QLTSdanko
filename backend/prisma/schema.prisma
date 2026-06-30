@@ -223,6 +223,14 @@ model Asset {
   documentNote            String?
   lastInventoryDate       DateTime?
   lastInventoryStatus     String?
+  offboardingAlert        Boolean             @default(false)
+  offboardingEmployeeId   String?
+  offboardingEmployeeName String?
+  offboardingDate         DateTime?
+  expectedRecoveryDate    DateTime?
+  offboardingNote         String?
+  offboardingResolvedAt   DateTime?
+  recoveryPriority        Int                 @default(0)
   isDeleted               Boolean             @default(false)
   isLocked                Boolean             @default(false)
   createdAt               DateTime            @default(now())
@@ -260,6 +268,8 @@ model Asset {
   @@index([serialNumber])
   @@index([locationName])
   @@index([currentUserName])
+  @@index([offboardingAlert, expectedRecoveryDate])
+  @@index([recoveryPriority])
   @@index([organizationUnitId])
 }
 

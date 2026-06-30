@@ -16,6 +16,66 @@ import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
+const startOfDay = (value: Date) => {
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
+};
+
+const addDays = (value: Date, days: number) => {
+  const date = new Date(value);
+  date.setDate(date.getDate() + days);
+  return date;
+};
+
+const parseRequiredDate = (value: any, label: string) => {
+  const date = new Date(String(value || ''));
+  if (!value || Number.isNaN(date.getTime())) {
+    throw new Error(`${label} không hợp lệ.`);
+  }
+  return date;
+};
+
+const calculateRecoveryPriority = (expectedRecoveryDate?: Date | null) => {
+  if (!expectedRecoveryDate) return 0;
+  const today = startOfDay(new Date());
+  const due = startOfDay(expectedRecoveryDate);
+  if (due < today) return 100;
+  if (due.getTime() === today.getTime()) return 90;
+  if (due <= addDays(today, 3)) return 50;
+  return 0;
+};
+
+const refreshRecoveryPriorities = async () => {
+  const today = startOfDay(new Date());
+  const tomorrow = addDays(today, 1);
+  const inFourDays = addDays(today, 4);
+
+  await prisma.$transaction([
+    prisma.asset.updateMany({
+      where: { offboardingAlert: true, offboardingResolvedAt: null, expectedRecoveryDate: { lt: today } },
+      data: { recoveryPriority: 100 }
+    }),
+    prisma.asset.updateMany({
+      where: { offboardingAlert: true, offboardingResolvedAt: null, expectedRecoveryDate: { gte: today, lt: tomorrow } },
+      data: { recoveryPriority: 90 }
+    }),
+    prisma.asset.updateMany({
+      where: { offboardingAlert: true, offboardingResolvedAt: null, expectedRecoveryDate: { gte: tomorrow, lt: inFourDays } },
+      data: { recoveryPriority: 50 }
+    }),
+    prisma.asset.updateMany({
+      where: { OR: [
+        { offboardingAlert: false },
+        { offboardingResolvedAt: { not: null } },
+        { offboardingAlert: true, expectedRecoveryDate: { gte: inFourDays } },
+        { offboardingAlert: true, expectedRecoveryDate: null }
+      ] },
+      data: { recoveryPriority: 0 }
+    })
+  ]);
+};
+
 router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
   const { 
     search = '', 
@@ -649,12 +709,17 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
   }
 
   try {
+    await refreshRecoveryPriorities();
     const [assets, total] = await Promise.all([
       prisma.asset.findMany({
         where,
         skip,
         take: Number(limit),
-        orderBy: { [String(sortBy)]: sortOrder },
+        orderBy: [
+          { recoveryPriority: 'desc' },
+          { expectedRecoveryDate: 'asc' },
+          { [String(sortBy)]: sortOrder }
+        ],
         include: {
           repairTickets: {
             where: {
@@ -784,6 +849,207 @@ router.post('/bulk-create', authenticateToken, requirePermission('ASSET_CREATE')
 
     await AssetService.createAssets(assetsData, performedBy);
     res.json({ message: `Created ${quantity} assets` });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/offboarding-alert', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  try {
+    const {
+      employeeId,
+      employeeName,
+      offboardingDate,
+      expectedRecoveryDate,
+      note
+    } = req.body || {};
+
+    const employee = String(employeeName || '').trim();
+    if (!employee) return res.status(422).json({ message: 'Vui lòng nhập nhân sự nghỉ việc.' });
+
+    const offDate = parseRequiredDate(offboardingDate, 'Ngày nghỉ việc');
+    const recoveryDate = parseRequiredDate(expectedRecoveryDate, 'Ngày cần thu tài sản');
+    const priority = calculateRecoveryPriority(recoveryDate);
+    const performedBy = req.user?.username || 'system';
+
+    const assets = await prisma.asset.findMany({
+      where: {
+        isDeleted: false,
+        currentUserName: { equals: employee, mode: 'insensitive' }
+      },
+      select: { id: true, assetCode: true, assetName: true }
+    });
+
+    if (assets.length === 0) {
+      return res.status(404).json({ message: `Không tìm thấy tài sản đang gán cho nhân sự "${employee}".` });
+    }
+
+    await prisma.$transaction(async (tx) => {
+      await tx.asset.updateMany({
+        where: { id: { in: assets.map(asset => asset.id) } },
+        data: {
+          offboardingAlert: true,
+          offboardingEmployeeId: employeeId ? String(employeeId) : null,
+          offboardingEmployeeName: employee,
+          offboardingDate: offDate,
+          expectedRecoveryDate: recoveryDate,
+          offboardingNote: note ? String(note) : null,
+          offboardingResolvedAt: null,
+          recoveryPriority: priority
+        }
+      });
+
+      for (const asset of assets) {
+        await AuditService.log({
+          entityType: 'ASSET',
+          entityId: asset.id,
+          action: 'UPDATE',
+          details: {
+            action: 'OFFBOARDING_RECOVERY_ALERT_CREATED',
+            employeeName: employee,
+            offboardingDate: offDate,
+            expectedRecoveryDate: recoveryDate,
+            note: note || null
+          },
+          performedBy,
+          tx
+        });
+      }
+    });
+
+    res.json({
+      message: `Đã tạo cảnh báo thu hồi cho ${assets.length} tài sản của ${employee}.`,
+      count: assets.length,
+      assets
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id/offboarding-alert/recover', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  try {
+    const id = Number(req.params.id);
+    const performedBy = req.user?.username || 'system';
+    const note = req.body?.note ? String(req.body.note) : 'Thu hồi tài sản do nhân sự nghỉ việc';
+
+    const result = await prisma.$transaction(async (tx) => {
+      const oldAsset = await tx.asset.findUnique({ where: { id } });
+      if (!oldAsset || oldAsset.isDeleted) throw new Error('Tài sản không tồn tại.');
+
+      const updated = await tx.asset.update({
+        where: { id },
+        data: {
+          status: 'IN_STOCK',
+          currentUserName: null,
+          currentPosition: null,
+          departmentName: null,
+          handoverDate: null,
+          offboardingAlert: false,
+          offboardingResolvedAt: new Date(),
+          recoveryPriority: 0,
+          offboardingNote: oldAsset.offboardingNote ? `${oldAsset.offboardingNote}\n${note}` : note
+        }
+      });
+
+      await AuditService.logAssetChange(id, oldAsset, updated, performedBy, tx, note);
+      await AuditService.log({
+        entityType: 'ASSET',
+        entityId: id,
+        action: 'UPDATE',
+        details: { action: 'OFFBOARDING_RECOVERY_COMPLETED', note },
+        performedBy,
+        tx
+      });
+      return updated;
+    });
+
+    res.json({ message: 'Đã thu hồi tài sản và đóng cảnh báo nghỉ việc.', asset: result });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id/offboarding-alert/extend', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  try {
+    const id = Number(req.params.id);
+    const expectedRecoveryDate = parseRequiredDate(req.body?.expectedRecoveryDate, 'Ngày cần thu tài sản');
+    const note = req.body?.note ? String(req.body.note) : null;
+    const priority = calculateRecoveryPriority(expectedRecoveryDate);
+    const performedBy = req.user?.username || 'system';
+
+    const oldAsset = await prisma.asset.findUnique({ where: { id } });
+    if (!oldAsset || oldAsset.isDeleted) return res.status(404).json({ message: 'Tài sản không tồn tại.' });
+
+    const updated = await prisma.asset.update({
+      where: { id },
+      data: {
+        offboardingAlert: true,
+        expectedRecoveryDate,
+        offboardingResolvedAt: null,
+        recoveryPriority: priority,
+        offboardingNote: note ? (oldAsset.offboardingNote ? `${oldAsset.offboardingNote}\nGia hạn: ${note}` : `Gia hạn: ${note}`) : oldAsset.offboardingNote
+      }
+    });
+
+    await AuditService.logAssetChange(id, oldAsset, updated, performedBy, undefined, note || 'Gia hạn ngày thu tài sản nghỉ việc');
+    res.json({ message: 'Đã gia hạn ngày thu tài sản.', asset: updated });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id/offboarding-alert/resolve', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  try {
+    const id = Number(req.params.id);
+    const performedBy = req.user?.username || 'system';
+    const note = req.body?.note ? String(req.body.note) : 'Đánh dấu đã xử lý cảnh báo nghỉ việc';
+
+    const oldAsset = await prisma.asset.findUnique({ where: { id } });
+    if (!oldAsset || oldAsset.isDeleted) return res.status(404).json({ message: 'Tài sản không tồn tại.' });
+
+    const updated = await prisma.asset.update({
+      where: { id },
+      data: {
+        offboardingAlert: false,
+        offboardingResolvedAt: new Date(),
+        recoveryPriority: 0,
+        offboardingNote: oldAsset.offboardingNote ? `${oldAsset.offboardingNote}\n${note}` : note
+      }
+    });
+
+    await AuditService.logAssetChange(id, oldAsset, updated, performedBy, undefined, note);
+    res.json({ message: 'Đã đánh dấu cảnh báo nghỉ việc là đã xử lý.', asset: updated });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id/offboarding-alert/clear', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
+  try {
+    const id = Number(req.params.id);
+    const performedBy = req.user?.username || 'system';
+    const note = req.body?.note ? String(req.body.note) : 'Bỏ cảnh báo nghỉ việc';
+
+    const oldAsset = await prisma.asset.findUnique({ where: { id } });
+    if (!oldAsset || oldAsset.isDeleted) return res.status(404).json({ message: 'Tài sản không tồn tại.' });
+
+    const updated = await prisma.asset.update({
+      where: { id },
+      data: {
+        offboardingAlert: false,
+        offboardingEmployeeId: null,
+        offboardingEmployeeName: null,
+        offboardingDate: null,
+        expectedRecoveryDate: null,
+        offboardingNote: null,
+        offboardingResolvedAt: new Date(),
+        recoveryPriority: 0
+      }
+    });
+
+    await AuditService.logAssetChange(id, oldAsset, updated, performedBy, undefined, note);
+    res.json({ message: 'Đã bỏ cảnh báo nghỉ việc khỏi tài sản.', asset: updated });
   } catch (error: any) {
     res.status(500).json({ message: error.message });
   }
