@@ -3,6 +3,7 @@ import { AuditService } from './audit.service';
 import { AssetService } from './asset.service';
 
 export interface PostInvoicePayload {
+  invoiceBatchId?: number;
   invoice: {
     invoiceNo: string;
     invoiceDate: string;
@@ -36,6 +37,7 @@ export class InvoicePostService {
   static async postInvoice(payload: PostInvoicePayload, performedBy: string) {
     const { invoice, lines, assignImmediately } = payload;
     const isDraft = payload.status === 'DRAFT';
+    const draftBatchId = payload.invoiceBatchId ? parseInt(String(payload.invoiceBatchId), 10) : null;
 
     // 1. Basic Valdiation
     if (!invoice.invoiceNo) throw new Error('Vui lòng nhập số hóa đơn.');
@@ -46,6 +48,14 @@ export class InvoicePostService {
 
     const companyId = parseInt(String(invoice.companyId));
     const company = await prisma.company.findUnique({ where: { id: companyId } });
+    if (draftBatchId) {
+      const draftBatch = await prisma.assetInvoiceBatch.findUnique({
+        where: { id: draftBatchId },
+        select: { id: true, status: true }
+      });
+      if (!draftBatch) throw new Error('Bản nháp không tồn tại.');
+      if (draftBatch.status !== 'DRAFT') throw new Error('Chỉ được nạp và hoàn tất từ bản nháp đang ở trạng thái DRAFT.');
+    }
     if (!company) throw new Error('Công ty nhận hóa đơn không tồn tại.');
 
     // 2. Check duplicate invoice (supplierName + invoiceNo)
@@ -53,7 +63,8 @@ export class InvoicePostService {
       where: {
         invoiceNo: invoice.invoiceNo,
         supplierName: invoice.supplierName,
-        companyId: companyId
+        companyId: companyId,
+        ...(draftBatchId ? { id: { not: draftBatchId } } : {})
       }
     });
     if (existingInvoice) {
@@ -109,26 +120,36 @@ export class InvoicePostService {
 
     // 5. Execute in single atomic transaction
     return await prisma.$transaction(async (tx) => {
-      // Create Invoice Batch
-      const batch = await tx.assetInvoiceBatch.create({
-        data: {
-          invoiceNo: invoice.invoiceNo,
-          invoiceDate: new Date(invoice.invoiceDate),
-          supplierId: invoice.supplierId ? parseInt(String(invoice.supplierId)) : null,
-          supplierName: invoice.supplierName,
-          supplierTaxCode: invoice.supplierTaxCode || null,
-          companyId: companyId,
-          warehouseId: invoice.warehouseId ? parseInt(String(invoice.warehouseId)) : null,
-          totalAmount: invoice.totalAmount ? parseFloat(String(invoice.totalAmount)) : null,
-          fileUrl: invoice.fileUrl || null,
-          note: invoice.note || null,
-          status: isDraft ? 'DRAFT' : 'POSTED',
-          totalLines: lines.length,
-          totalAssets: lines.reduce((sum, l) => sum + l.quantity, 0),
-          totalValue: lines.reduce((sum, l) => sum + (l.quantity * l.unitPrice), 0),
-          postedAt: isDraft ? null : new Date()
-        }
-      });
+      const batchData = {
+        invoiceNo: invoice.invoiceNo,
+        invoiceDate: new Date(invoice.invoiceDate),
+        supplierId: invoice.supplierId ? parseInt(String(invoice.supplierId)) : null,
+        supplierName: invoice.supplierName,
+        supplierTaxCode: invoice.supplierTaxCode || null,
+        companyId: companyId,
+        warehouseId: invoice.warehouseId ? parseInt(String(invoice.warehouseId)) : null,
+        totalAmount: invoice.totalAmount ? parseFloat(String(invoice.totalAmount)) : null,
+        fileUrl: invoice.fileUrl || null,
+        note: invoice.note || null,
+        status: isDraft ? 'DRAFT' : 'POSTED',
+        totalLines: lines.length,
+        totalAssets: lines.reduce((sum, l) => sum + l.quantity, 0),
+        totalValue: lines.reduce((sum, l) => sum + (l.quantity * l.unitPrice), 0),
+        postedAt: isDraft ? null : new Date()
+      };
+
+      const batch = draftBatchId
+        ? await tx.assetInvoiceBatch.update({
+            where: { id: draftBatchId },
+            data: batchData
+          })
+        : await tx.assetInvoiceBatch.create({
+            data: batchData
+          });
+
+      if (draftBatchId) {
+        await tx.assetInvoiceLine.deleteMany({ where: { batchId: draftBatchId } });
+      }
 
       let createdAssetsCount = 0;
       const createdAssetCodes: string[] = [];

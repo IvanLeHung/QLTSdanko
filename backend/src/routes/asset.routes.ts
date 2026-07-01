@@ -1134,7 +1134,7 @@ router.post('/import-invoice/post', authenticateToken, async (req: any, res) => 
 
 router.get('/invoices', authenticateToken, async (req: AuthRequest, res) => {
   try {
-    const { search = '' } = req.query;
+    const { search = '', status } = req.query;
     const where: any = {};
     if (search) {
       where.OR = [
@@ -1142,9 +1142,10 @@ router.get('/invoices', authenticateToken, async (req: AuthRequest, res) => {
         { supplierName: { contains: String(search), mode: 'insensitive' } }
       ];
     }
+    if (status) where.status = String(status);
     const invoices = await prisma.assetInvoiceBatch.findMany({
       where,
-      orderBy: { invoiceDate: 'desc' },
+      orderBy: { updatedAt: 'desc' },
       take: 50
     });
     res.json(invoices);
@@ -1159,6 +1160,9 @@ router.get('/invoices/:id', authenticateToken, async (req: AuthRequest, res) => 
     const invoice = await prisma.assetInvoiceBatch.findUnique({
       where: { id },
       include: {
+        lines: {
+          orderBy: { lineNo: 'asc' }
+        },
         assets: {
           where: { isDeleted: false },
           orderBy: { assetCode: 'asc' }
