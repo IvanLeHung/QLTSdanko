@@ -19,7 +19,9 @@ import {
   Building2,
   Tag,
   Warehouse,
-  Coins
+  Coins,
+  FileText,
+  RefreshCw
 } from 'lucide-react';
 
 interface InvoiceMetadata {
@@ -106,6 +108,10 @@ export const CreateAsset: React.FC = () => {
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [pasteText, setPasteText] = useState('');
   const [isExportModalOpen, setIsExportModalOpen] = useState(false);
+  const [isDraftModalOpen, setIsDraftModalOpen] = useState(false);
+  const [drafts, setDrafts] = useState<any[]>([]);
+  const [draftLoading, setDraftLoading] = useState(false);
+  const [loadedDraftId, setLoadedDraftId] = useState<number | null>(null);
 
   const handleExportCreated = async (startDate: string, endDate: string) => {
     try {
@@ -323,6 +329,7 @@ export const CreateAsset: React.FC = () => {
       });
 
       const { invoice: parsedInvoice, lines: parsedLines, warnings } = res.data;
+      setLoadedDraftId(null);
 
       // Map parsed metadata
       setInvoice(prev => ({
@@ -441,6 +448,7 @@ export const CreateAsset: React.FC = () => {
   };
 
   const buildInvoicePostPayload = (status: 'DRAFT' | 'POSTED') => ({
+    invoiceBatchId: loadedDraftId || undefined,
     invoice: {
       invoiceNo: invoice.invoiceNo,
       invoiceDate: invoice.invoiceDate,
@@ -501,6 +509,71 @@ export const CreateAsset: React.FC = () => {
   const handleConfirmPost = async () => submitInvoicePost('POSTED');
   const handleSaveDraft = async () => submitInvoicePost('DRAFT');
 
+  const fetchDrafts = async () => {
+    setDraftLoading(true);
+    try {
+      const res = await api.get('/assets/invoices', { params: { status: 'DRAFT' } });
+      setDrafts(res.data || []);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể tải danh sách bản nháp.');
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
+  const openDraftModal = () => {
+    setIsDraftModalOpen(true);
+    fetchDrafts();
+  };
+
+  const loadDraft = async (draftId: number) => {
+    setDraftLoading(true);
+    try {
+      const res = await api.get(`/assets/invoices/${draftId}`);
+      const draft = res.data;
+      setLoadedDraftId(draft.id);
+      const parseSerials = (value?: string | null) => {
+        if (!value) return [];
+        try {
+          const parsed = JSON.parse(value);
+          return Array.isArray(parsed) ? parsed : [];
+        } catch {
+          return [];
+        }
+      };
+      setInvoice({
+        invoiceNo: draft.invoiceNo || '',
+        invoiceDate: draft.invoiceDate ? new Date(draft.invoiceDate).toISOString().slice(0, 10) : new Date().toISOString().slice(0, 10),
+        supplierName: draft.supplierName || '',
+        supplierTaxCode: draft.supplierTaxCode || '',
+        companyId: draft.companyId ? String(draft.companyId) : '',
+        warehouseId: draft.warehouseId ? String(draft.warehouseId) : '',
+        totalAmount: draft.totalAmount ? String(draft.totalAmount) : '',
+        note: draft.note || '',
+        fileUrl: draft.fileUrl || ''
+      });
+      setLines((draft.lines || []).map((line: any) => ({
+        id: Math.random().toString(36).substr(2, 9),
+        invoiceItemName: line.invoiceItemName || '',
+        assetName: line.assetName || '',
+        categoryLevel1Id: line.categoryLevel1Id ? String(line.categoryLevel1Id) : '',
+        categoryLevel2Id: line.categoryLevel2Id ? String(line.categoryLevel2Id) : '',
+        categoryLevel3Id: line.categoryLevel3Id ? String(line.categoryLevel3Id) : '',
+        categoryLevel4Id: line.categoryLevel4Id ? String(line.categoryLevel4Id) : '',
+        quantity: Number(line.quantity || 1),
+        unitPrice: Number(line.unitPrice || 0),
+        serials: parseSerials(line.serialsJson),
+        note: line.note || ''
+      })));
+      setIsDraftModalOpen(false);
+      toast.success(`Đã nạp bản nháp ${draft.invoiceNo}.`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể nạp bản nháp.');
+    } finally {
+      setDraftLoading(false);
+    }
+  };
+
   // Open Serials Input Modal
   const openSerialsModal = (line: InvoiceLineItem) => {
     setActiveSerialLineId(line.id);
@@ -559,6 +632,7 @@ export const CreateAsset: React.FC = () => {
     });
 
     if (newItems.length > 0) {
+      setLoadedDraftId(null);
       setLines(prev => {
         // If the first row is completely empty, replace it
         if (prev.length === 1 && !prev[0].invoiceItemName) {
@@ -596,22 +670,28 @@ export const CreateAsset: React.FC = () => {
           </p>
         </div>
 
-        <div className="flex gap-3">
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={openDraftModal}
+            className="flex items-center gap-2 px-4 py-2 border border-amber-200 hover:bg-amber-50 text-amber-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
+          >
+            <FileText className="h-4 w-4 text-amber-500" /> Lấy nháp
+          </button>
           <button 
             onClick={() => setIsExportModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 border.5 border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
           >
             <Download className="h-4 w-4 text-primary-500" /> Tải báo cáo tổng hợp
           </button>
           <button 
             onClick={handleDownloadTemplate}
-            className="flex items-center gap-2 px-4 py-2 border.5 border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
           >
             <Download className="h-4 w-4 text-emerald-500" /> Tải Excel Mẫu
           </button>
           <button 
             onClick={() => setIsPasteModalOpen(true)}
-            className="flex items-center gap-2 px-4 py-2 border.5 border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
+            className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
           >
             <Keyboard className="h-4 w-4 text-primary-500" /> Dán nhanh Excel
           </button>
@@ -1206,7 +1286,7 @@ export const CreateAsset: React.FC = () => {
                     <h3 className="text-xl font-black text-slate-800">Nhập danh sách Serial</h3>
                     <p className="text-slate-500 text-xs mt-1">Dòng: {line.invoiceItemName || 'Hạng mục chưa đặt tên'}</p>
                   </div>
-                  <button 
+                  <button
                     onClick={() => setActiveSerialLineId(null)}
                     className="p-1.5 hover:bg-slate-100 rounded-full transition-colors"
                   >
@@ -1307,6 +1387,79 @@ export const CreateAsset: React.FC = () => {
                 }`}
               >
                 Import và tự bóc tách
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL 3: LOAD DRAFT BATCH */}
+      {isDraftModalOpen && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white rounded-[2.5rem] w-full max-w-3xl overflow-hidden border border-slate-100 shadow-2xl animate-in fade-in zoom-in duration-200">
+            <div className="p-8 border-b border-slate-100">
+              <div className="flex justify-between items-start gap-4">
+                <div>
+                  <h3 className="text-xl font-black text-slate-800">Lấy bản nháp cấp mới tài sản</h3>
+                  <p className="text-slate-500 text-xs mt-1">Chọn một lô hóa đơn đã lưu nháp để nạp lại thông tin và tiếp tục hoàn thiện.</p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={fetchDrafts}
+                    className="h-10 px-3 rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 text-xs font-black inline-flex items-center gap-2"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${draftLoading ? 'animate-spin' : ''}`} /> Tải lại
+                  </button>
+                  <button
+                    onClick={() => setIsDraftModalOpen(false)}
+                    className="p-2 hover:bg-slate-100 rounded-full transition-colors"
+                  >
+                    <X className="h-5 w-5 text-slate-400" />
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-6 max-h-[60vh] overflow-y-auto space-y-3">
+              {draftLoading && (
+                <div className="p-8 text-center text-sm font-bold text-slate-500">Đang tải danh sách bản nháp...</div>
+              )}
+              {!draftLoading && drafts.length === 0 && (
+                <div className="p-8 text-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
+                  <p className="text-sm font-black text-slate-700">Chưa có bản nháp nào.</p>
+                  <p className="text-xs text-slate-400 mt-1">Bấm “Lưu nháp” ở cuối màn để lưu lô đang nhập.</p>
+                </div>
+              )}
+              {!draftLoading && drafts.map((draft) => (
+                <button
+                  key={draft.id}
+                  onClick={() => loadDraft(draft.id)}
+                  className="w-full text-left rounded-2xl border border-slate-200 bg-white hover:border-primary-200 hover:bg-primary-50/40 p-4 transition-all flex items-center justify-between gap-4"
+                >
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono text-xs font-black text-primary-700">{draft.invoiceNo}</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200">Bản nháp</span>
+                    </div>
+                    <p className="text-sm font-black text-slate-800 mt-1 truncate">{draft.supplierName || 'Chưa có nhà cung cấp'}</p>
+                    <p className="text-[11px] font-bold text-slate-400 mt-1">
+                      Ngày HĐ: {draft.invoiceDate ? new Date(draft.invoiceDate).toLocaleDateString('vi-VN') : '-'} • Cập nhật: {draft.updatedAt ? new Date(draft.updatedAt).toLocaleString('vi-VN') : '-'}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p className="text-xs font-black text-slate-700">{draft.totalLines || 0} dòng • {draft.totalAssets || 0} tài sản</p>
+                    <p className="text-xs font-black text-emerald-600 mt-1">{Number(draft.totalValue || 0).toLocaleString('vi-VN')} VNĐ</p>
+                  </div>
+                </button>
+              ))}
+            </div>
+
+            <div className="p-6 bg-slate-50/50 border-t border-slate-100 flex justify-end">
+              <button
+                onClick={() => setIsDraftModalOpen(false)}
+                className="px-5 py-3 border border-slate-200 text-slate-600 rounded-2xl font-bold text-sm hover:bg-slate-100 transition-colors"
+              >
+                Đóng
               </button>
             </div>
           </div>
