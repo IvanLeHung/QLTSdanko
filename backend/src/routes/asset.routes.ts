@@ -708,31 +708,79 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     where.AND = andClauses;
   }
 
+    const isGroupedCompact = req.query.compact === 'grouped';
+    const shouldSkipCount = req.query.skipCount === 'true';
   try {
-    await refreshRecoveryPriorities();
-    const [assets, total] = await Promise.all([
-      prisma.asset.findMany({
-        where,
-        skip,
-        take: Number(limit),
-        orderBy: [
-          { recoveryPriority: 'desc' },
-          { expectedRecoveryDate: 'asc' },
-          { [String(sortBy)]: sortOrder }
-        ],
-        include: {
-          repairTickets: {
-            where: {
-              status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS'] }
-            },
-            select: {
-              id: true
-            }
+    if (!isGroupedCompact) {
+      await refreshRecoveryPriorities();
+    }
+    const assetQuery: any = {
+      where,
+      skip,
+      take: Number(limit),
+      orderBy: isGroupedCompact
+        ? [{ [String(sortBy)]: sortOrder }]
+        : [
+            { recoveryPriority: 'desc' },
+            { expectedRecoveryDate: 'asc' },
+            { [String(sortBy)]: sortOrder }
+          ]
+    };
+
+    if (isGroupedCompact) {
+      assetQuery.select = {
+        id: true,
+        assetCode: true,
+        assetName: true,
+        assetNameShort: true,
+        serialNumber: true,
+        status: true,
+        currentUserName: true,
+        currentPosition: true,
+        departmentName: true,
+        cityName: true,
+        projectName: true,
+        locationName: true,
+        level1Code: true,
+        level1Name: true,
+        level2Code: true,
+        level2Name: true,
+        level3Code: true,
+        level3Name: true,
+        level4Code: true,
+        level4Name: true,
+        offboardingAlert: true,
+        offboardingResolvedAt: true,
+        expectedRecoveryDate: true,
+        repairTickets: {
+          where: {
+            status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS'] }
+          },
+          select: {
+            id: true
           }
         }
-      }),
-      prisma.asset.count({ where })
-    ]);
+      };
+    } else {
+      assetQuery.include = {
+        repairTickets: {
+          where: {
+            status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS'] }
+          },
+          select: {
+            id: true
+          }
+        }
+      };
+    }
+
+    const assetsPromise = prisma.asset.findMany(assetQuery);
+    const [assets, total] = shouldSkipCount
+      ? [await assetsPromise, 0]
+      : await Promise.all([
+          assetsPromise,
+          prisma.asset.count({ where })
+        ]);
 
     res.json({
       assets,

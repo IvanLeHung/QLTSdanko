@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import api from '../lib/api';
 import { 
   Search, 
@@ -44,6 +44,8 @@ import { useModal } from '../context/ModalContext';
 import { AssetGroupedView, type AssetGroupedBook } from '../components/AssetGroupedView';
 import { getAssetStatusConfig } from '../constants/assetStatus';
 
+const GROUPED_VIEW_FETCH_LIMIT = 10000;
+
 export const AssetList: React.FC = () => {
   const { hasPermission } = useAuth();
   const { activeModal, openModal, closeModal } = useModal();
@@ -58,6 +60,8 @@ export const AssetList: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [groupedViewLoading, setGroupedViewLoading] = useState(false);
   const [total, setTotal] = useState(0);
+  const assetRequestSeq = useRef(0);
+  const groupedRequestSeq = useRef(0);
   
   // Basic pagination/sort from URL or defaults
   const page = parseInt(searchParams.get('page') || '1');
@@ -440,17 +444,20 @@ export const AssetList: React.FC = () => {
   };
 
   const fetchAssets = useCallback(async () => {
+    const requestId = ++assetRequestSeq.current;
     setLoading(true);
     try {
       const params = Object.fromEntries(searchParams.entries());
       const res = await api.get('/assets', { params });
+      if (requestId !== assetRequestSeq.current) return;
       setAssets(res.data.assets);
       setTotal(res.data.pagination.total);
     } catch (err) {
+      if (requestId !== assetRequestSeq.current) return;
       console.error(err);
       toast.error("Lỗi khi tải danh sách tài sản");
     } finally {
-      setLoading(false);
+      if (requestId === assetRequestSeq.current) setLoading(false);
     }
   }, [searchParams]);
 
@@ -466,22 +473,27 @@ export const AssetList: React.FC = () => {
 
   const fetchGroupedViewAssets = useCallback(async () => {
     if (assetViewMode !== 'grouped') return;
+    const requestId = ++groupedRequestSeq.current;
     setGroupedViewLoading(true);
     try {
       const params = Object.fromEntries(searchParams.entries());
       delete params.page;
-      params.limit = String(Math.min(Math.max(total || stats?.total || 10000, 1000), 20000));
+      params.limit = String(GROUPED_VIEW_FETCH_LIMIT);
       params.sortBy = 'assetCode';
       params.sortOrder = 'asc';
+      params.compact = 'grouped';
+      params.skipCount = 'true';
       const res = await api.get('/assets', { params });
+      if (requestId !== groupedRequestSeq.current) return;
       setGroupedViewAssets(res.data.assets || []);
     } catch (err) {
+      if (requestId !== groupedRequestSeq.current) return;
       console.error(err);
       toast.error("Không thể tải view nhóm tài sản");
     } finally {
-      setGroupedViewLoading(false);
+      if (requestId === groupedRequestSeq.current) setGroupedViewLoading(false);
     }
-  }, [assetViewMode, searchParams, stats?.total, total]);
+  }, [assetViewMode, searchParams]);
 
   const refreshAssetData = useCallback(() => {
     fetchAssets();
@@ -1655,6 +1667,8 @@ export const AssetList: React.FC = () => {
                 <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
                 <input 
                   type="text" 
+                  id="asset-list-global-search"
+                  name="assetListGlobalSearch"
                   placeholder="Tìm kiếm toàn bộ dữ liệu tài sản..." 
                   className="w-full pl-9 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 transition-all text-xs text-slate-900 placeholder:text-slate-400 h-[36px]"
                   value={localSearch}
@@ -2494,6 +2508,8 @@ export const AssetList: React.FC = () => {
               <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
                 <span>Hiển thị</span>
                 <select 
+                  id="asset-list-page-size"
+                  name="assetListPageSize"
                   value={limit}
                   onChange={(e) => updateParam('limit', e.target.value)}
                   className="h-11 lg:h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-primary-50"
