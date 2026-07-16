@@ -51,8 +51,10 @@ export const AssetList: React.FC = () => {
   const navigate = useNavigate();
 
   const [assets, setAssets] = useState<any[]>([]);
+  const [groupedViewAssets, setGroupedViewAssets] = useState<any[]>([]);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [groupedViewLoading, setGroupedViewLoading] = useState(false);
   const [total, setTotal] = useState(0);
   
   // Basic pagination/sort from URL or defaults
@@ -95,6 +97,7 @@ export const AssetList: React.FC = () => {
   const [lv4Categories, setLv4Categories] = useState<any[]>([]);
   const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState(false);
   const [showAssetControls, setShowAssetControls] = useState(false);
+  const [assetViewMode, setAssetViewMode] = useState<'table' | 'grouped'>('table');
 
   // Sync temporary states with URL filters
   const [tempStatus, setTempStatus] = useState<string[]>([]);
@@ -459,6 +462,25 @@ export const AssetList: React.FC = () => {
     }
   }, [searchParams]);
 
+  const fetchGroupedViewAssets = useCallback(async () => {
+    if (assetViewMode !== 'grouped') return;
+    setGroupedViewLoading(true);
+    try {
+      const params = Object.fromEntries(searchParams.entries());
+      delete params.page;
+      params.limit = String(Math.min(Math.max(total || stats?.total || 10000, 1000), 20000));
+      params.sortBy = 'assetCode';
+      params.sortOrder = 'asc';
+      const res = await api.get('/assets', { params });
+      setGroupedViewAssets(res.data.assets || []);
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể tải view nhóm tài sản");
+    } finally {
+      setGroupedViewLoading(false);
+    }
+  }, [assetViewMode, searchParams, stats?.total, total]);
+
   useEffect(() => {
     fetchAssets();
   }, [fetchAssets]);
@@ -466,6 +488,10 @@ export const AssetList: React.FC = () => {
   useEffect(() => {
     fetchStats();
   }, [fetchStats]);
+
+  useEffect(() => {
+    fetchGroupedViewAssets();
+  }, [fetchGroupedViewAssets]);
 
   const currentPageAssetIds = useMemo(() => assets.map(a => a.id), [assets]);
   const isCurrentPageFullySelected = assets.length > 0 && currentPageAssetIds.every(id => selectedIds.includes(id));
@@ -725,7 +751,7 @@ export const AssetList: React.FC = () => {
   };
 
   const openAssetDetail = (assetId: number, tab: string = 'info') => {
-    const asset = assets.find(a => a.id === assetId);
+    const asset = assets.find(a => a.id === assetId) || groupedViewAssets.find(a => a.id === assetId);
     if (!asset) return;
 
     let targetTab = tab;
@@ -752,8 +778,9 @@ export const AssetList: React.FC = () => {
       onAction: (action: string, id: number) => {
         if (action === 'refresh') {
           fetchAssets();
+          fetchGroupedViewAssets();
         } else {
-          const targetAsset = assets.find(a => a.id === id);
+          const targetAsset = assets.find(a => a.id === id) || groupedViewAssets.find(a => a.id === id);
           if (targetAsset) handleAssetAction(action, targetAsset);
         }
       }
@@ -1165,6 +1192,58 @@ export const AssetList: React.FC = () => {
       .filter(Boolean);
   }, [assets, selectedAssetMap, selectedIds]);
 
+  const groupedAssetBooks = useMemo(() => {
+    const getAssetPrefixParts = (asset: any) => {
+      const codeParts = String(asset.assetCode || '').split('.').map((part: string) => part.trim()).filter(Boolean);
+      const prefixParts = codeParts.length > 1 ? codeParts.slice(0, -1) : codeParts;
+      if (prefixParts.length > 0) return prefixParts;
+      return [asset.level1Code, asset.level2Code, asset.level3Code, asset.level4Code].filter(Boolean);
+    };
+
+    const formatGroupPath = (parts: string[]) => {
+      const cumulative = parts.map((_: string, index: number) => parts.slice(0, index + 1).join('.'));
+      return cumulative.join(' - ') || 'Chưa có nhóm tài sản';
+    };
+
+    const getDepartmentLocationKey = (asset: any) => {
+      const department = String(asset.departmentName || '').trim() || 'Chưa có phòng ban';
+      const locationParts = [
+        String(asset.cityName || '').trim(),
+        cleanLocationName(asset.cityName, asset.locationName)
+      ].filter(Boolean);
+      return `${department} / ${locationParts.join(' - ') || 'Chưa có vị trí'}`;
+    };
+
+    const groupMap = new Map<string, any>();
+    groupedViewAssets.forEach((asset) => {
+      const prefixParts = getAssetPrefixParts(asset);
+      const prefix = prefixParts.join('.');
+      const groupKey = prefix || 'unknown';
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, {
+          key: groupKey,
+          path: formatGroupPath(prefixParts),
+          name: asset.level4Name || asset.assetNameShort || asset.assetName || '',
+          assets: [],
+          locations: new Map<string, any>()
+        });
+      }
+
+      const group = groupMap.get(groupKey);
+      group.assets.push(asset);
+      const locationKey = getDepartmentLocationKey(asset);
+      if (!group.locations.has(locationKey)) {
+        group.locations.set(locationKey, { key: locationKey, assets: [] });
+      }
+      group.locations.get(locationKey).assets.push(asset);
+    });
+
+    return Array.from(groupMap.values()).map((group) => ({
+      ...group,
+      locations: Array.from(group.locations.values()).sort((a: any, b: any) => a.key.localeCompare(b.key, 'vi'))
+    }));
+  }, [cleanLocationName, groupedViewAssets]);
+
   const handleSortSelection = (key: string, order: string, isFilter: boolean = false, filterKey?: string, filterValue?: string) => {
     const newParams = new URLSearchParams(searchParams);
     if (isFilter && filterKey) {
@@ -1467,6 +1546,28 @@ export const AssetList: React.FC = () => {
               <Filter className="h-4 w-4" />
               {showAssetControls ? 'Ẩn bộ lọc' : 'Bộ lọc / Tác vụ'}
             </button>
+            <div className="flex h-[36px] rounded-full border border-slate-200 bg-white p-0.5 shadow-xs">
+              <button
+                type="button"
+                onClick={() => setAssetViewMode('table')}
+                className={cn(
+                  "h-full px-3 rounded-full text-[11px] font-black transition-all whitespace-nowrap",
+                  assetViewMode === 'table' ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"
+                )}
+              >
+                Bảng
+              </button>
+              <button
+                type="button"
+                onClick={() => setAssetViewMode('grouped')}
+                className={cn(
+                  "h-full px-3 rounded-full text-[11px] font-black transition-all whitespace-nowrap",
+                  assetViewMode === 'grouped' ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"
+                )}
+              >
+                Nhóm
+              </button>
+            </div>
           </div>
 
           {showAssetControls && (
@@ -2033,6 +2134,81 @@ export const AssetList: React.FC = () => {
 
       {/* ASSET TABLE — fills remaining space */}
       <main className="asset-table-section flex-1 min-h-0 p-2 sm:p-3">
+        {assetViewMode === 'grouped' ? (
+          <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
+            <div className="min-h-12 shrink-0 px-4 border-b border-[#E2E8F0] flex items-center justify-between gap-3 bg-[#F8FAFC]">
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">View nhóm tài sản</p>
+                <p className="text-[12px] font-bold text-slate-700 truncate">
+                  {groupedViewAssets.length.toLocaleString('vi-VN')} tài sản trong {groupedAssetBooks.length.toLocaleString('vi-VN')} nhóm
+                </p>
+              </div>
+              {groupedViewLoading && <Loader2 className="h-5 w-5 animate-spin text-primary-500 shrink-0" />}
+            </div>
+
+            <div className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth bg-slate-50/60 p-2 sm:p-3">
+              {groupedViewLoading ? (
+                <div className="h-full flex items-center justify-center">
+                  <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
+                </div>
+              ) : groupedAssetBooks.length === 0 ? (
+                <div className="h-full flex items-center justify-center text-center">
+                  <div>
+                    <Box className="h-9 w-9 text-slate-300 mx-auto mb-3" />
+                    <p className="text-sm font-bold text-slate-500">Không có tài sản phù hợp bộ lọc</p>
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {groupedAssetBooks.map((group) => (
+                    <section key={group.key} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                      <div className="px-4 py-3 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                        <div className="min-w-0">
+                          <div className="font-mono text-[13px] font-black tracking-tight break-words">{group.path}</div>
+                          {group.name && <div className="text-[11px] font-semibold text-slate-300 truncate mt-0.5">{group.name}</div>}
+                        </div>
+                        <div className="shrink-0 inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-wide">
+                          {group.assets.length.toLocaleString('vi-VN')} đang có
+                        </div>
+                      </div>
+
+                      <div className="divide-y divide-slate-100">
+                        {group.locations.map((locationGroup: any) => (
+                          <div key={locationGroup.key} className="px-4 py-3">
+                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
+                              <p className="text-[12px] font-black text-slate-800 break-words">
+                                {locationGroup.key}
+                              </p>
+                              <span className="text-[10px] font-black text-primary-700 bg-primary-50 border border-primary-100 rounded-full px-2.5 py-1 self-start sm:self-auto">
+                                {locationGroup.assets.length.toLocaleString('vi-VN')} đang có
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
+                              {locationGroup.assets.map((asset: any) => (
+                                <button
+                                  key={asset.id}
+                                  type="button"
+                                  onClick={() => openAssetDetail(asset.id, 'info')}
+                                  className={cn(
+                                    "min-h-11 text-left rounded-lg border px-3 py-2 transition-all hover:border-primary-300 hover:bg-primary-50/40",
+                                    selectedAssetId === asset.id && isDetailOpen ? "border-primary-400 bg-primary-50" : "border-slate-200 bg-white"
+                                  )}
+                                >
+                                  <div className="text-[11px] font-black text-primary-700 font-mono">MTS: {asset.assetCode}</div>
+                                  <div className="text-[11px] font-semibold text-slate-600 truncate mt-0.5">{asset.assetNameShort || asset.assetName}</div>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </section>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        ) : (
         <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
           <div 
             className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth"
@@ -2269,6 +2445,7 @@ export const AssetList: React.FC = () => {
            </div>
         </div>
       </div>
+        )}
     </main>
 
     {/* ADVANCED FILTERS DRAWER */}
