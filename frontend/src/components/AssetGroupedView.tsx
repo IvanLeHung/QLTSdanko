@@ -1,14 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import {
+  Activity,
   ArrowRightLeft,
   Box,
   CheckSquare,
+  CheckCircle2,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
   ChevronsUpDown,
   ClipboardCheck,
   Download,
+  Edit3,
   Eye,
   Loader2,
   MapPin,
@@ -16,7 +19,10 @@ import {
   Printer,
   RotateCcw,
   Square,
+  Trash,
   User,
+  UserPlus,
+  Wrench,
   X,
 } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
@@ -341,8 +347,11 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                                   selected={selectedIds.has(asset.id)}
                                   active={selectedAssetId === asset.id && isDetailOpen}
                                   menuOpen={openAssetMenuId === asset.id}
+                                  canView={hasPermission('ASSET_VIEW')}
                                   canTransfer={hasPermission('TRANSFER_CREATE')}
-                                  canPrint={hasPermission('ASSET_VIEW')}
+                                  canInventory={hasPermission('INVENTORY_CREATE')}
+                                  canRepair={hasPermission('REPAIR_CREATE')}
+                                  canUpdate={hasPermission('ASSET_UPDATE')}
                                   onToggle={() => toggleAsset(asset)}
                                   onOpen={() => onOpenAsset(asset.id, 'info')}
                                   onOpenMenu={() => setOpenAssetMenuId(openAssetMenuId === asset.id ? null : asset.id)}
@@ -388,8 +397,11 @@ const AssetRow = ({
   selected,
   active,
   menuOpen,
+  canView,
   canTransfer,
-  canPrint,
+  canInventory,
+  canRepair,
+  canUpdate,
   onToggle,
   onOpen,
   onOpenMenu,
@@ -400,8 +412,11 @@ const AssetRow = ({
   selected: boolean;
   active: boolean;
   menuOpen: boolean;
+  canView: boolean;
   canTransfer: boolean;
-  canPrint: boolean;
+  canInventory: boolean;
+  canRepair: boolean;
+  canUpdate: boolean;
   onToggle: () => void;
   onOpen: () => void;
   onOpenMenu: () => void;
@@ -412,6 +427,7 @@ const AssetRow = ({
   const assignee = asset.currentUserName || 'Chưa cấp phát';
   const position = asset.currentPosition || asset.departmentName || '-';
   const location = [asset.cityName, asset.locationName].filter(Boolean).join(' - ') || 'Chưa có vị trí';
+  const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
 
   return (
     <tr className={cn("h-12 hover:bg-slate-50 transition-colors", active ? "bg-primary-50/50" : selected ? "bg-primary-50/25" : "bg-white")}>
@@ -469,19 +485,44 @@ const AssetRow = ({
           {menuOpen && (
             <>
               <button className="fixed inset-0 z-30 cursor-default" type="button" aria-label="Đóng menu tác vụ" onClick={onCloseMenu} />
-              <div className="absolute right-0 top-11 z-40 w-56 rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-2xl">
-                <MenuItem icon={<Eye className="h-4 w-4" />} label="Xem chi tiết" onClick={() => onAction('view', asset)} />
+              <div className="absolute right-0 top-11 z-40 w-64 rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-2xl">
+                {canView && <MenuItem icon={<Eye className="h-4 w-4" />} label="Xem chi tiết" onClick={() => onAction('view', asset)} />}
                 {canTransfer && asset.status === 'ASSIGNED' && (
                   <>
-                    <MenuItem icon={<ArrowRightLeft className="h-4 w-4" />} label="Điều chuyển" onClick={() => onAction('handover', asset)} />
-                    <MenuItem icon={<RotateCcw className="h-4 w-4" />} label="Thu hồi" onClick={() => onAction('revoke', asset)} />
+                    <MenuItem icon={<ArrowRightLeft className="h-4 w-4" />} label="Điều chuyển tài sản" onClick={() => onAction('handover', asset)} />
+                    <MenuItem icon={<RotateCcw className="h-4 w-4" />} label="Thu hồi về kho" onClick={() => onAction('revoke', asset)} />
                   </>
                 )}
-                {canTransfer && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && (
-                  <MenuItem icon={<ArrowRightLeft className="h-4 w-4" />} label="Bàn giao" onClick={() => onAction('handover', asset)} />
+                {canTransfer && asset.status === 'RETIRED' && (
+                  <MenuItem icon={<RotateCcw className="h-4 w-4" />} label="Thu hồi về kho" onClick={() => onAction('revoke', asset)} />
                 )}
-                <MenuItem icon={<ClipboardCheck className="h-4 w-4" />} label="Kiểm kê" onClick={() => onAction('inventory', asset)} />
-                {canPrint && <MenuItem icon={<Printer className="h-4 w-4" />} label="In QR" onClick={() => onAction('print_label', asset)} />}
+                {canTransfer && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && (
+                  <MenuItem icon={<UserPlus className="h-4 w-4" />} label="Cấp phát / Bàn giao" onClick={() => onAction('handover', asset)} />
+                )}
+
+                <MenuDivider />
+                {canInventory && <MenuItem icon={<ClipboardCheck className="h-4 w-4" />} label="Kiểm kê" onClick={() => onAction('inventory', asset)} />}
+                {canRepair && (
+                  <MenuItem
+                    icon={<Wrench className={cn("h-4 w-4", hasOpenTicket && "text-amber-500")} />}
+                    label={hasOpenTicket ? "Xem phiếu sửa chữa" : "Sửa chữa / Bảo trì"}
+                    onClick={() => onAction('repair', asset)}
+                  />
+                )}
+                {canRepair && <MenuItem icon={<Trash className="h-4 w-4" />} label="Thanh lý" onClick={() => onAction('liquidation', asset)} />}
+
+                {asset.offboardingAlert && !asset.offboardingResolvedAt && canUpdate && (
+                  <>
+                    <MenuDivider />
+                    <MenuItem icon={<RotateCcw className="h-4 w-4 text-red-500" />} label="Thu hồi tài sản" onClick={() => onAction('offboarding_recover', asset)} />
+                    <MenuItem icon={<Edit3 className="h-4 w-4 text-amber-500" />} label="Gia hạn ngày thu" onClick={() => onAction('offboarding_extend', asset)} />
+                    <MenuItem icon={<CheckCircle2 className="h-4 w-4 text-emerald-500" />} label="Đánh dấu đã xử lý" onClick={() => onAction('offboarding_resolve', asset)} />
+                    <MenuItem icon={<X className="h-4 w-4 text-slate-400" />} label="Bỏ cảnh báo nghỉ việc" onClick={() => onAction('offboarding_clear', asset)} />
+                  </>
+                )}
+
+                <MenuDivider />
+                <MenuItem icon={<Activity className="h-4 w-4" />} label="Nhật ký tài sản" onClick={() => onAction('history', asset)} />
               </div>
             </>
           )}
@@ -490,6 +531,8 @@ const AssetRow = ({
     </tr>
   );
 };
+
+const MenuDivider = () => <div className="my-1 h-px bg-slate-100" />;
 
 const MenuItem = ({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) => (
   <button

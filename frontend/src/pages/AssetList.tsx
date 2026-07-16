@@ -810,7 +810,10 @@ export const AssetList: React.FC = () => {
         break;
       case 'repair':
         if (asset.repairTickets && asset.repairTickets.length > 0) {
-          toast.warning("Tài sản này đang có phiếu sửa chữa chưa hoàn tất.");
+          openModal('REPAIR_PROCESSING', {
+            ticketId: asset.repairTickets[0].id,
+            onSuccess: fetchAssets
+          });
           break;
         }
         openModal("BM_FORM", {

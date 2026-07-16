@@ -99,6 +99,30 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const [customProject, setCustomProject] = useState('');
   const [customLocation, setCustomLocation] = useState('');
 
+  const getResolvedLocationParts = () => {
+    const cityVal = selectedCity === 'Khác' ? customCity : selectedCity;
+    const projectVal = selectedProject === 'Khác' ? customProject : selectedProject;
+    const locationVal = selectedLocation === 'Khác' ? customLocation : selectedLocation;
+
+    let combinedLocation = '';
+    if (cityVal) {
+      combinedLocation = cityVal;
+      if (projectVal) {
+        combinedLocation += '-' + projectVal;
+      }
+      if (locationVal) {
+        combinedLocation += '-' + locationVal;
+      }
+    } else {
+      combinedLocation = locationVal || '';
+    }
+
+    return {
+      city: cityVal,
+      location: combinedLocation || wizardForm.newLocation
+    };
+  };
+
   // Metadata Lists
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
@@ -126,27 +150,12 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
 
   // Update Combined Location whenever dependent fields change
   useEffect(() => {
-    const cityVal = selectedCity === 'Khác' ? customCity : selectedCity;
-    const projectVal = selectedProject === 'Khác' ? customProject : selectedProject;
-    const locationVal = selectedLocation === 'Khác' ? customLocation : selectedLocation;
-
-    let combinedLocation = '';
-    if (cityVal) {
-      combinedLocation += cityVal;
-      if (projectVal) {
-        combinedLocation += '-' + projectVal;
-      }
-      if (locationVal) {
-        combinedLocation += '-' + locationVal;
-      }
-    } else {
-      combinedLocation = locationVal || '';
-    }
+    const resolved = getResolvedLocationParts();
 
     setWizardForm(prev => ({
       ...prev,
-      newCity: cityVal,
-      newLocation: combinedLocation
+      newCity: resolved.city,
+      newLocation: resolved.location
     }));
   }, [selectedCity, selectedProject, selectedLocation, customCity, customProject, customLocation]);
 
@@ -489,6 +498,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
 
     setIsSubmitting(true);
     try {
+      const resolvedDestination = getResolvedLocationParts();
       const payload = {
         type: wizardType,
         recipientName: wizardForm.recipientName,
@@ -497,8 +507,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         recipientPhone: wizardForm.recipientPhone,
         receiverId: wizardForm.receiverId,
         receiverDepartmentId: wizardForm.receiverDepartmentId,
-        newLocation: wizardForm.newLocation,
-        newCity: wizardForm.newCity,
+        newLocation: resolvedDestination.location,
+        newCity: resolvedDestination.city || wizardForm.newCity,
         targetLocationId: wizardForm.targetLocationId,
         senderName: wizardForm.senderName,
         senderDepartment: wizardForm.senderDepartment,
@@ -1094,7 +1104,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Vị trí giao đến</p>
-                          <p className="font-bold text-slate-200 mt-1">{wizardForm.newLocation || '---'}</p>
+                          <p className="font-bold text-slate-200 mt-1">{getResolvedLocationParts().location || '---'}</p>
                         </div>
                       </div>
 
