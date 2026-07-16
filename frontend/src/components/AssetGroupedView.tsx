@@ -45,6 +45,8 @@ type AssetLocationGroup = {
   assets: any[];
 };
 
+type GroupQuickFilter = 'ALL' | 'ASSIGNED' | 'IN_STOCK' | 'NEEDS_ACTION';
+
 export type AssetGroupedBook = {
   key: string;
   codePath: string;
@@ -87,6 +89,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
   const [openGroupMenuKey, setOpenGroupMenuKey] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [groupQuickFilters, setGroupQuickFilters] = useState<Record<string, GroupQuickFilter>>({});
 
   const selectedAssets = useMemo(() => {
     if (selectedIds.size === 0) return [];
@@ -132,6 +135,38 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
         if (allSelected) next.delete(id);
         else next.add(id);
       });
+      return next;
+    });
+  };
+
+  const isNeedsAction = (asset: any) => {
+    return ['DAMAGED', 'BROKEN', 'LOST', 'UNDER_REPAIR', 'PENDING_DISPOSAL'].includes(asset.status)
+      || (asset.offboardingAlert && !asset.offboardingResolvedAt);
+  };
+
+  const filterGroupAssets = (group: AssetGroupedBook, filter: GroupQuickFilter) => {
+    if (filter === 'ASSIGNED') return group.assets.filter((asset) => asset.status === 'ASSIGNED');
+    if (filter === 'IN_STOCK') return group.assets.filter((asset) => asset.status === 'IN_STOCK');
+    if (filter === 'NEEDS_ACTION') return group.assets.filter(isNeedsAction);
+    return group.assets;
+  };
+
+  const buildVisibleLocations = (group: AssetGroupedBook, visibleAssets: any[]) => {
+    const visibleIds = new Set(visibleAssets.map((asset) => asset.id));
+    return group.locations
+      .map((locationGroup) => ({
+        ...locationGroup,
+        assets: locationGroup.assets.filter((asset) => visibleIds.has(asset.id)),
+      }))
+      .filter((locationGroup) => locationGroup.assets.length > 0);
+  };
+
+  const applyGroupQuickFilter = (groupKey: string, filter: GroupQuickFilter) => {
+    setGroupQuickFilters((prev) => ({ ...prev, [groupKey]: filter }));
+    setCollapsedGroups((prev) => {
+      if (!prev.has(groupKey)) return prev;
+      const next = new Set(prev);
+      next.delete(groupKey);
       return next;
     });
   };
@@ -216,6 +251,9 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
           <div className="space-y-2">
             {groups.map((group) => {
               const collapsed = collapsedGroups.has(group.key);
+              const quickFilter = groupQuickFilters[group.key] || 'ALL';
+              const visibleAssets = filterGroupAssets(group, quickFilter);
+              const visibleLocations = buildVisibleLocations(group, visibleAssets);
               const groupSelected = group.assets.length > 0 && group.assets.every((asset) => selectedIds.has(asset.id));
               return (
                 <section key={group.key} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
@@ -270,10 +308,33 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                       </div>
 
                       <div className="flex flex-wrap items-center gap-1.5 shrink-0">
-                        <StatusCount label={`${group.assets.length.toLocaleString('vi-VN')} tài sản`} className="bg-slate-900 text-white" />
-                        <StatusCount label={`${group.statusSummary.assigned.toLocaleString('vi-VN')} đang dùng`} className="bg-blue-50 text-blue-700" />
-                        <StatusCount label={`${group.statusSummary.inStock.toLocaleString('vi-VN')} trong kho`} className="bg-emerald-50 text-emerald-700" />
-                        <StatusCount label={`${group.statusSummary.needsAction.toLocaleString('vi-VN')} cần xử lý`} className={group.statusSummary.needsAction > 0 ? "bg-rose-50 text-rose-700" : "bg-slate-50 text-slate-500"} />
+                        <StatusCount
+                          label={`${group.assets.length.toLocaleString('vi-VN')} tài sản`}
+                          active={quickFilter === 'ALL'}
+                          className="bg-slate-900 text-white hover:bg-slate-800"
+                          onClick={() => applyGroupQuickFilter(group.key, 'ALL')}
+                        />
+                        <StatusCount
+                          label={`${group.statusSummary.assigned.toLocaleString('vi-VN')} đang dùng`}
+                          active={quickFilter === 'ASSIGNED'}
+                          disabled={group.statusSummary.assigned === 0}
+                          className="bg-blue-50 text-blue-700 hover:bg-blue-100"
+                          onClick={() => applyGroupQuickFilter(group.key, 'ASSIGNED')}
+                        />
+                        <StatusCount
+                          label={`${group.statusSummary.inStock.toLocaleString('vi-VN')} trong kho`}
+                          active={quickFilter === 'IN_STOCK'}
+                          disabled={group.statusSummary.inStock === 0}
+                          className="bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                          onClick={() => applyGroupQuickFilter(group.key, 'IN_STOCK')}
+                        />
+                        <StatusCount
+                          label={`${group.statusSummary.needsAction.toLocaleString('vi-VN')} cần xử lý`}
+                          active={quickFilter === 'NEEDS_ACTION'}
+                          disabled={group.statusSummary.needsAction === 0}
+                          className={group.statusSummary.needsAction > 0 ? "bg-rose-50 text-rose-700 hover:bg-rose-100" : "bg-slate-50 text-slate-500"}
+                          onClick={() => applyGroupQuickFilter(group.key, 'NEEDS_ACTION')}
+                        />
                         <div className="relative">
                           <button
                             type="button"
@@ -324,12 +385,12 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                             <th className="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Tên tài sản</th>
                             <th className="w-[210px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Người sử dụng / quản lý</th>
                             <th className="w-[260px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Đơn vị / vị trí</th>
-                            <th className="w-[150px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Trạng thái</th>
+                            <th className="w-[170px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Trạng thái</th>
                             <th className="w-16 px-3 text-right text-[10px] font-black uppercase tracking-widest text-slate-400">Tác vụ</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                          {group.locations.map((locationGroup) => (
+                          {visibleLocations.map((locationGroup) => (
                             <React.Fragment key={locationGroup.key}>
                               <tr className="h-9 bg-white">
                                 <td className="px-3" />
@@ -375,10 +436,33 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
   );
 };
 
-const StatusCount = ({ label, className }: { label: string; className: string }) => (
-  <span className={cn("inline-flex min-h-8 items-center rounded-full px-2.5 text-[10px] font-black uppercase tracking-wide", className)}>
+const StatusCount = ({
+  label,
+  className,
+  active,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  className: string;
+  active?: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) => (
+  <button
+    type="button"
+    disabled={disabled}
+    onClick={onClick}
+    className={cn(
+      "inline-flex min-h-8 items-center rounded-full px-2.5 text-[10px] font-black uppercase tracking-wide transition-all focus:outline-none focus:ring-2 focus:ring-primary-100",
+      disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer",
+      active && "ring-2 ring-primary-200 shadow-sm",
+      className
+    )}
+    title={`Lọc nhanh: ${label}`}
+  >
     {label}
-  </span>
+  </button>
 );
 
 const ToolbarButton = ({ icon, label, onClick }: { icon: React.ReactNode; label: string; onClick: () => void }) => (
@@ -467,8 +551,8 @@ const AssetRow = ({
         </div>
       </td>
       <td className="px-3">
-        <span className={cn("inline-flex min-h-8 items-center gap-1.5 rounded-full border px-2.5 text-[10px] font-black uppercase tracking-wide", status.tone)}>
-          {status.icon}
+        <span className={cn("inline-flex min-h-7 max-w-full items-center gap-1 rounded-full border px-2 text-[9px] font-black uppercase tracking-normal whitespace-nowrap leading-none", status.tone)}>
+          <span className="shrink-0">{status.icon}</span>
           {status.label}
         </span>
       </td>

@@ -483,6 +483,12 @@ export const AssetList: React.FC = () => {
     }
   }, [assetViewMode, searchParams, stats?.total, total]);
 
+  const refreshAssetData = useCallback(() => {
+    fetchAssets();
+    fetchStats();
+    fetchGroupedViewAssets();
+  }, [fetchAssets, fetchStats, fetchGroupedViewAssets]);
+
   useEffect(() => {
     fetchAssets();
   }, [fetchAssets]);
@@ -646,7 +652,7 @@ export const AssetList: React.FC = () => {
       })));
       toast.success(`Đã chuẩn hóa vị trí cho ${targets.length} tài sản`);
       clearSelection();
-      fetchAssets();
+      refreshAssetData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể chuẩn hóa vị trí hàng loạt');
     }
@@ -685,7 +691,7 @@ export const AssetList: React.FC = () => {
       });
       toast.success(res.data?.message || 'Đã tạo cảnh báo thu hồi tài sản nghỉ việc.');
       clearSelection();
-      fetchAssets();
+      refreshAssetData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể tạo cảnh báo tài sản nghỉ việc.');
     }
@@ -697,7 +703,7 @@ export const AssetList: React.FC = () => {
     try {
       await api.patch(`/assets/${asset.id}/offboarding-alert/recover`, { note });
       toast.success('Đã thu hồi tài sản và đóng cảnh báo.');
-      fetchAssets();
+      refreshAssetData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể thu hồi tài sản.');
     }
@@ -714,7 +720,7 @@ export const AssetList: React.FC = () => {
     try {
       await api.patch(`/assets/${asset.id}/offboarding-alert/extend`, { expectedRecoveryDate, note });
       toast.success('Đã gia hạn ngày thu tài sản.');
-      fetchAssets();
+      refreshAssetData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể gia hạn ngày thu.');
     }
@@ -725,7 +731,7 @@ export const AssetList: React.FC = () => {
     try {
       await api.patch(`/assets/${asset.id}/offboarding-alert/resolve`, { note });
       toast.success('Đã đánh dấu cảnh báo là đã xử lý.');
-      fetchAssets();
+      refreshAssetData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể đánh dấu đã xử lý.');
     }
@@ -737,7 +743,7 @@ export const AssetList: React.FC = () => {
     try {
       await api.patch(`/assets/${asset.id}/offboarding-alert/clear`, { note });
       toast.success('Đã bỏ cảnh báo nghỉ việc.');
-      fetchAssets();
+      refreshAssetData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể bỏ cảnh báo.');
     }
@@ -770,8 +776,7 @@ export const AssetList: React.FC = () => {
       initialTab: targetTab,
       onAction: (action: string, id: number) => {
         if (action === 'refresh') {
-          fetchAssets();
-          fetchGroupedViewAssets();
+          refreshAssetData();
         } else {
           const targetAsset = assets.find(a => a.id === id) || groupedViewAssets.find(a => a.id === id);
           if (targetAsset) handleAssetAction(action, targetAsset);
@@ -791,7 +796,7 @@ export const AssetList: React.FC = () => {
           initialAssetIds: [asset.id],
           defaultType: asset.status === 'IN_STOCK' ? 'HANDOVER' : 'TRANSFER',
           source: 'ASSET_DETAIL',
-          onComplete: fetchAssets
+          onComplete: refreshAssetData
         });
         break;
       case 'revoke':
@@ -799,34 +804,34 @@ export const AssetList: React.FC = () => {
           initialAssetIds: [asset.id],
           defaultType: 'RECALL',
           source: 'ASSET_DETAIL',
-          onComplete: fetchAssets
+          onComplete: refreshAssetData
         });
         break;
       case 'inventory':
         openModal("INVENTORY_WIZARD", {
           initialAssetIds: [asset.id],
-          onComplete: fetchAssets
+          onComplete: refreshAssetData
         });
         break;
       case 'repair':
         if (asset.repairTickets && asset.repairTickets.length > 0) {
           openModal('REPAIR_PROCESSING', {
             ticketId: asset.repairTickets[0].id,
-            onSuccess: fetchAssets
+            onSuccess: refreshAssetData
           });
           break;
         }
         openModal("BM_FORM", {
           code: 'BM03/QLTS',
           data: { asset },
-          onSubmit: fetchAssets
+          onSubmit: refreshAssetData
         });
         break;
       case 'liquidation':
         openModal("BM_FORM", {
           code: 'BM04/QLTS',
           data: { asset },
-          onSubmit: fetchAssets
+          onSubmit: refreshAssetData
         });
         break;
       case 'print_label':
@@ -1083,7 +1088,7 @@ export const AssetList: React.FC = () => {
           initialAssetIds: actionAssetIds,
           defaultType: actionAssets.some((asset: any) => asset.status === 'IN_STOCK') ? 'HANDOVER' : 'TRANSFER',
           source: 'ASSET_DETAIL',
-          onComplete: () => { fetchAssets(); fetchGroupedViewAssets(); }
+          onComplete: refreshAssetData
         });
         break;
       case 'revoke':
@@ -1091,13 +1096,13 @@ export const AssetList: React.FC = () => {
           initialAssetIds: actionAssetIds,
           defaultType: 'RECALL',
           source: 'ASSET_DETAIL',
-          onComplete: () => { fetchAssets(); fetchGroupedViewAssets(); }
+          onComplete: refreshAssetData
         });
         break;
       case 'inventory':
         openModal("INVENTORY_WIZARD", {
           initialAssetIds: actionAssetIds,
-          onComplete: () => { fetchAssets(); fetchGroupedViewAssets(); }
+          onComplete: refreshAssetData
         });
         break;
       case 'export':
@@ -1186,7 +1191,7 @@ export const AssetList: React.FC = () => {
         lostDetectedDate: detectedAt,
         note: `Ghi nhận mất hàng loạt: ${selectedAssetCodesText()}`
       },
-      onSubmit: () => { clearSelection(); fetchAssets(); }
+      onSubmit: () => { clearSelection(); refreshAssetData(); }
     });
   };
 
@@ -1206,7 +1211,7 @@ export const AssetList: React.FC = () => {
         reason,
         note: reason
       },
-      onSubmit: () => { clearSelection(); fetchAssets(); }
+      onSubmit: () => { clearSelection(); refreshAssetData(); }
     });
   };
 
@@ -1226,7 +1231,7 @@ export const AssetList: React.FC = () => {
       })));
       toast.success(`Đã hủy ${selectedAssets.length} tài sản`);
       clearSelection();
-      fetchAssets();
+      refreshAssetData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || 'Không thể hủy tài sản đã chọn');
     }
@@ -2022,7 +2027,7 @@ export const AssetList: React.FC = () => {
               <Can permission="ASSET_CREATE">
                 <button 
                   type="button"
-                  onClick={() => openModal("ASSET_CREATE", { onComplete: fetchAssets })} 
+                  onClick={() => openModal("ASSET_CREATE", { onComplete: refreshAssetData })} 
                   className="h-11 xl:h-[36px] px-5 flex items-center text-[12px] font-black bg-primary-600 text-white rounded-full shadow-md hover:bg-primary-700 transition-all whitespace-nowrap"
                 >
                   <Plus className="mr-1.5 h-4 w-4" /> Thêm mới
@@ -2147,7 +2152,7 @@ export const AssetList: React.FC = () => {
                     initialAssetIds: selectedIds,
                     defaultType: hasInStock ? 'HANDOVER' : 'TRANSFER',
                     source: 'ASSET_DETAIL',
-                    onComplete: () => { clearSelection(); fetchAssets(); }
+                    onComplete: () => { clearSelection(); refreshAssetData(); }
                   });
                 }} 
                 className="h-11 flex items-center px-3 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
@@ -2158,7 +2163,7 @@ export const AssetList: React.FC = () => {
                 onClick={() => {
                   openModal("INVENTORY_WIZARD", {
                     initialAssetIds: selectedIds,
-                    onComplete: () => { clearSelection(); fetchAssets(); }
+                    onComplete: () => { clearSelection(); refreshAssetData(); }
                   });
                 }} 
                 className="h-11 flex items-center px-3 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors whitespace-nowrap"
@@ -2208,7 +2213,7 @@ export const AssetList: React.FC = () => {
                           openModal("BM_FORM", {
                             code: 'BM03/QLTS',
                             data: { asset: selectedAssets[0], assets: selectedAssets },
-                            onSubmit: () => { clearSelection(); fetchAssets(); }
+                            onSubmit: () => { clearSelection(); refreshAssetData(); }
                           });
                         }}
                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-amber-400"
@@ -2220,7 +2225,7 @@ export const AssetList: React.FC = () => {
                           setIsMoreMenuOpen(false);
                           openModal("INVENTORY_WIZARD", {
                             initialAssetIds: selectedIds,
-                            onComplete: () => { clearSelection(); fetchAssets(); }
+                            onComplete: () => { clearSelection(); refreshAssetData(); }
                           });
                         }}
                         className="w-full text-left px-4 py-3 text-[11px] font-bold hover:bg-[#1E293B] flex items-center text-white"
@@ -2445,7 +2450,7 @@ export const AssetList: React.FC = () => {
                                        icon={<Wrench className="h-4 w-4 text-amber-500" />} 
                                        onClick={() => {
                                          setActiveMenuId(null);
-                                         openModal('REPAIR_PROCESSING', { ticketId: asset.repairTickets[0].id, onSuccess: fetchAssets });
+                                         openModal('REPAIR_PROCESSING', { ticketId: asset.repairTickets[0].id, onSuccess: refreshAssetData });
                                        }} 
                                      />
                                    </Can>
@@ -2811,7 +2816,7 @@ export const AssetList: React.FC = () => {
           isOpen={isNormalizationOpen}
           onClose={() => {
             setIsNormalizationOpen(false);
-            fetchAssets();
+            refreshAssetData();
           }}
           currentFilters={filters}
         />
