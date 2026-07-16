@@ -1002,6 +1002,110 @@ export const AssetList: React.FC = () => {
     toast.success("Xuất dữ liệu Excel tài sản được chọn thành công!");
   };
 
+  const exportGroupedAssetsCsv = (targetAssets: any[]) => {
+    const headers = [
+      'Mã tài sản',
+      'Số TT',
+      'Mã công ty',
+      'Tên tài sản',
+      'Số Serial',
+      'ĐVT',
+      'Mục đích',
+      'Trạng thái',
+      'Người sử dụng',
+      'Chức vụ',
+      'Phòng ban',
+      'Vị trí',
+      'Thành phố',
+      'Dự án',
+      ...(hasPermission('ASSET_VIEW_PRICE') ? ['Giá mua (VNĐ)'] : []),
+      'Nhà cung cấp',
+      'Ghi chú'
+    ];
+
+    const rows = targetAssets.map(a => [
+      a.assetCode || '',
+      a.runningNoText || '',
+      a.companyCode || '',
+      a.assetName || '',
+      a.serialNumber || '',
+      a.unit || 'Cái',
+      a.usagePurpose || '',
+      getStatusLabel(a.status).label,
+      a.currentUserName || '',
+      a.currentPosition || '',
+      a.departmentName || '',
+      cleanLocationName(a.cityName, a.locationName) || a.locationName || '',
+      a.cityName || '',
+      a.projectName || '',
+      ...(hasPermission('ASSET_VIEW_PRICE') ? [a.purchasePriceExVat || 0] : []),
+      a.supplierName || '',
+      a.note || ''
+    ]);
+
+    const csvContent = '\uFEFF' + [
+      headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','),
+      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `danh_sach_tai_san_nhom_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success(`Xuất ${targetAssets.length} tài sản trong nhóm thành công!`);
+  };
+
+  const handleGroupedAssetsAction = (action: string, targetAssets: any[]) => {
+    const actionAssets = targetAssets.filter(Boolean);
+    if (actionAssets.length === 0) return;
+    const actionAssetIds = actionAssets.map((asset: any) => asset.id).filter(Boolean);
+
+    switch (action) {
+      case 'print_label':
+        navigate('/print-center', {
+          state: {
+            selectedAssets: actionAssets
+          }
+        });
+        toast.success(`Đã thêm ${actionAssets.length} tài sản vào danh sách in tem`);
+        break;
+      case 'handover':
+        openModal("TRANSFER_WIZARD", {
+          initialAssetIds: actionAssetIds,
+          defaultType: actionAssets.some((asset: any) => asset.status === 'IN_STOCK') ? 'HANDOVER' : 'TRANSFER',
+          source: 'ASSET_DETAIL',
+          onComplete: () => { fetchAssets(); fetchGroupedViewAssets(); }
+        });
+        break;
+      case 'revoke':
+        openModal("TRANSFER_WIZARD", {
+          initialAssetIds: actionAssetIds,
+          defaultType: 'RECALL',
+          source: 'ASSET_DETAIL',
+          onComplete: () => { fetchAssets(); fetchGroupedViewAssets(); }
+        });
+        break;
+      case 'inventory':
+        openModal("INVENTORY_WIZARD", {
+          initialAssetIds: actionAssetIds,
+          onComplete: () => { fetchAssets(); fetchGroupedViewAssets(); }
+        });
+        break;
+      case 'export':
+        exportGroupedAssetsCsv(actionAssets);
+        break;
+      default:
+        if (actionAssets.length === 1) handleAssetAction(action, actionAssets[0]);
+        break;
+    }
+  };
+
   const selectedAssetCodesText = () => selectedAssets.map((a: any) => a.assetCode).filter(Boolean).join(', ');
 
   const handleExportSelectedPdf = () => {
@@ -2158,6 +2262,7 @@ export const AssetList: React.FC = () => {
             isDetailOpen={isDetailOpen}
             onOpenAsset={openAssetDetail}
             onAssetAction={handleAssetAction}
+            onAssetsAction={handleGroupedAssetsAction}
             onApplyFilter={updateParam}
           />
         ) : (
