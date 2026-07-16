@@ -41,6 +41,8 @@ import { Can } from '../components/Can';
 import { useAuth } from '../context/AuthContext';
 import { NormalizationModal } from '../components/NormalizationModal';
 import { useModal } from '../context/ModalContext';
+import { AssetGroupedView, type AssetGroupedBook } from '../components/AssetGroupedView';
+import { getAssetStatusConfig } from '../constants/assetStatus';
 
 export const AssetList: React.FC = () => {
   const { hasPermission } = useAuth();
@@ -540,17 +542,8 @@ export const AssetList: React.FC = () => {
   };
 
   const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'IN_STOCK': return { label: 'Trong kho', color: 'bg-emerald-50 text-emerald-700 border-emerald-100' };
-      case 'ASSIGNED': return { label: 'Đang sử dụng', color: 'bg-blue-50 text-blue-700 border-blue-100' };
-      case 'RETIRED': return { label: 'Đã thu hồi', color: 'bg-indigo-50 text-indigo-700 border-indigo-100' };
-      case 'UNDER_REPAIR': return { label: 'Đang sửa chữa', color: 'bg-amber-50 text-amber-700 border-amber-100' };
-      case 'PENDING_DISPOSAL': return { label: 'Chờ thanh lý', color: 'bg-orange-50 text-orange-700 border-orange-100' };
-      case 'DISPOSED': return { label: 'Đã thanh lý', color: 'bg-slate-50 text-slate-700 border-slate-100' };
-      case 'LOST': return { label: 'Mất', color: 'bg-red-50 text-red-700 border-red-100' };
-      case 'DAMAGED': return { label: 'Hỏng', color: 'bg-rose-50 text-rose-700 border-rose-100' };
-      default: return { label: status, color: 'bg-slate-50 text-slate-700 border-slate-100' };
-    }
+    const statusConfig = getAssetStatusConfig(status);
+    return { label: statusConfig.label, color: statusConfig.tone, icon: statusConfig.icon };
   };
 
   const formatDateShort = (value?: string | Date | null) => {
@@ -1192,7 +1185,7 @@ export const AssetList: React.FC = () => {
       .filter(Boolean);
   }, [assets, selectedAssetMap, selectedIds]);
 
-  const groupedAssetBooks = useMemo(() => {
+  const groupedAssetBooks = useMemo<AssetGroupedBook[]>(() => {
     const getAssetPrefixParts = (asset: any) => {
       const codeParts = String(asset.assetCode || '').split('.').map((part: string) => part.trim()).filter(Boolean);
       const prefixParts = codeParts.length > 1 ? codeParts.slice(0, -1) : codeParts;
@@ -1214,6 +1207,19 @@ export const AssetList: React.FC = () => {
       return `${department} / ${locationParts.join(' - ') || 'Chưa có vị trí'}`;
     };
 
+    const getBreadcrumb = (asset: any) => [
+      { label: 'Tài sản' },
+      { label: asset.level1Name || asset.level1Code || 'Cấp 1' },
+      { label: asset.level2Name || asset.level2Code || 'Cấp 2' },
+      { label: asset.level3Name || asset.level3Code || 'Cấp 3' },
+      { label: asset.level4Name || asset.level4Code || 'Cấp 4', filterKey: 'level4Name', filterValue: asset.level4Name || '' },
+    ].filter(item => item.label);
+
+    const isNeedsAction = (asset: any) => {
+      return ['DAMAGED', 'BROKEN', 'LOST', 'UNDER_REPAIR', 'PENDING_DISPOSAL'].includes(asset.status)
+        || (asset.offboardingAlert && !asset.offboardingResolvedAt);
+    };
+
     const groupMap = new Map<string, any>();
     groupedViewAssets.forEach((asset) => {
       const prefixParts = getAssetPrefixParts(asset);
@@ -1222,15 +1228,24 @@ export const AssetList: React.FC = () => {
       if (!groupMap.has(groupKey)) {
         groupMap.set(groupKey, {
           key: groupKey,
-          path: formatGroupPath(prefixParts),
+          codePath: formatGroupPath(prefixParts),
           name: asset.level4Name || asset.assetNameShort || asset.assetName || '',
+          breadcrumb: getBreadcrumb(asset),
           assets: [],
-          locations: new Map<string, any>()
+          locations: new Map<string, any>(),
+          statusSummary: {
+            assigned: 0,
+            inStock: 0,
+            needsAction: 0
+          }
         });
       }
 
       const group = groupMap.get(groupKey);
       group.assets.push(asset);
+      if (asset.status === 'ASSIGNED') group.statusSummary.assigned += 1;
+      if (asset.status === 'IN_STOCK') group.statusSummary.inStock += 1;
+      if (isNeedsAction(asset)) group.statusSummary.needsAction += 1;
       const locationKey = getDepartmentLocationKey(asset);
       if (!group.locations.has(locationKey)) {
         group.locations.set(locationKey, { key: locationKey, assets: [] });
@@ -2135,79 +2150,16 @@ export const AssetList: React.FC = () => {
       {/* ASSET TABLE — fills remaining space */}
       <main className="asset-table-section flex-1 min-h-0 p-2 sm:p-3">
         {assetViewMode === 'grouped' ? (
-          <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
-            <div className="min-h-12 shrink-0 px-4 border-b border-[#E2E8F0] flex items-center justify-between gap-3 bg-[#F8FAFC]">
-              <div className="min-w-0">
-                <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">View nhóm tài sản</p>
-                <p className="text-[12px] font-bold text-slate-700 truncate">
-                  {groupedViewAssets.length.toLocaleString('vi-VN')} tài sản trong {groupedAssetBooks.length.toLocaleString('vi-VN')} nhóm
-                </p>
-              </div>
-              {groupedViewLoading && <Loader2 className="h-5 w-5 animate-spin text-primary-500 shrink-0" />}
-            </div>
-
-            <div className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth bg-slate-50/60 p-2 sm:p-3">
-              {groupedViewLoading ? (
-                <div className="h-full flex items-center justify-center">
-                  <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
-                </div>
-              ) : groupedAssetBooks.length === 0 ? (
-                <div className="h-full flex items-center justify-center text-center">
-                  <div>
-                    <Box className="h-9 w-9 text-slate-300 mx-auto mb-3" />
-                    <p className="text-sm font-bold text-slate-500">Không có tài sản phù hợp bộ lọc</p>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {groupedAssetBooks.map((group) => (
-                    <section key={group.key} className="bg-white border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                      <div className="px-4 py-3 bg-slate-900 text-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="font-mono text-[13px] font-black tracking-tight break-words">{group.path}</div>
-                          {group.name && <div className="text-[11px] font-semibold text-slate-300 truncate mt-0.5">{group.name}</div>}
-                        </div>
-                        <div className="shrink-0 inline-flex items-center rounded-full bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-wide">
-                          {group.assets.length.toLocaleString('vi-VN')} đang có
-                        </div>
-                      </div>
-
-                      <div className="divide-y divide-slate-100">
-                        {group.locations.map((locationGroup: any) => (
-                          <div key={locationGroup.key} className="px-4 py-3">
-                            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1 mb-2">
-                              <p className="text-[12px] font-black text-slate-800 break-words">
-                                {locationGroup.key}
-                              </p>
-                              <span className="text-[10px] font-black text-primary-700 bg-primary-50 border border-primary-100 rounded-full px-2.5 py-1 self-start sm:self-auto">
-                                {locationGroup.assets.length.toLocaleString('vi-VN')} đang có
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-2">
-                              {locationGroup.assets.map((asset: any) => (
-                                <button
-                                  key={asset.id}
-                                  type="button"
-                                  onClick={() => openAssetDetail(asset.id, 'info')}
-                                  className={cn(
-                                    "min-h-11 text-left rounded-lg border px-3 py-2 transition-all hover:border-primary-300 hover:bg-primary-50/40",
-                                    selectedAssetId === asset.id && isDetailOpen ? "border-primary-400 bg-primary-50" : "border-slate-200 bg-white"
-                                  )}
-                                >
-                                  <div className="text-[11px] font-black text-primary-700 font-mono">MTS: {asset.assetCode}</div>
-                                  <div className="text-[11px] font-semibold text-slate-600 truncate mt-0.5">{asset.assetNameShort || asset.assetName}</div>
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </section>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
+          <AssetGroupedView
+            groups={groupedAssetBooks}
+            assetCount={groupedViewAssets.length}
+            loading={groupedViewLoading}
+            selectedAssetId={selectedAssetId}
+            isDetailOpen={isDetailOpen}
+            onOpenAsset={openAssetDetail}
+            onAssetAction={handleAssetAction}
+            onApplyFilter={updateParam}
+          />
         ) : (
         <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
           <div 
