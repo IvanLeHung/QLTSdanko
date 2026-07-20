@@ -32,7 +32,8 @@ import {
   Trash,
   Loader2,
   Filter,
-  Edit3
+  Edit3,
+  Building2
 } from 'lucide-react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -1272,8 +1273,9 @@ export const AssetList: React.FC = () => {
   const sortableColumns = [
     { key: "assetCode", label: "Mã tài sản", className: "w-[170px]" },
     { key: "assetName", label: "Tên tài sản", className: "w-[280px] md:w-[320px]" },
-    { key: "currentUserName", label: "Người sử dụng / Chức vụ", className: "w-[210px]" },
-    { key: "cityName", label: "Thành phố / Dự án / Vị trí", className: "hidden xl:table-cell w-[260px]" },
+    { key: "currentUserName", label: "Người sử dụng / Chức vụ", className: "hidden xl:table-cell w-[190px]" },
+    { key: "departmentName", label: "Phòng ban", className: "hidden xl:table-cell w-[160px]" },
+    { key: "cityName", label: "Thành phố / Dự án / Vị trí", className: "hidden xl:table-cell w-[250px]" },
     { key: "status", label: "Trạng thái", className: "w-[150px]" },
   ];
 
@@ -2295,7 +2297,7 @@ export const AssetList: React.FC = () => {
           <div 
             className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth"
           >
-            <table className="min-w-[860px] xl:min-w-0 w-full text-left border-collapse table-fixed">
+            <table className="min-w-[860px] xl:min-w-[1320px] w-full text-left border-collapse table-fixed">
               <thead className="sticky top-0 z-10 bg-[#F8FAFC] border-b border-[#E2E8F0]">
                 <tr className="h-9">
                   <th className="px-3 w-12 sticky left-0 bg-[#F8FAFC] z-10">
@@ -2330,7 +2332,7 @@ export const AssetList: React.FC = () => {
               </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
               {loading ? (
-                <tr><td colSpan={7} className="p-12 text-center"><Loader2 className="h-6 w-6 animate-spin text-primary-500 mx-auto" /></td></tr>
+                <tr><td colSpan={8} className="p-12 text-center"><Loader2 className="h-6 w-6 animate-spin text-primary-500 mx-auto" /></td></tr>
               ) : assets.map((asset) => {
                 const status = getStatusLabel(asset.status);
                 const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
@@ -2385,7 +2387,13 @@ export const AssetList: React.FC = () => {
                       <p className="text-[13px] font-semibold text-slate-800 leading-tight">{asset.currentUserName || <span className="text-slate-300 font-medium italic">Chưa cấp phát</span>}</p>
                       <p className="text-[10px] font-medium text-slate-400 leading-tight">{asset.currentPosition || '-'}</p>
                     </td>
-                    <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
+                    <td className="hidden xl:table-cell px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
+                      <p className="text-[12px] font-semibold text-slate-700 leading-tight flex items-center gap-1.5 truncate" title={asset.departmentName || 'Chưa có phòng ban'}>
+                        <Building2 className="h-3 w-3 shrink-0 text-slate-400" />
+                        <span className="truncate">{asset.departmentName || 'Chưa có phòng ban'}</span>
+                      </p>
+                    </td>
+                    <td className="hidden xl:table-cell px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
                       <div className="flex items-start gap-2">
                         <div className="min-w-0">
                           <p className="text-[12px] font-semibold text-slate-700 flex items-center">
