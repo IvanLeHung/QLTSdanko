@@ -215,6 +215,7 @@ model Asset {
   supplierTaxCode         String?
   purchaseDate            DateTime?
   currentUserName         String?
+  currentUserPhone        String?
   currentPosition         String?
   departmentName          String?
   locationName            String?

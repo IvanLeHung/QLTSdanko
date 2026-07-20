@@ -60,6 +60,7 @@ export const STATUS_MAP: Record<string, string> = {
 export const FIELD_MAP: Record<string, string> = {
   status: 'Trạng thái',
   currentUserName: 'Người dùng',
+  currentUserPhone: 'Số điện thoại người dùng',
   departmentName: 'Phòng ban',
   locationName: 'Vị trí',
   cityName: 'Thành phố',

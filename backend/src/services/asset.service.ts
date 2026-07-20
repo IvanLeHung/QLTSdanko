@@ -30,6 +30,7 @@ const ASSET_UPDATE_FIELDS = new Set([
   'supplierTaxCode',
   'purchaseDate',
   'currentUserName',
+  'currentUserPhone',
   'currentPosition',
   'departmentName',
   'locationName',

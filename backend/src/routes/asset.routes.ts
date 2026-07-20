@@ -2257,6 +2257,7 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
 
       const assetUpdates: any = {
         currentUserName: currentUserName || null,
+        currentUserPhone: currentUserPhone || null,
         currentPosition: currentPosition || null,
         departmentName: departmentName || null,
         locationName: locationName || null,
@@ -2294,7 +2295,7 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
         updatedHandoverDocument = await tx.handoverDocument.update({
           where: { id: latestHandoverDocument.id },
           data: {
-            recipientName: currentUserName || latestHandoverDocument.recipientName,
+            recipientName: currentUserName || null,
             recipientPosition: currentPosition || null,
             recipientDepartment: departmentName || null,
             recipientPhone: currentUserPhone || null,
@@ -2344,7 +2345,7 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
       return {
         ...updatedAsset,
         latestHandoverDocument: updatedHandoverDocument,
-        latestAssignmentPhone: updatedHandoverDocument?.recipientPhone || null
+        latestAssignmentPhone: updatedAsset.currentUserPhone || updatedHandoverDocument?.recipientPhone || null
       };
     });
 
@@ -2536,7 +2537,7 @@ router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (re
     inventoryHistory,
     lastInventoryBy: inventoryHistory[0]?.checkedBy || null,
     latestHandoverDocument,
-    latestAssignmentPhone: latestHandoverDocument?.recipientPhone || null
+    latestAssignmentPhone: asset.currentUserPhone || latestHandoverDocument?.recipientPhone || null
   });
 });
 

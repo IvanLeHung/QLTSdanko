@@ -264,6 +264,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       cityName: asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity || '',
       note: ''
     });
+    setShowAssignInfoModal(true);
     setIsAssignInfoEditing(true);
   };
 
@@ -1070,11 +1071,11 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                     </div>
                     <button
                       type="button"
-                      onClick={() => setShowAssignInfoModal(true)}
+                      onClick={openAssignInfoEditor}
                       className="bg-white p-3 rounded-2xl shadow-sm text-blue-500 hover:text-primary-600 hover:shadow-md hover:ring-2 hover:ring-primary-100 transition-all"
-                      title="Xem thông tin người đang sử dụng"
+                      title="Chỉnh sửa người dùng, số điện thoại và vị trí hiện tại"
                     >
-                      <User className="h-6 w-6" />
+                      <Edit3 className="h-6 w-6" />
                     </button>
                   </div>
 
@@ -1591,6 +1592,9 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                             {label}
                           </label>
                           <input
+                            id={`asset-assignment-${key}`}
+                            name={key}
+                            type={key === 'currentUserPhone' ? 'tel' : 'text'}
                             value={assignInfoForm[key] || ''}
                             onChange={(e) => setAssignInfoForm({ ...assignInfoForm, [key]: e.target.value })}
                             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50"
