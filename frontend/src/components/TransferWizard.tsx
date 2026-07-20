@@ -45,6 +45,164 @@ const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   }
 };
 
+interface LocationTree {
+  [key: string]: LocationTree | null;
+}
+
+const DANKO_CITY_LOCATION_TREE: LocationTree = {
+  'KHU CỔNG CHÀO': {
+    'Cổng chính Khu đô thị': {
+      'Phòng bảo vệ': null,
+      'Phòng Server': null
+    },
+    'Quảng trường Ánh sáng The Light': null,
+    'Cổng phụ dự án': {
+      'Phòng bảo vệ': null
+    }
+  },
+  'KHU ĐẠI LỘ': {
+    'Đại lộ Champs Elysees': null
+  },
+  'KHU TRUNG TÂM': {
+    'Trung tâm thương mại Danko Plaza': {
+      'Tầng hầm': {
+        'Phòng bảo vệ': null,
+        'Phòng kho': null,
+        'Khu để xe': null
+      },
+      'Tầng 1': {
+        'Sảnh giữa': null,
+        'Sảnh trái': null,
+        'Sảnh phải': null,
+        'WC': null
+      },
+      'Tầng 2': {
+        'Khu vực sảnh': null,
+        'WC': null
+      },
+      'Tầng 3': {
+        'Khu vực sảnh': null,
+        'WC': null
+      },
+      'Tầng 4': {
+        'Khu vực sảnh': null,
+        'WC': null,
+        'Phòng Khánh tiết': null,
+        'Phòng nghỉ VIP 1': null,
+        'Phòng nghỉ VIP 2': null,
+        'Phòng làm việc 1': null,
+        'Phòng làm việc 2': null,
+        'Phòng làm việc 3': null,
+        'Pantry': null,
+        'Phòng Thủ tục & Chăm sóc khách hàng': null,
+        'Phòng họp VIP 1': null,
+        'Phòng họp VIP 2': null
+      },
+      'Tầng 5': {
+        'Phòng tiệc': null,
+        'Tầng lửng tiệc': null,
+        'Khu bếp': null,
+        'Kho bếp': null,
+        'WC': null
+      },
+      'Tầng 6': {
+        'Khu bếp': null
+      },
+      'Tầng 7': {
+        'Phòng kỹ thuật': null
+      }
+    },
+    'Quảng trường Victoria': null,
+    'Phố đi bộ The Rome': null,
+    'Sân khấu nhạc nước The Harmony': {
+      'Khu kỹ thuật ngầm': null
+    },
+    'Cầu Lion Bridge': null
+  },
+  'PHÂN KHU KING ISLAND': {
+    'Tiểu khu Đảo Vua (King Island)': null
+  },
+  'PHÂN KHU PARK ROYAL': {
+    'Tiểu khu Park Royal': null,
+    'Discovery Land': null,
+    'Bể bơi Resort': {
+      'Tầng hầm': null,
+      'Tầng 1': {
+        'Bể bơi': null,
+        'WC': null
+      },
+      'Tầng 2': {
+        'Khu ngoài trời': null,
+        'WC': null
+      }
+    },
+    'Vườn Tùng Tháp': null,
+    'Sân thể thao đa năng': null
+  },
+  'KHU HỒ MẮT RỒNG': {
+    'Công viên Hồ Mắt Rồng': null,
+    'Bến du thuyền Monaco': null,
+    'Khu vui chơi trẻ em': null,
+    'Khu vui chơi ngoài trời': null,
+    'Babylon Garden': null,
+    'Cầu Melody': null,
+    'Chòi nghỉ bên hồ': null,
+    'Đường dạo bộ quanh hồ': null
+  }
+};
+
+const isDankoCityProject = (city: string, project: string) => city === 'Thái Nguyên' && project === 'Danko City';
+
+const getLocationTreeLevels = (selectedPath: string[]) => {
+  const levels: string[][] = [];
+  let node: LocationTree | null = DANKO_CITY_LOCATION_TREE;
+  let depth = 0;
+
+  while (node) {
+    const options = Object.keys(node);
+    if (options.length === 0) break;
+    levels.push(options);
+    const selected = selectedPath[depth];
+    if (!selected || selected === 'Khác') break;
+    node = node[selected] || null;
+    depth += 1;
+  }
+
+  return levels;
+};
+
+const isDankoCityPathComplete = (selectedPath: string[]) => {
+  if (selectedPath.length === 0 || selectedPath[0] === 'Khác') return false;
+  let node: LocationTree | null = DANKO_CITY_LOCATION_TREE;
+
+  for (const segment of selectedPath) {
+    if (!node || !Object.prototype.hasOwnProperty.call(node, segment)) return false;
+    node = node[segment];
+  }
+
+  return node === null;
+};
+
+const findDankoCityPath = (location: string): string[] | null => {
+  const target = location.replace(/\s*[\/-]\s*/g, '-').trim();
+  let match: string[] | null = null;
+
+  const visit = (node: LocationTree, path: string[]) => {
+    for (const [name, children] of Object.entries(node)) {
+      const nextPath = [...path, name];
+      if (nextPath.join('-') === target) {
+        match = nextPath;
+        return;
+      }
+      if (children) visit(children, nextPath);
+      if (match) return;
+    }
+  };
+
+  visit(DANKO_CITY_LOCATION_TREE, []);
+  return match;
+};
+
 interface TransferWizardProps {
   isOpen: boolean;
   onClose: () => void;
@@ -94,10 +252,27 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const [selectedCity, setSelectedCity] = useState('');
   const [selectedProject, setSelectedProject] = useState('');
   const [selectedLocation, setSelectedLocation] = useState('');
+  const [selectedLocationPath, setSelectedLocationPath] = useState<string[]>([]);
 
   const [customCity, setCustomCity] = useState('');
   const [customProject, setCustomProject] = useState('');
   const [customLocation, setCustomLocation] = useState('');
+
+  const dankoCityLocationLevels = getLocationTreeLevels(selectedLocationPath);
+
+  const handleDankoCityLocationChange = (depth: number, value: string) => {
+    if (value === 'Khác') {
+      setSelectedLocationPath(['Khác']);
+      setSelectedLocation('Khác');
+      setCustomLocation('');
+      return;
+    }
+
+    const nextPath = [...selectedLocationPath.slice(0, depth), value];
+    setSelectedLocationPath(nextPath);
+    setSelectedLocation(nextPath.join(' / '));
+    setCustomLocation('');
+  };
 
   const getResolvedLocationParts = () => {
     const cityVal = selectedCity === 'Khác' ? customCity : selectedCity;
@@ -206,14 +381,27 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
           if (LOCATION_HIERARCHY[resolvedCity][resolvedProject]) {
             setSelectedProject(resolvedProject);
             if (resolvedLocation) {
-              if (LOCATION_HIERARCHY[resolvedCity][resolvedProject].includes(resolvedLocation)) {
+              if (isDankoCityProject(resolvedCity, resolvedProject)) {
+                const dankoPath = findDankoCityPath(resolvedLocation);
+                if (dankoPath) {
+                  setSelectedLocationPath(dankoPath);
+                  setSelectedLocation(dankoPath.join(' / '));
+                } else {
+                  setSelectedLocationPath(['Khác']);
+                  setSelectedLocation('Khác');
+                  setCustomLocation(resolvedLocation);
+                }
+              } else if (LOCATION_HIERARCHY[resolvedCity][resolvedProject].includes(resolvedLocation)) {
+                setSelectedLocationPath([]);
                 setSelectedLocation(resolvedLocation);
               } else {
+                setSelectedLocationPath([]);
                 setSelectedLocation('Khác');
                 setCustomLocation(resolvedLocation);
               }
             }
           } else {
+            setSelectedLocationPath([]);
             setSelectedProject('Khác');
             setCustomProject(resolvedProject);
             setSelectedLocation('Khác');
@@ -221,6 +409,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
           }
         }
       } else {
+        setSelectedLocationPath([]);
         setSelectedCity('Khác');
         setCustomCity(resolvedCity);
         if (resolvedProject) {
@@ -233,6 +422,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         }
       }
     } else if (resolvedLocation) {
+      setSelectedLocationPath([]);
       setSelectedCity('Khác');
       setSelectedProject('Khác');
       setSelectedLocation('Khác');
@@ -332,6 +522,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     setSelectedCity('');
     setSelectedProject('');
     setSelectedLocation('');
+    setSelectedLocationPath([]);
     setCustomCity('');
     setCustomProject('');
     setCustomLocation('');
@@ -896,6 +1087,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                 setSelectedCity(e.target.value);
                                 setSelectedProject('');
                                 setSelectedLocation('');
+                                setSelectedLocationPath([]);
                                 setCustomCity('');
                                 setCustomProject('');
                                 setCustomLocation('');
@@ -932,6 +1124,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                   onChange={(e) => {
                                     setSelectedProject(e.target.value);
                                     setSelectedLocation('');
+                                    setSelectedLocationPath([]);
                                     setCustomProject('');
                                     setCustomLocation('');
                                   }}
@@ -962,23 +1155,48 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
 
                           {selectedProject && (
                             <>
-                              <div className="space-y-1">
-                                <label className="font-bold text-slate-500">Vị trí bàn giao đến *</label>
-                                <select
-                                  value={selectedLocation}
-                                  onChange={(e) => {
-                                    setSelectedLocation(e.target.value);
-                                    setCustomLocation('');
-                                  }}
-                                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                                >
-                                  <option value="">-- Chọn vị trí --</option>
-                                  {selectedCity !== 'Khác' && selectedProject !== 'Khác' && (LOCATION_HIERARCHY[selectedCity]?.[selectedProject] || []).map(l => (
-                                    <option key={l} value={l}>{l}</option>
-                                  ))}
-                                  <option value="Khác">Khác</option>
-                                </select>
-                              </div>
+                              {isDankoCityProject(selectedCity, selectedProject) ? (
+                                <div className="space-y-3">
+                                  {dankoCityLocationLevels.map((options, depth) => {
+                                    const labels = ['Khu vực', 'Địa điểm / công trình', 'Tầng / khu chức năng', 'Vị trí chi tiết'];
+                                    return (
+                                      <div key={depth} className="space-y-1">
+                                        <label className="font-bold text-slate-500">{labels[depth] || `Phân cấp ${depth + 1}`} *</label>
+                                        <select
+                                          value={selectedLocationPath[depth] || ''}
+                                          onChange={(e) => handleDankoCityLocationChange(depth, e.target.value)}
+                                          className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                                        >
+                                          <option value="">-- Chọn {labels[depth]?.toLowerCase() || 'vị trí'} --</option>
+                                          {options.map((location) => (
+                                            <option key={location} value={location}>{location}</option>
+                                          ))}
+                                          {depth === 0 && <option value="Khác">Khác</option>}
+                                        </select>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              ) : (
+                                <div className="space-y-1">
+                                  <label className="font-bold text-slate-500">Vị trí bàn giao đến *</label>
+                                  <select
+                                    value={selectedLocation}
+                                    onChange={(e) => {
+                                      setSelectedLocation(e.target.value);
+                                      setSelectedLocationPath([]);
+                                      setCustomLocation('');
+                                    }}
+                                    className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                                  >
+                                    <option value="">-- Chọn vị trí --</option>
+                                    {selectedCity !== 'Khác' && selectedProject !== 'Khác' && (LOCATION_HIERARCHY[selectedCity]?.[selectedProject] || []).map(l => (
+                                      <option key={l} value={l}>{l}</option>
+                                    ))}
+                                    <option value="Khác">Khác</option>
+                                  </select>
+                                </div>
+                              )}
 
                               {selectedLocation === 'Khác' && (
                                 <div className="space-y-1">
@@ -1179,6 +1397,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                     !selectedLocation || 
                     (selectedCity === 'Khác' && !customCity.trim()) || 
                     (selectedProject === 'Khác' && !customProject.trim()) || 
+                    (isDankoCityProject(selectedCity, selectedProject) && selectedLocation !== 'Khác' && !isDankoCityPathComplete(selectedLocationPath)) ||
                     (selectedLocation === 'Khác' && !customLocation.trim())
                   )) ||
                   (wizardStep === 4 && !wizardForm.agreedToCommitment) ||
