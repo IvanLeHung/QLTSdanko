@@ -151,11 +151,58 @@ const DANKO_CITY_LOCATION_TREE: LocationTree = {
   }
 };
 
-const isDankoCityProject = (city: string, project: string) => city === 'Thái Nguyên' && project === 'Danko City';
+const DANKO_RIVERSIDE_LOCATION_TREE: LocationTree = {
+  'KHU CỔNG CHÀO': {
+    'Cổng chào Golden Gate': null
+  },
+  'PHÂN KHU MAJESTIC': {
+    'Văn phòng bán hàng': {
+      'Phòng họp': null,
+      'Sảnh khánh tiết': null
+    },
+    'Quảng trường Danko': null,
+    'Tháp biểu tượng The Pride': null,
+    'Bể bơi Lavish': null,
+    'Vườn Ý - Florence Garden': null,
+    'Sân thể thao Athens': null,
+    'Vườn Thụy Sĩ - The Vow Garden': null
+  },
+  'PHÂN KHU THE MUSE': {
+    'Vườn Pháp - Versailles Garden': null,
+    'Suối Hà Lan': null,
+    'Khu nhà ở': null
+  },
+  'PHÂN KHU THE SUMMIT': {
+    'Khu nhà ở': null,
+    'Trạm Y tế': null,
+    'Công viên cảnh quan': null
+  },
+  'KHU CHUNG CƯ': {
+    'Chung cư The Summit': {
+      'Tòa A': null,
+      'Tòa B': null
+    }
+  },
+  'KHU GIÁO DỤC': {
+    'Trường THPT': null,
+    'Trường Liên cấp': null,
+    'Trường Mầm non': null
+  },
+  'KHU THƯƠNG MẠI - DỊCH VỤ': {
+    'Đất thương mại dịch vụ': null
+  }
+};
 
-const getLocationTreeLevels = (selectedPath: string[]) => {
+const PROJECT_LOCATION_TREES: Record<string, LocationTree> = {
+  'Thái Nguyên::Danko City': DANKO_CITY_LOCATION_TREE,
+  'Bắc Ninh::Danko Riverside': DANKO_RIVERSIDE_LOCATION_TREE
+};
+
+const getProjectLocationTree = (city: string, project: string) => PROJECT_LOCATION_TREES[`${city}::${project}`] || null;
+
+const getLocationTreeLevels = (tree: LocationTree | null, selectedPath: string[]) => {
   const levels: string[][] = [];
-  let node: LocationTree | null = DANKO_CITY_LOCATION_TREE;
+  let node: LocationTree | null = tree;
   let depth = 0;
 
   while (node) {
@@ -171,9 +218,9 @@ const getLocationTreeLevels = (selectedPath: string[]) => {
   return levels;
 };
 
-const isDankoCityPathComplete = (selectedPath: string[]) => {
+const isLocationPathComplete = (tree: LocationTree | null, selectedPath: string[]) => {
   if (selectedPath.length === 0 || selectedPath[0] === 'Khác') return false;
-  let node: LocationTree | null = DANKO_CITY_LOCATION_TREE;
+  let node: LocationTree | null = tree;
 
   for (const segment of selectedPath) {
     if (!node || !Object.prototype.hasOwnProperty.call(node, segment)) return false;
@@ -183,7 +230,7 @@ const isDankoCityPathComplete = (selectedPath: string[]) => {
   return node === null;
 };
 
-const findDankoCityPath = (location: string): string[] | null => {
+const findLocationTreePath = (tree: LocationTree, location: string): string[] | null => {
   const target = location.replace(/\s*[\/-]\s*/g, '-').trim();
   let match: string[] | null = null;
 
@@ -199,7 +246,7 @@ const findDankoCityPath = (location: string): string[] | null => {
     }
   };
 
-  visit(DANKO_CITY_LOCATION_TREE, []);
+  visit(tree, []);
   return match;
 };
 
@@ -258,9 +305,10 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const [customProject, setCustomProject] = useState('');
   const [customLocation, setCustomLocation] = useState('');
 
-  const dankoCityLocationLevels = getLocationTreeLevels(selectedLocationPath);
+  const projectLocationTree = getProjectLocationTree(selectedCity, selectedProject);
+  const projectLocationLevels = getLocationTreeLevels(projectLocationTree, selectedLocationPath);
 
-  const handleDankoCityLocationChange = (depth: number, value: string) => {
+  const handleProjectLocationChange = (depth: number, value: string) => {
     if (value === 'Khác') {
       setSelectedLocationPath(['Khác']);
       setSelectedLocation('Khác');
@@ -381,11 +429,12 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
           if (LOCATION_HIERARCHY[resolvedCity][resolvedProject]) {
             setSelectedProject(resolvedProject);
             if (resolvedLocation) {
-              if (isDankoCityProject(resolvedCity, resolvedProject)) {
-                const dankoPath = findDankoCityPath(resolvedLocation);
-                if (dankoPath) {
-                  setSelectedLocationPath(dankoPath);
-                  setSelectedLocation(dankoPath.join(' / '));
+              const resolvedTree = getProjectLocationTree(resolvedCity, resolvedProject);
+              if (resolvedTree) {
+                const resolvedPath = findLocationTreePath(resolvedTree, resolvedLocation);
+                if (resolvedPath) {
+                  setSelectedLocationPath(resolvedPath);
+                  setSelectedLocation(resolvedPath.join(' / '));
                 } else {
                   setSelectedLocationPath(['Khác']);
                   setSelectedLocation('Khác');
@@ -1155,16 +1204,16 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
 
                           {selectedProject && (
                             <>
-                              {isDankoCityProject(selectedCity, selectedProject) ? (
+                              {projectLocationTree ? (
                                 <div className="space-y-3">
-                                  {dankoCityLocationLevels.map((options, depth) => {
+                                  {projectLocationLevels.map((options, depth) => {
                                     const labels = ['Khu vực', 'Địa điểm / công trình', 'Tầng / khu chức năng', 'Vị trí chi tiết'];
                                     return (
                                       <div key={depth} className="space-y-1">
                                         <label className="font-bold text-slate-500">{labels[depth] || `Phân cấp ${depth + 1}`} *</label>
                                         <select
                                           value={selectedLocationPath[depth] || ''}
-                                          onChange={(e) => handleDankoCityLocationChange(depth, e.target.value)}
+                                          onChange={(e) => handleProjectLocationChange(depth, e.target.value)}
                                           className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                                         >
                                           <option value="">-- Chọn {labels[depth]?.toLowerCase() || 'vị trí'} --</option>
@@ -1397,7 +1446,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                     !selectedLocation || 
                     (selectedCity === 'Khác' && !customCity.trim()) || 
                     (selectedProject === 'Khác' && !customProject.trim()) || 
-                    (isDankoCityProject(selectedCity, selectedProject) && selectedLocation !== 'Khác' && !isDankoCityPathComplete(selectedLocationPath)) ||
+                    (projectLocationTree && selectedLocation !== 'Khác' && !isLocationPathComplete(projectLocationTree, selectedLocationPath)) ||
                     (selectedLocation === 'Khác' && !customLocation.trim())
                   )) ||
                   (wizardStep === 4 && !wizardForm.agreedToCommitment) ||
