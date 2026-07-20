@@ -64,6 +64,7 @@ export const FIELD_MAP: Record<string, string> = {
   departmentName: 'Phòng ban',
   locationName: 'Vị trí',
   cityName: 'Thành phố',
+  projectName: 'Dự án',
   assetName: 'Tên tài sản',
   serialNumber: 'Số serial',
   purchasePriceExVat: 'Giá mua (chưa VAT)',

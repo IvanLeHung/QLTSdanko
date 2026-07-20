@@ -9,7 +9,7 @@ import api from '../lib/api';
 import { toast } from 'react-toastify';
 import { BaseModal } from './BaseModal';
 
-const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
+export const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {
     'Văn phòng C6': [
       'Mặt trước Khối I',
@@ -45,7 +45,7 @@ const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   }
 };
 
-interface LocationTree {
+export interface LocationTree {
   [key: string]: LocationTree | null;
 }
 
@@ -258,9 +258,9 @@ const PROJECT_LOCATION_TREES: Record<string, LocationTree> = {
   'Tuyên Quang::Danko Center': DANKO_CENTER_LOCATION_TREE
 };
 
-const getProjectLocationTree = (city: string, project: string) => PROJECT_LOCATION_TREES[`${city}::${project}`] || null;
+export const getProjectLocationTree = (city: string, project: string) => PROJECT_LOCATION_TREES[`${city}::${project}`] || null;
 
-const getLocationTreeLevels = (tree: LocationTree | null, selectedPath: string[]) => {
+export const getLocationTreeLevels = (tree: LocationTree | null, selectedPath: string[]) => {
   const levels: string[][] = [];
   let node: LocationTree | null = tree;
   let depth = 0;
@@ -278,7 +278,7 @@ const getLocationTreeLevels = (tree: LocationTree | null, selectedPath: string[]
   return levels;
 };
 
-const isLocationPathComplete = (tree: LocationTree | null, selectedPath: string[]) => {
+export const isLocationPathComplete = (tree: LocationTree | null, selectedPath: string[]) => {
   if (selectedPath.length === 0 || selectedPath[0] === 'Khác') return false;
   let node: LocationTree | null = tree;
 
@@ -290,7 +290,7 @@ const isLocationPathComplete = (tree: LocationTree | null, selectedPath: string[
   return node === null;
 };
 
-const findLocationTreePath = (tree: LocationTree, location: string): string[] | null => {
+export const findLocationTreePath = (tree: LocationTree, location: string): string[] | null => {
   const normalizePath = (value: string) => value.replace(/\s*[\/-]\s*/g, '-').trim();
   const target = normalizePath(location);
   let match: string[] | null = null;

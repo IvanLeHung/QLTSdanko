@@ -2246,6 +2246,7 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
     departmentName,
     locationName,
     cityName,
+    projectName,
     note,
     reason
   } = req.body || {};
@@ -2261,7 +2262,8 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
         currentPosition: currentPosition || null,
         departmentName: departmentName || null,
         locationName: locationName || null,
-        cityName: cityName || null
+        cityName: cityName || null,
+        projectName: projectName || null
       };
 
       const updatedAsset = await tx.asset.update({

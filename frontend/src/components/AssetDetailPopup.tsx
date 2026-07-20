@@ -60,10 +60,41 @@ import { AppliedFormsBlock } from './AppliedFormsBlock';
 import { AssetDocumentsTab } from './AssetDocumentsTab';
 import { BMFormDispatcher } from './forms/BMFormDispatcher';
 import { BaseModal } from './BaseModal';
+import {
+  LOCATION_HIERARCHY,
+  findLocationTreePath,
+  getLocationTreeLevels,
+  getProjectLocationTree,
+  isLocationPathComplete
+} from './TransferWizard';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+const stripLocationPrefix = (value: string, prefix?: string | null) => {
+  let result = String(value || '').trim();
+  const normalizedPrefix = String(prefix || '').trim();
+  if (!normalizedPrefix) return result;
+
+  for (const separator of ['-', ' / ', '/']) {
+    const candidate = `${normalizedPrefix}${separator}`;
+    if (result.toLocaleLowerCase('vi').startsWith(candidate.toLocaleLowerCase('vi'))) {
+      result = result.slice(candidate.length).trim();
+      break;
+    }
+  }
+  return result;
+};
+
+const getDetailedLocationName = (city?: string | null, project?: string | null, location?: string | null) => {
+  return stripLocationPrefix(stripLocationPrefix(String(location || ''), city), project);
+};
+
+const formatCurrentLocation = (asset: any) => {
+  const detail = getDetailedLocationName(asset?.cityName, asset?.projectName, asset?.locationName);
+  return [asset?.cityName, detail].filter(Boolean).join(' - ') || 'Chưa có vị trí';
+};
 
 interface AssetDetailPopupProps {
   assetId: number | null;
@@ -114,6 +145,15 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     locationName: '',
     cityName: '',
     note: ''
+  });
+  const [assignLocationSelection, setAssignLocationSelection] = useState({
+    city: '',
+    project: '',
+    location: '',
+    path: [] as string[],
+    customCity: '',
+    customProject: '',
+    customLocation: ''
   });
   const [showLinkInvoiceModal, setShowLinkInvoiceModal] = useState(false);
   const [showInvoiceDetailsModal, setShowInvoiceDetailsModal] = useState(false);
@@ -239,6 +279,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const latestAssignment = asset?.assignments?.[0];
   const latestHandover = asset?.latestHandoverDocument;
   const currentAssignmentPhone = asset?.currentUserPhone || asset?.latestAssignmentPhone || latestHandover?.recipientPhone || latestAssignment?.recipientPhone;
+  const assignProjectLocationTree = getProjectLocationTree(assignLocationSelection.city, assignLocationSelection.project);
+  const assignProjectLocationLevels = getLocationTreeLevels(assignProjectLocationTree, assignLocationSelection.path);
   const emptyText = (value?: string | number | null) => {
     if (value === undefined || value === null || value === '') return '--';
     return String(value);
@@ -255,6 +297,29 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   );
 
   const openAssignInfoEditor = () => {
+    const rawCity = asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity || '';
+    const rawProject = asset.projectName || '';
+    const rawLocation = asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation || '';
+    const knownCity = Object.prototype.hasOwnProperty.call(LOCATION_HIERARCHY, rawCity);
+    const city = knownCity ? rawCity : (rawCity ? 'Khác' : '');
+    const locationWithoutCity = stripLocationPrefix(rawLocation, rawCity);
+
+    let resolvedProject = rawProject;
+    if (!resolvedProject && knownCity) {
+      resolvedProject = Object.keys(LOCATION_HIERARCHY[rawCity] || {})
+        .sort((a, b) => b.length - a.length)
+        .find((project) => stripLocationPrefix(locationWithoutCity, project) !== locationWithoutCity) || '';
+    }
+    const knownProject = knownCity && Object.prototype.hasOwnProperty.call(LOCATION_HIERARCHY[rawCity] || {}, resolvedProject);
+    const project = knownProject ? resolvedProject : (resolvedProject ? 'Khác' : '');
+    const detailLocation = stripLocationPrefix(locationWithoutCity, resolvedProject);
+    const tree = knownProject ? getProjectLocationTree(rawCity, resolvedProject) : null;
+    const path = tree ? (findLocationTreePath(tree, detailLocation) || []) : [];
+    const standardLocation = knownProject && !tree && (LOCATION_HIERARCHY[rawCity]?.[resolvedProject] || []).includes(detailLocation);
+    const location = path.length > 0
+      ? path.join(' / ')
+      : (standardLocation ? detailLocation : (detailLocation ? 'Khác' : ''));
+
     setAssignInfoForm({
       currentUserName: asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName || '',
       currentPosition: asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition || '',
@@ -263,6 +328,15 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       locationName: asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation || '',
       cityName: asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity || '',
       note: ''
+    });
+    setAssignLocationSelection({
+      city,
+      project,
+      location,
+      path,
+      customCity: city === 'Khác' ? rawCity : '',
+      customProject: project === 'Khác' ? resolvedProject : '',
+      customLocation: location === 'Khác' ? detailLocation : ''
     });
     setShowAssignInfoModal(true);
     setIsAssignInfoEditing(true);
@@ -279,17 +353,47 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       cityName: '',
       note: ''
     });
+    setAssignLocationSelection({
+      city: '',
+      project: '',
+      location: '',
+      path: [],
+      customCity: '',
+      customProject: '',
+      customLocation: ''
+    });
   };
 
   const handleSaveAssignInfo = async () => {
     if (!asset) return;
+    const cityName = assignLocationSelection.city === 'Khác'
+      ? assignLocationSelection.customCity.trim()
+      : assignLocationSelection.city;
+    const projectName = assignLocationSelection.project === 'Khác'
+      ? assignLocationSelection.customProject.trim()
+      : assignLocationSelection.project;
+    const locationName = assignLocationSelection.location === 'Khác'
+      ? assignLocationSelection.customLocation.trim()
+      : (assignProjectLocationTree ? assignLocationSelection.path.join(' / ') : assignLocationSelection.location);
+
+    if (!cityName || !projectName || !locationName) {
+      toast.error('Vui lòng chọn đầy đủ Thành phố, Dự án và Vị trí hiện tại');
+      return;
+    }
+    if (assignProjectLocationTree && assignLocationSelection.location !== 'Khác'
+      && !isLocationPathComplete(assignProjectLocationTree, assignLocationSelection.path)) {
+      toast.error('Vui lòng chọn đến cấp vị trí chi tiết cuối cùng');
+      return;
+    }
+
     const updates: any = {
       currentUserName: assignInfoForm.currentUserName.trim() || null,
       currentPosition: assignInfoForm.currentPosition.trim() || null,
       currentUserPhone: assignInfoForm.currentUserPhone.trim() || null,
       departmentName: assignInfoForm.departmentName.trim() || null,
-      locationName: assignInfoForm.locationName.trim() || null,
-      cityName: assignInfoForm.cityName.trim() || null,
+      locationName,
+      cityName,
+      projectName,
       reason: assignInfoForm.note.trim() || 'Bổ sung/chỉnh sửa thông tin cấp phát từ popup người đang sử dụng'
     };
 
@@ -546,7 +650,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                 </div>
                 <div className="px-4 space-y-1">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí hiện tại</p>
-                  <p className="text-sm font-bold text-slate-700 truncate">{asset.cityName} {asset.locationName ? ` - ${asset.locationName}` : ''}</p>
+                  <p className="text-sm font-bold text-slate-700 truncate" title={formatCurrentLocation(asset)}>{formatCurrentLocation(asset)}</p>
                 </div>
               </div>
             </div>
@@ -1535,7 +1639,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       {showAssignInfoModal && asset && (
         <div className="fixed inset-0 z-[130] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={() => { cancelAssignInfoEditor(); setShowAssignInfoModal(false); }} />
-          <div className="relative w-full max-w-3xl bg-white rounded-[2rem] shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200">
+          <div className="relative w-full max-w-3xl max-h-[92vh] bg-white rounded-[2rem] shadow-2xl overflow-y-auto custom-scrollbar animate-in zoom-in-95 duration-200">
             <div className="px-7 py-6 border-b border-slate-100 flex items-start justify-between">
               <div className="flex items-center space-x-4">
                 <div className="h-12 w-12 rounded-2xl bg-primary-50 text-primary-600 flex items-center justify-center">
@@ -1582,9 +1686,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         { key: 'currentUserName', label: 'Họ tên người nhận', icon: User },
                         { key: 'currentPosition', label: 'Chức vụ', icon: Tag },
                         { key: 'currentUserPhone', label: 'Số điện thoại', icon: Info },
-                        { key: 'departmentName', label: 'Phòng ban', icon: Building2 },
-                        { key: 'locationName', label: 'Vị trí / kho bàn giao đến', icon: MapPin },
-                        { key: 'cityName', label: 'Tỉnh / thành phố', icon: MapPin }
+                        { key: 'departmentName', label: 'Phòng ban', icon: Building2 }
                       ].map(({ key, label, icon: Icon }) => (
                         <div key={key} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
                           <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
@@ -1601,6 +1703,154 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                           />
                         </div>
                       ))}
+                    </div>
+                    <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 space-y-3">
+                      <p className="text-[10px] font-black uppercase tracking-widest text-blue-700 flex items-center">
+                        <MapPin className="mr-2 h-3.5 w-3.5" /> Vị trí hiện tại
+                      </p>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <label htmlFor="asset-assignment-city" className="text-[10px] font-black uppercase tracking-widest text-slate-500">Thành phố *</label>
+                          <select
+                            id="asset-assignment-city"
+                            name="cityName"
+                            value={assignLocationSelection.city}
+                            onChange={(e) => setAssignLocationSelection({
+                              city: e.target.value,
+                              project: '',
+                              location: '',
+                              path: [],
+                              customCity: '',
+                              customProject: '',
+                              customLocation: ''
+                            })}
+                            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
+                          >
+                            <option value="">-- Chọn thành phố --</option>
+                            {Object.keys(LOCATION_HIERARCHY).map((city) => <option key={city} value={city}>{city}</option>)}
+                            <option value="Khác">Khác</option>
+                          </select>
+                        </div>
+
+                        {assignLocationSelection.city === 'Khác' && (
+                          <div className="space-y-1.5">
+                            <label htmlFor="asset-assignment-custom-city" className="text-[10px] font-black uppercase tracking-widest text-slate-500">Thành phố khác *</label>
+                            <input
+                              id="asset-assignment-custom-city"
+                              name="customCity"
+                              value={assignLocationSelection.customCity}
+                              onChange={(e) => setAssignLocationSelection((prev) => ({ ...prev, customCity: e.target.value }))}
+                              className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
+                            />
+                          </div>
+                        )}
+
+                        {assignLocationSelection.city && (
+                          <div className="space-y-1.5">
+                            <label htmlFor="asset-assignment-project" className="text-[10px] font-black uppercase tracking-widest text-slate-500">Dự án *</label>
+                            <select
+                              id="asset-assignment-project"
+                              name="projectName"
+                              value={assignLocationSelection.project}
+                              onChange={(e) => setAssignLocationSelection((prev) => ({
+                                ...prev,
+                                project: e.target.value,
+                                location: '',
+                                path: [],
+                                customProject: '',
+                                customLocation: ''
+                              }))}
+                              className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
+                            >
+                              <option value="">-- Chọn dự án --</option>
+                              {assignLocationSelection.city !== 'Khác' && Object.keys(LOCATION_HIERARCHY[assignLocationSelection.city] || {}).map((project) => (
+                                <option key={project} value={project}>{project}</option>
+                              ))}
+                              <option value="Khác">Khác</option>
+                            </select>
+                          </div>
+                        )}
+
+                        {assignLocationSelection.project === 'Khác' && (
+                          <div className="space-y-1.5">
+                            <label htmlFor="asset-assignment-custom-project" className="text-[10px] font-black uppercase tracking-widest text-slate-500">Dự án khác *</label>
+                            <input
+                              id="asset-assignment-custom-project"
+                              name="customProject"
+                              value={assignLocationSelection.customProject}
+                              onChange={(e) => setAssignLocationSelection((prev) => ({ ...prev, customProject: e.target.value }))}
+                              className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      {assignLocationSelection.project && (
+                        assignProjectLocationTree ? (
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {assignProjectLocationLevels.map((options, depth) => {
+                              const labels = ['Khu vực', 'Địa điểm / công trình', 'Tầng / khu chức năng', 'Vị trí chi tiết'];
+                              return (
+                                <div key={depth} className="space-y-1.5">
+                                  <label htmlFor={`asset-assignment-location-${depth}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+                                    {labels[depth] || `Phân cấp ${depth + 1}`} *
+                                  </label>
+                                  <select
+                                    id={`asset-assignment-location-${depth}`}
+                                    name={`locationLevel${depth + 1}`}
+                                    value={assignLocationSelection.path[depth] || ''}
+                                    onChange={(e) => {
+                                      const value = e.target.value;
+                                      if (value === 'Khác') {
+                                        setAssignLocationSelection((prev) => ({ ...prev, location: 'Khác', path: ['Khác'], customLocation: '' }));
+                                        return;
+                                      }
+                                      const path = [...assignLocationSelection.path.slice(0, depth), value];
+                                      setAssignLocationSelection((prev) => ({ ...prev, path, location: path.join(' / '), customLocation: '' }));
+                                    }}
+                                    className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
+                                  >
+                                    <option value="">-- Chọn {labels[depth]?.toLowerCase() || 'vị trí'} --</option>
+                                    {options.map((location) => <option key={location} value={location}>{location}</option>)}
+                                    {depth === 0 && <option value="Khác">Khác</option>}
+                                  </select>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <div className="space-y-1.5">
+                            <label htmlFor="asset-assignment-location" className="text-[10px] font-black uppercase tracking-widest text-slate-500">Vị trí chi tiết *</label>
+                            <select
+                              id="asset-assignment-location"
+                              name="locationName"
+                              value={assignLocationSelection.location}
+                              onChange={(e) => setAssignLocationSelection((prev) => ({ ...prev, location: e.target.value, path: [], customLocation: '' }))}
+                              className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
+                            >
+                              <option value="">-- Chọn vị trí --</option>
+                              {assignLocationSelection.city !== 'Khác' && assignLocationSelection.project !== 'Khác'
+                                && (LOCATION_HIERARCHY[assignLocationSelection.city]?.[assignLocationSelection.project] || []).map((location) => (
+                                  <option key={location} value={location}>{location}</option>
+                                ))}
+                              <option value="Khác">Khác</option>
+                            </select>
+                          </div>
+                        )
+                      )}
+
+                      {assignLocationSelection.location === 'Khác' && (
+                        <div className="space-y-1.5">
+                          <label htmlFor="asset-assignment-custom-location" className="text-[10px] font-black uppercase tracking-widest text-slate-500">Vị trí khác *</label>
+                          <input
+                            id="asset-assignment-custom-location"
+                            name="customLocation"
+                            value={assignLocationSelection.customLocation}
+                            onChange={(e) => setAssignLocationSelection((prev) => ({ ...prev, customLocation: e.target.value }))}
+                            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
+                          />
+                        </div>
+                      )}
                     </div>
                     <div className="p-4 rounded-2xl bg-amber-50 border border-amber-100">
                       <label className="text-[10px] font-black uppercase tracking-widest text-amber-700 flex items-center mb-1.5">
@@ -1640,8 +1890,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                     <InfoRow label="Chức vụ" value={asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition} icon={Tag} />
                     <InfoRow label="Số điện thoại" value={currentAssignmentPhone} icon={Info} />
                     <InfoRow label="Phòng ban" value={asset.departmentName || latestAssignment?.newDepartmentName || latestHandover?.recipientDepartment} icon={Building2} />
-                    <InfoRow label="Vị trí / kho bàn giao đến" value={asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation} icon={MapPin} />
-                    <InfoRow label="Tỉnh / thành phố" value={asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity} icon={MapPin} />
+                    <InfoRow label="Dự án" value={asset.projectName} icon={Building2} />
+                    <InfoRow label="Vị trí hiện tại" value={formatCurrentLocation(asset)} icon={MapPin} />
                   </div>
                 )}
               </section>
