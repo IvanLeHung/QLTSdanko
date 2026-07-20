@@ -193,9 +193,63 @@ const DANKO_RIVERSIDE_LOCATION_TREE: LocationTree = {
   }
 };
 
+const DANKO_CENTER_LOCATION_TREE: LocationTree = {
+  'KHU CỔNG CHÀO': {
+    'Cổng chào Victory': null
+  },
+  'KHU ĐẠI LỘ': {
+    'Đại lộ Galaxy': null
+  },
+  'PHÂN KHU AURORA': {
+    'Shop thương mại': null,
+    'Trường Liên cấp Tiểu học - Trung học cơ sở': null,
+    "Phố đi bộ Hermes's Blessing": null,
+    'Văn phòng bán hàng': {
+      'Sảnh khánh tiết': null,
+      'Phòng họp': null,
+      'Phòng làm việc': null,
+      'Phòng tiếp khách': null,
+      'Pantry': null,
+      'WC': null,
+      'Phòng kỹ thuật': null
+    },
+    'Khu nhà ở Aurora': null
+  },
+  'PHÂN KHU HELIOS': {
+    'Tháp biểu tượng Helios': null,
+    'Quảng trường Sun Square': null,
+    'Bể bơi Sunset': null,
+    'Công viên Moonlight': null,
+    'Hồ Moonlight': null,
+    'Khu nhà ở Helios': null
+  },
+  'PHÂN KHU SELENE': {
+    'Công viên cảnh quan': null,
+    'Trường Mầm non Quốc tế': null,
+    'Khu nhà ở Selene': null
+  },
+  'KHU GIÁO DỤC': {
+    'Trường Liên cấp Tiểu học - Trung học cơ sở': null,
+    'Trường Mầm non Quốc tế': null
+  },
+  'KHU THƯƠNG MẠI': {
+    'Shop thương mại': null
+  },
+  'KHU CÔNG VIÊN - CẢNH QUAN': {
+    'Công viên Moonlight': null,
+    'Hồ Moonlight': null,
+    'Công viên cảnh quan': null,
+    'Quảng trường Sun Square': null,
+    'Bể bơi Sunset': null,
+    "Phố đi bộ Hermes's Blessing": null,
+    'Tháp biểu tượng Helios': null
+  }
+};
+
 const PROJECT_LOCATION_TREES: Record<string, LocationTree> = {
   'Thái Nguyên::Danko City': DANKO_CITY_LOCATION_TREE,
-  'Bắc Ninh::Danko Riverside': DANKO_RIVERSIDE_LOCATION_TREE
+  'Bắc Ninh::Danko Riverside': DANKO_RIVERSIDE_LOCATION_TREE,
+  'Tuyên Quang::Danko Center': DANKO_CENTER_LOCATION_TREE
 };
 
 const getProjectLocationTree = (city: string, project: string) => PROJECT_LOCATION_TREES[`${city}::${project}`] || null;
@@ -231,13 +285,14 @@ const isLocationPathComplete = (tree: LocationTree | null, selectedPath: string[
 };
 
 const findLocationTreePath = (tree: LocationTree, location: string): string[] | null => {
-  const target = location.replace(/\s*[\/-]\s*/g, '-').trim();
+  const normalizePath = (value: string) => value.replace(/\s*[\/-]\s*/g, '-').trim();
+  const target = normalizePath(location);
   let match: string[] | null = null;
 
   const visit = (node: LocationTree, path: string[]) => {
     for (const [name, children] of Object.entries(node)) {
       const nextPath = [...path, name];
-      if (nextPath.join('-') === target) {
+      if (normalizePath(nextPath.join('-')) === target) {
         match = nextPath;
         return;
       }
