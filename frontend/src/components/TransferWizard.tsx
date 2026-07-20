@@ -51,6 +51,7 @@ interface LocationTree {
 
 const DANKO_CITY_LOCATION_TREE: LocationTree = {
   'Ban Quản lý dự án': null,
+  'Ban Cây Xanh': null,
   'KHU CỔNG CHÀO': {
     'Cổng chính Khu đô thị': {
       'Phòng bảo vệ': null,
@@ -154,6 +155,7 @@ const DANKO_CITY_LOCATION_TREE: LocationTree = {
 
 const DANKO_RIVERSIDE_LOCATION_TREE: LocationTree = {
   'Ban Quản lý dự án': null,
+  'Ban Cây Xanh': null,
   'KHU CỔNG CHÀO': {
     'Cổng chào Golden Gate': null
   },
@@ -197,6 +199,7 @@ const DANKO_RIVERSIDE_LOCATION_TREE: LocationTree = {
 
 const DANKO_CENTER_LOCATION_TREE: LocationTree = {
   'Ban Quản lý dự án': null,
+  'Ban Cây Xanh': null,
   'KHU CỔNG CHÀO': {
     'Cổng chào Victory': null
   },
