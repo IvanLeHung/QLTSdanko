@@ -1,6 +1,6 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
-import { parseAndNormalizeLocation } from '../utils/location.util';
+import { normalizeAssetUnit, normalizeProjectName, parseAndNormalizeLocation } from '../utils/location.util';
 
 const ASSET_UPDATE_FIELDS = new Set([
   'assetCode',
@@ -281,6 +281,13 @@ export class AssetService {
       updates = sanitizeAssetUpdates(updates);
       if (Object.keys(updates).length === 0) {
         return oldAsset;
+      }
+
+      if (updates.unit !== undefined) {
+        updates.unit = normalizeAssetUnit(updates.unit);
+      }
+      if (updates.projectName !== undefined) {
+        updates.projectName = normalizeProjectName(updates.projectName);
       }
 
       // Normalize location if updated

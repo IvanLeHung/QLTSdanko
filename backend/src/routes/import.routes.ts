@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs';
 import multer from 'multer';
 import { ImportService } from '../services/import.service';
 import { AssetService } from '../services/asset.service';
+import { normalizeAssetUnit, normalizeProjectName } from '../utils/location.util';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -349,7 +350,7 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     serialNumber: row.serial_number,
                     companyCode: company.code,
                     companyName: company.name,
-                    projectName: row.projectName || row['Dự án'] || row['Project'] || '',
+                    projectName: normalizeProjectName(row.projectName || row['Dự án'] || row['Project']),
                     level1Code: c1.code,
                     level1Name: c1.name,
                     level2Code: c2.code,
@@ -360,7 +361,7 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     level4Name: c4.name,
                     runningNo,
                     runningNoText,
-                    unit: row.unit || 'Cái',
+                    unit: normalizeAssetUnit(row.unit),
                     status: row.status || 'IN_STOCK',
                     usagePurpose: row.usage_purpose,
                     currentUserName: row.current_user_name,

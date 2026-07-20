@@ -12,7 +12,7 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
     return { city: '', project: '', location: '', fullFormatted: '' };
   }
 
-  const trimmed = location.trim();
+  const trimmed = normalizeLocationLabel(location.trim());
 
   // Strip accents and clean up spaces/dashes for mapping checks
   const lower = trimmed.toLowerCase();
@@ -26,17 +26,26 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
     return {
       city: 'Hà Nội',
       project: 'Văn phòng C6',
-      location: 'Mặt trước Khối I',
-      fullFormatted: 'Hà Nội-Văn phòng C6-Mặt trước Khối I'
+      location: 'Mặt trước C6-I',
+      fullFormatted: 'Mặt trước C6-I'
     };
   }
 
-  if (cleanStr.includes('mat sau c6 i') || cleanStr.includes('mat sau c6 1') || cleanStr.includes('mat sau c6 ii') || cleanStr.includes('mat sau c6 2')) {
+  if (cleanStr.includes('mat sau c6 i') || cleanStr.includes('mat sau c6 1')) {
     return {
       city: 'Hà Nội',
       project: 'Văn phòng C6',
-      location: 'Mặt sau Khối II',
-      fullFormatted: 'Hà Nội-Văn phòng C6-Mặt sau Khối II'
+      location: 'Mặt sau C6-I',
+      fullFormatted: 'Mặt sau C6-I'
+    };
+  }
+
+  if (cleanStr.includes('tang 9 c6 i') || cleanStr.includes('tang 9 c6 1')) {
+    return {
+      city: 'Hà Nội',
+      project: 'Văn phòng C6',
+      location: 'Tầng 9 C6-I',
+      fullFormatted: 'Tầng 9 C6-I'
     };
   }
 
@@ -69,6 +78,26 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
     location: trimmed,
     fullFormatted: trimmed
   };
+}
+
+export function normalizeAssetUnit(unit: string | null | undefined): string {
+  const value = String(unit || '').trim();
+  if (value === 'B?') return 'Bộ';
+  if (value === 'Chi?c') return 'Chiếc';
+  return value || 'Cái';
+}
+
+export function normalizeProjectName(project: string | null | undefined): string {
+  const value = String(project || '').trim();
+  if (value === 'Du an khac' || value === 'Du án khác') return 'Dự án khác';
+  return value;
+}
+
+export function normalizeLocationLabel(location: string): string {
+  return location
+    .replace(/Mat sau C6-I/gi, 'Mặt sau C6-I')
+    .replace(/Mat truoc C6-I/gi, 'Mặt trước C6-I')
+    .replace(/Tang 9 C6-I/gi, 'Tầng 9 C6-I');
 }
 
 function stripAccents(str: string): string {

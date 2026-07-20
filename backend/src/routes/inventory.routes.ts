@@ -615,7 +615,7 @@ router.post('/check/:inventoryCheckId/fast-scan', authenticateToken, async (req:
 });
 
 router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest, res) => {
-  const checkedBy = req.user?.username || 'system';
+  const checkedBy = req.user?.fullName || req.user?.username || 'system';
   const {
     sessionId,
     assetIds,
@@ -637,10 +637,18 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
 
   try {
     const results = await prisma.$transaction(async (tx) => {
+      const session = await tx.inventoryCheck.findUnique({
+        where: { id: Number(sessionId) }
+      });
+      if (!session || !['OPEN', 'IN_PROGRESS'].includes(session.status)) {
+        throw new Error('Đợt kiểm kê không tồn tại hoặc không còn hoạt động');
+      }
+
       const output = [];
       for (const assetId of assetIds) {
         const asset = await tx.asset.findUnique({ where: { id: Number(assetId) } });
         if (!asset) continue;
+        const checkedAt = new Date();
 
         let item = await tx.inventoryItem.findFirst({
           where: { inventoryCheckId: Number(sessionId), assetId: Number(assetId) }
@@ -673,7 +681,7 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
               result,
               photos: photos || [],
               checkStatus: 'CHECKED',
-              checkedAt: new Date(),
+              checkedAt,
               checkedBy,
               actualUserName: actualUserName || null,
               actualUserId: actualUserId || null,
@@ -697,7 +705,7 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
               result,
               photos: photos || [],
               checkStatus: 'CHECKED',
-              checkedAt: new Date(),
+              checkedAt,
               checkedBy,
               actualUserName: actualUserName || null,
               actualUserId: actualUserId || null,
@@ -707,14 +715,30 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
             }
           });
         }
+
+        await tx.asset.update({
+          where: { id: Number(assetId) },
+          data: {
+            lastInventoryDate: checkedAt,
+            lastInventoryStatus: result
+          }
+        });
+
+        await tx.auditLog.create({
+          data: {
+            entityType: 'ASSET',
+            entityId: Number(assetId),
+            action: 'INVENTORY_CHECK',
+            details: `Kiểm kê thủ công trong đợt ${session.inventoryCode}. Kết quả: ${result}.`,
+            performedBy: checkedBy
+          }
+        });
+
         output.push(item);
       }
 
       // Transition parent session status if OPEN
-      const session = await tx.inventoryCheck.findUnique({
-        where: { id: Number(sessionId) }
-      });
-      if (session && session.status === 'OPEN') {
+      if (session.status === 'OPEN') {
         await tx.inventoryCheck.update({
           where: { id: session.id },
           data: { status: 'IN_PROGRESS' }
@@ -722,7 +746,7 @@ router.post('/check-multiple-assets', authenticateToken, async (req: AuthRequest
       }
 
       return output;
-    });
+    }, { timeout: 30000 });
 
     res.json({ message: `Đã kiểm kê thành công ${results.length} tài sản`, items: results });
   } catch (error: any) {

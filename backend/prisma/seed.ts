@@ -35,6 +35,84 @@ async function replaceBacGiangData() {
   `);
 }
 
+async function repairLegacyAssetData() {
+  const normalizedUnits = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET "unit" = CASE
+      WHEN "unit" = 'B?' THEN 'Bộ'
+      WHEN "unit" = 'Chi?c' THEN 'Chiếc'
+      ELSE "unit"
+    END
+    WHERE "unit" IN ('B?', 'Chi?c');
+  `);
+
+  const normalizedProjects = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET "projectName" = 'Dự án khác'
+    WHERE "projectName" IN ('Du an khac', 'Du án khác');
+  `);
+
+  const normalizedLocations = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET "locationName" = REPLACE(
+      REPLACE(
+        REPLACE("locationName", 'Mat sau C6-I', 'Mặt sau C6-I'),
+        'Mat truoc C6-I', 'Mặt trước C6-I'
+      ),
+      'Tang 9 C6-I', 'Tầng 9 C6-I'
+    )
+    WHERE "locationName" LIKE '%Mat sau C6-I%'
+       OR "locationName" LIKE '%Mat truoc C6-I%'
+       OR "locationName" LIKE '%Tang 9 C6-I%';
+  `);
+
+  const restoredInventory = await prisma.$executeRawUnsafe(`
+    WITH inventory_events AS (
+      SELECT
+        "assetId",
+        "checkedAt" AS checked_at,
+        COALESCE(NULLIF("result", ''), 'MATCHED') AS result_status
+      FROM "InventoryItem"
+      WHERE "checkedAt" IS NOT NULL
+
+      UNION ALL
+
+      SELECT
+        "assetId",
+        "checkedAt" AS checked_at,
+        COALESCE(NULLIF("resultStatus", ''), 'MATCH') AS result_status
+      FROM "InventoryDetail"
+      WHERE "assetId" IS NOT NULL AND "checkedAt" IS NOT NULL
+    ),
+    latest AS (
+      SELECT DISTINCT ON ("assetId")
+        "assetId",
+        checked_at,
+        result_status
+      FROM inventory_events
+      ORDER BY "assetId", checked_at DESC
+    )
+    UPDATE "Asset" AS asset
+    SET
+      "lastInventoryDate" = latest.checked_at,
+      "lastInventoryStatus" = latest.result_status
+    FROM latest
+    WHERE asset."id" = latest."assetId"
+      AND (
+        asset."lastInventoryDate" IS NULL
+        OR asset."lastInventoryDate" < latest.checked_at
+        OR asset."lastInventoryStatus" IS NULL
+      );
+  `);
+
+  console.log('Legacy asset data repaired.', {
+    normalizedUnits,
+    normalizedProjects,
+    normalizedLocations,
+    restoredInventory
+  });
+}
+
 
 async function main() {
   const passwordHash = await bcrypt.hash('admin123', 10);
@@ -578,6 +656,8 @@ async function main() {
       create: dt
     });
   }
+
+  await repairLegacyAssetData();
 
   console.log('Master data fully updated with Roles, Departments, Locations, Companies, templates, and document templates');
 }

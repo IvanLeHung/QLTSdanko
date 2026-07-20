@@ -12,6 +12,7 @@ import { InvoicePostService } from '../services/invoice-post.service';
 import { buildDataScopeWhere } from '../utils/data-scope.util';
 import ExcelJS from 'exceljs';
 import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
+import { normalizeAssetUnit, normalizeProjectName } from '../utils/location.util';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -875,7 +876,7 @@ router.post('/bulk-create', authenticateToken, requirePermission('ASSET_CREATE')
       serialNumber: quantity === 1 ? serialNumber : (serialNumber ? `${serialNumber}-${c.runningNoText}` : null),
       companyCode: company.code,
       companyName: company.name,
-      projectName: projectName || '',
+      projectName: normalizeProjectName(projectName),
       level1Code: cat1.code,
       level1Name: cat1.name,
       level2Code: cat2.code,
@@ -886,7 +887,7 @@ router.post('/bulk-create', authenticateToken, requirePermission('ASSET_CREATE')
       level4Name: cat4.name,
       runningNo: c.runningNo,
       runningNoText: c.runningNoText,
-      unit: unit || 'Cái',
+      unit: normalizeAssetUnit(unit),
       purchasePriceExVat: Number(purchasePriceExVat) || 0,
       usagePurpose,
       supplierName,
@@ -2468,9 +2469,72 @@ router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (re
     }
   });
 
+  const [inventoryItems, inventoryDetails] = await Promise.all([
+    prisma.inventoryItem.findMany({
+      where: { assetId: asset.id, checkedAt: { not: null } },
+      orderBy: { checkedAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        checkedAt: true,
+        checkedBy: true,
+        result: true,
+        note: true,
+        inventoryCheck: {
+          select: { inventoryCode: true, inventoryName: true }
+        }
+      }
+    }),
+    prisma.inventoryDetail.findMany({
+      where: { assetId: asset.id, checkedAt: { not: null } },
+      orderBy: { checkedAt: 'desc' },
+      take: 20,
+      select: {
+        id: true,
+        checkedAt: true,
+        checkedBy: true,
+        resultStatus: true,
+        note: true,
+        session: {
+          select: {
+            checkerName: true,
+            inventoryCheck: {
+              select: { inventoryCode: true, inventoryName: true }
+            }
+          }
+        }
+      }
+    })
+  ]);
+
+  const inventoryHistory = [
+    ...inventoryItems.map((item) => ({
+      id: `item-${item.id}`,
+      checkedAt: item.checkedAt,
+      checkedBy: item.checkedBy,
+      result: item.result || 'MATCHED',
+      note: item.note,
+      inventoryCode: item.inventoryCheck.inventoryCode,
+      inventoryName: item.inventoryCheck.inventoryName
+    })),
+    ...inventoryDetails.map((detail) => ({
+      id: `detail-${detail.id}`,
+      checkedAt: detail.checkedAt,
+      checkedBy: detail.checkedBy || detail.session.checkerName,
+      result: detail.resultStatus || 'MATCH',
+      note: detail.note,
+      inventoryCode: detail.session.inventoryCheck.inventoryCode,
+      inventoryName: detail.session.inventoryCheck.inventoryName
+    }))
+  ]
+    .sort((a, b) => new Date(b.checkedAt || 0).getTime() - new Date(a.checkedAt || 0).getTime())
+    .slice(0, 20);
+
   res.json({
     ...asset,
     auditLogs,
+    inventoryHistory,
+    lastInventoryBy: inventoryHistory[0]?.checkedBy || null,
     latestHandoverDocument,
     latestAssignmentPhone: latestHandoverDocument?.recipientPhone || null
   });

@@ -204,6 +204,20 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     }
   };
 
+  const getInventoryResultLabel = (result?: string | null) => {
+    switch (result) {
+      case 'MATCH':
+      case 'MATCHED': return 'Khớp';
+      case 'DAMAGED': return 'Hư hỏng';
+      case 'MISSING': return 'Không tìm thấy';
+      case 'WRONG_LOCATION': return 'Sai vị trí';
+      case 'WRONG_USER': return 'Sai người sử dụng';
+      case 'WRONG_STATUS': return 'Sai trạng thái';
+      case 'NEED_REVIEW': return 'Cần rà soát';
+      default: return result || 'Chưa kiểm kê';
+    }
+  };
+
   if (!isOpen) return null;
 
   const TabButton: React.FC<{ id: TabType; label: string; icon: any }> = ({ id, label, icon: Icon }) => (
@@ -1098,7 +1112,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         <div className="space-y-1">
                            <p className="text-[10px] font-bold text-slate-400 uppercase">Trạng thái</p>
                            <span className={cn("text-xs font-black uppercase tracking-wider", asset.lastInventoryStatus ? "text-emerald-700" : "text-amber-600")}>
-                              {asset.lastInventoryStatus ? 'Khớp' : 'Chưa kiểm kê'}
+                              {getInventoryResultLabel(asset.lastInventoryStatus)}
                            </span>
                         </div>
                         <div className="space-y-1">
@@ -1107,7 +1121,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         </div>
                         <div className="space-y-1">
                            <p className="text-[10px] font-bold text-slate-400 uppercase">Tình trạng thực tế</p>
-                           <p className="text-sm font-bold text-slate-700">{asset.lastInventoryStatus || 'Chưa có dữ liệu'}</p>
+                           <p className="text-sm font-bold text-slate-700">{asset.lastInventoryStatus ? getInventoryResultLabel(asset.lastInventoryStatus) : 'Chưa có dữ liệu'}</p>
                         </div>
                         <div className="space-y-1">
                            <p className="text-[10px] font-bold text-slate-400 uppercase">Người kiểm kê</p>
@@ -1123,7 +1137,29 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                             <Plus className="mr-1 h-3 w-3" /> Thực hiện kiểm kê
                          </button>
                       </div>
-                      <div className="text-center py-6 text-slate-400 italic text-xs font-medium">Chưa có dữ liệu kiểm kê trước đó.</div>
+                      {asset.inventoryHistory?.length > 0 ? (
+                        <div className="divide-y divide-slate-100">
+                          {asset.inventoryHistory.map((entry: any) => (
+                            <div key={entry.id} className="py-3 grid grid-cols-[1fr_auto] gap-4 items-center">
+                              <div className="min-w-0">
+                                <p className="text-xs font-bold text-slate-700 truncate">{entry.inventoryName || entry.inventoryCode || 'Kiểm kê tài sản'}</p>
+                                <p className="text-[10px] font-medium text-slate-400 mt-0.5">
+                                  {entry.checkedBy || 'Không rõ người kiểm kê'}
+                                  {entry.note ? ` · ${entry.note}` : ''}
+                                </p>
+                              </div>
+                              <div className="text-right shrink-0">
+                                <p className="text-[10px] font-black uppercase text-emerald-600">{getInventoryResultLabel(entry.result)}</p>
+                                <p className="text-[10px] font-medium text-slate-400 mt-0.5">
+                                  {entry.checkedAt ? format(new Date(entry.checkedAt), 'dd/MM/yyyy HH:mm') : '-'}
+                                </p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-6 text-slate-400 italic text-xs font-medium">Chưa có dữ liệu kiểm kê trước đó.</div>
+                      )}
                    </div>
                 </div>
               )}
