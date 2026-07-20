@@ -1853,7 +1853,33 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     const safeSortOrder: 'asc' | 'desc' = String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
     const assets = await prisma.asset.findMany({
       where,
-      orderBy: { [safeSortBy]: safeSortOrder }
+      orderBy: { [safeSortBy]: safeSortOrder },
+      select: {
+        assetCode: true,
+        assetName: true,
+        assetNameShort: true,
+        serialNumber: true,
+        companyCode: true,
+        companyName: true,
+        projectName: true,
+        level1Name: true,
+        level2Name: true,
+        level3Name: true,
+        level4Name: true,
+        status: true,
+        unit: true,
+        purchasePriceExVat: true,
+        purchaseDate: true,
+        currentUserName: true,
+        currentPosition: true,
+        departmentName: true,
+        locationName: true,
+        cityName: true,
+        handoverDate: true,
+        supplierName: true,
+        depreciationEndDate: true,
+        documentNote: true
+      }
     });
 
     const hasPricePermission = req.user?.roles?.includes('SUPER_ADMIN') || req.user?.permissions?.includes('ASSET_VIEW_PRICE');
@@ -1865,52 +1891,97 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
       'Ngày mua', 'Người sử dụng', 'Chức vụ', 'Bộ phận', 'Vị trí', 'Tỉnh/Thành phố', 'Ngày bàn giao', 'Nhà cung cấp', 'Hạn khấu hao', 'Ghi chú tài liệu'
     ];
 
-    const rows = assets.map(a => [
-      a.assetCode,
-      a.assetName,
-      a.assetNameShort || '',
-      a.serialNumber || '',
-      a.companyCode,
-      a.companyName,
-      a.projectName || '',
-      a.level1Name,
-      a.level2Name,
-      a.level3Name,
-      a.level4Name,
-      a.status === 'IN_STOCK' ? 'Trong kho' :
-      a.status === 'ASSIGNED' ? 'Đã cấp phát' :
-      a.status === 'UNDER_REPAIR' ? 'Đang sửa chữa' :
-      a.status === 'DAMAGED' ? 'Bị hỏng' :
-      a.status === 'LOST' ? 'Bị mất' :
-      a.status === 'LIQUIDATED' ? 'Đã thanh lý' : a.status,
-      a.unit || 'Cái',
-      ...(hasPricePermission ? [a.purchasePriceExVat] : []),
-      formatDate(a.purchaseDate),
-      a.currentUserName || '',
-      a.currentPosition || '',
-      a.departmentName || '',
-      a.locationName || '',
-      a.cityName || '',
-      formatDate(a.handoverDate),
-      a.supplierName || '',
-      formatDate(a.depreciationEndDate),
-      a.documentNote || ''
-    ]);
-
     const userStr = req.user?.fullName || req.user?.username || 'Admin';
-    const workbook = buildExcelWorkbook(
-      'BÁO CÁO CHI TIẾT SỔ TÀI SẢN',
-      `Thời gian xuất: ${new Date().toLocaleString('vi-VN')} | Người xuất: ${userStr}`,
-      headers,
-      rows,
-      'Sổ tài sản'
-    );
-
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoSoTaiSan.xlsx');
-    await workbook.xlsx.write(res);
-    res.end();
+    res.setHeader('Cache-Control', 'no-store');
+
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      stream: res,
+      useStyles: true,
+      useSharedStrings: false
+    });
+    const sheet = workbook.addWorksheet('Sổ tài sản');
+
+    const columnWidths = [22, 38, 24, 20, 14, 24, 24, 24, 24, 24, 24, 18, 14];
+    if (hasPricePermission) columnWidths.push(18);
+    columnWidths.push(14, 24, 22, 22, 26, 20, 14, 24, 16, 30);
+    columnWidths.forEach((width, index) => {
+      sheet.getColumn(index + 1).width = width;
+    });
+
+    sheet.mergeCells(1, 1, 1, headers.length);
+    const titleCell = sheet.getCell(1, 1);
+    titleCell.value = 'BÁO CÁO CHI TIẾT SỔ TÀI SẢN';
+    titleCell.font = { name: 'Arial', size: 16, bold: true, color: { argb: 'FFFFFF' } };
+    titleCell.alignment = { horizontal: 'center', vertical: 'middle' };
+    titleCell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '1F497D' } };
+    sheet.getRow(1).height = 40;
+
+    sheet.mergeCells(2, 1, 2, headers.length);
+    const subCell = sheet.getCell(2, 1);
+    subCell.value = `Thời gian xuất: ${new Date().toLocaleString('vi-VN')} | Người xuất: ${userStr}`;
+    subCell.font = { name: 'Arial', size: 10, italic: true };
+    subCell.alignment = { horizontal: 'center' };
+    sheet.addRow([]);
+
+    const headerRow = sheet.addRow(headers);
+    headerRow.height = 28;
+    headerRow.eachCell((cell) => {
+      cell.font = { name: 'Arial', size: 11, bold: true, color: { argb: 'FFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: '366092' } };
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+    });
+    headerRow.commit();
+
+    for (const asset of assets) {
+      const row = sheet.addRow([
+        asset.assetCode,
+        asset.assetName,
+        asset.assetNameShort || '',
+        asset.serialNumber || '',
+        asset.companyCode,
+        asset.companyName,
+        asset.projectName || '',
+        asset.level1Name,
+        asset.level2Name,
+        asset.level3Name,
+        asset.level4Name,
+        asset.status === 'IN_STOCK' ? 'Trong kho' :
+        asset.status === 'ASSIGNED' ? 'Đã cấp phát' :
+        asset.status === 'UNDER_REPAIR' ? 'Đang sửa chữa' :
+        asset.status === 'DAMAGED' ? 'Bị hỏng' :
+        asset.status === 'LOST' ? 'Bị mất' :
+        asset.status === 'LIQUIDATED' ? 'Đã thanh lý' : asset.status,
+        asset.unit || 'Cái',
+        ...(hasPricePermission ? [asset.purchasePriceExVat] : []),
+        formatDate(asset.purchaseDate),
+        asset.currentUserName || '',
+        asset.currentPosition || '',
+        asset.departmentName || '',
+        asset.locationName || '',
+        asset.cityName || '',
+        formatDate(asset.handoverDate),
+        asset.supplierName || '',
+        formatDate(asset.depreciationEndDate),
+        asset.documentNote || ''
+      ]);
+      row.height = 20;
+      row.eachCell((cell) => {
+        cell.font = { name: 'Arial', size: 10 };
+        cell.alignment = { vertical: 'middle' };
+      });
+      row.commit();
+    }
+
+    sheet.commit();
+    await workbook.commit();
   } catch (error: any) {
+    console.error('Asset export error:', error);
+    if (res.headersSent) {
+      res.destroy(error);
+      return;
+    }
     res.status(500).json({ message: 'Lỗi xuất Excel: ' + error.message });
   }
 });
