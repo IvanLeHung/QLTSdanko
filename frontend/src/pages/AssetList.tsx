@@ -939,12 +939,15 @@ export const AssetList: React.FC = () => {
 
   const handleExportAll = async () => {
     try {
-      const response = await api.get('/import/assets/export', { responseType: 'blob' });
-      await downloadBlobResponse(response, `so_tai_san_toan_bo_${new Date().toISOString().slice(0, 10)}.xlsx`);
-      toast.success("Xuất dữ liệu toàn bộ tài sản thành công!");
+      const params = Object.fromEntries(searchParams.entries());
+      delete params.page;
+      delete params.limit;
+      const response = await api.get('/assets/export-excel', { params, responseType: 'blob' });
+      await downloadBlobResponse(response, `so_tai_san_snapshot_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast.success("Tải snapshot sổ tài sản thành công!");
     } catch (err: any) {
       console.error(err);
-      toast.error(await getExportErrorMessage(err, "Lỗi khi tải dữ liệu xuất toàn bộ"));
+      toast.error(await getExportErrorMessage(err, "Lỗi khi tải snapshot sổ tài sản"));
     }
   };
 
