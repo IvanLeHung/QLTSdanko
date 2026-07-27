@@ -1549,13 +1549,14 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                 </>
               ) : (
                 <>
-                  {asset.status === 'RETIRED' ? (
+                  {asset.status === 'RETIRED' || asset.status === 'DAMAGED' ? (
                     hasPermission('TRANSFER_CREATE') && (
                       <button 
                         onClick={() => onAction('revoke', asset.id)}
                         className="flex-1 bg-indigo-600 text-white h-14 rounded-2xl font-black text-xs uppercase tracking-widest shadow-xl shadow-indigo-200 hover:bg-indigo-700 transition-all flex items-center justify-center"
                       >
-                        <RotateCcw className="mr-2 h-4 w-4" /> Thu hồi về kho
+                        <RotateCcw className="mr-2 h-4 w-4" />
+                        {asset.status === 'DAMAGED' ? 'Thu hồi tài sản hỏng về Hà Nội' : 'Thu hồi về kho'}
                       </button>
                     )
                   ) : (

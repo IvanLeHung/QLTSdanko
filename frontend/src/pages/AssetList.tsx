@@ -2459,10 +2459,16 @@ export const AssetList: React.FC = () => {
                                      <Can permission="TRANSFER_CREATE"><ActionItem label="Thu hồi về kho" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} /></Can>
                                    </>
                                  )}
-                                 {asset.status === 'RETIRED' && (
-                                   <Can permission="TRANSFER_CREATE"><ActionItem label="Thu hồi về kho" icon={<RotateCcw className="h-4 w-4" />} onClick={() => handleAssetAction('revoke', asset)} /></Can>
+                                 {(asset.status === 'RETIRED' || asset.status === 'DAMAGED') && (
+                                   <Can permission="TRANSFER_CREATE">
+                                     <ActionItem
+                                       label={asset.status === 'DAMAGED' ? 'Thu hồi tài sản hỏng về Hà Nội' : 'Thu hồi về kho'}
+                                       icon={<RotateCcw className="h-4 w-4" />}
+                                       onClick={() => handleAssetAction('revoke', asset)}
+                                     />
+                                   </Can>
                                  )}
-                                 {asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && (
+                                 {asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && asset.status !== 'DAMAGED' && (
                                    <Can permission="TRANSFER_CREATE"><ActionItem label="Cấp phát / Bàn giao" icon={<UserPlus className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} /></Can>
                                  )}
 

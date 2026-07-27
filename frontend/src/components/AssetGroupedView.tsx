@@ -577,10 +577,14 @@ const AssetRow = ({
                     <MenuItem icon={<RotateCcw className="h-4 w-4" />} label="Thu hồi về kho" onClick={() => onAction('revoke', asset)} />
                   </>
                 )}
-                {canTransfer && asset.status === 'RETIRED' && (
-                  <MenuItem icon={<RotateCcw className="h-4 w-4" />} label="Thu hồi về kho" onClick={() => onAction('revoke', asset)} />
+                {canTransfer && (asset.status === 'RETIRED' || asset.status === 'DAMAGED') && (
+                  <MenuItem
+                    icon={<RotateCcw className="h-4 w-4" />}
+                    label={asset.status === 'DAMAGED' ? 'Thu hồi tài sản hỏng về Hà Nội' : 'Thu hồi về kho'}
+                    onClick={() => onAction('revoke', asset)}
+                  />
                 )}
-                {canTransfer && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && (
+                {canTransfer && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && asset.status !== 'DAMAGED' && (
                   <MenuItem icon={<UserPlus className="h-4 w-4" />} label="Cấp phát / Bàn giao" onClick={() => onAction('handover', asset)} />
                 )}
 
