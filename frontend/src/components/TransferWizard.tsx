@@ -8,6 +8,7 @@ import {
 import api from '../lib/api';
 import { toast } from 'react-toastify';
 import { BaseModal } from './BaseModal';
+import { useAuth } from '../context/AuthContext';
 
 export const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {
@@ -330,6 +331,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   source = 'TRANSFER_LIST',
   editingDocId = null
 }) => {
+  const { hasPermission } = useAuth();
   const [wizardStep, setWizardStep] = useState(1);
   const [wizardType, setWizardType] = useState<'HANDOVER' | 'TRANSFER' | 'RECALL'>('HANDOVER');
   const [wizardAssets, setWizardAssets] = useState<any[]>([]);
@@ -410,6 +412,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   // Metadata Lists
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
+  const [isAddingDepartment, setIsAddingDepartment] = useState(false);
+  const [isCreatingDepartment, setIsCreatingDepartment] = useState(false);
+  const [newDepartment, setNewDepartment] = useState({ code: '', name: '' });
 
   // Search Asset Lookup
   const [assetSearch, setAssetSearch] = useState('');
@@ -636,6 +641,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     setCustomCity('');
     setCustomProject('');
     setCustomLocation('');
+    setIsAddingDepartment(false);
+    setIsCreatingDepartment(false);
+    setNewDepartment({ code: '', name: '' });
   };
 
   const fetchInitialAssets = async (ids: number[]) => {
@@ -732,6 +740,40 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         receiverDepartmentId: deptId,
         recipientDepartment: dept.name
       }));
+    }
+  };
+
+  const handleCreateDepartment = async () => {
+    const code = newDepartment.code.trim().toUpperCase();
+    const name = newDepartment.name.trim();
+    if (!code || !name) {
+      toast.error('Vui lòng nhập đầy đủ Mã và Tên phòng ban');
+      return;
+    }
+
+    setIsCreatingDepartment(true);
+    try {
+      const res = await api.post('/admin/departments', {
+        code,
+        name,
+        type: 'DEPARTMENT',
+        status: 'ACTIVE'
+      });
+      const created = res.data;
+      setDepartments((current) => [...current.filter((dept) => dept.id !== created.id), created]
+        .sort((a, b) => String(a.name).localeCompare(String(b.name), 'vi')));
+      setWizardForm((current) => ({
+        ...current,
+        receiverDepartmentId: created.id,
+        recipientDepartment: created.name
+      }));
+      setNewDepartment({ code: '', name: '' });
+      setIsAddingDepartment(false);
+      toast.success(`Đã thêm và chọn phòng ban ${created.name}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể thêm phòng ban mới');
+    } finally {
+      setIsCreatingDepartment(false);
     }
   };
 
@@ -1144,6 +1186,69 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                           </select>
+                          {wizardType !== 'RECALL' && hasPermission('PERMISSION_MANAGE') && (
+                            <div className="pt-1.5">
+                              {!isAddingDepartment ? (
+                                <button
+                                  type="button"
+                                  onClick={() => setIsAddingDepartment(true)}
+                                  className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary-600 hover:text-primary-700"
+                                >
+                                  <Plus className="h-3.5 w-3.5" /> Thêm phòng ban mới
+                                </button>
+                              ) : (
+                                <div className="space-y-2 border-l-2 border-primary-200 pl-3 pt-1">
+                                  <div className="grid grid-cols-[120px_1fr] gap-2">
+                                    <div className="space-y-1">
+                                      <label htmlFor="new-department-code" className="font-bold text-slate-500">Mã phòng ban *</label>
+                                      <input
+                                        id="new-department-code"
+                                        name="newDepartmentCode"
+                                        value={newDepartment.code}
+                                        onChange={(e) => setNewDepartment((current) => ({ ...current, code: e.target.value.toUpperCase() }))}
+                                        placeholder="VD: BQLDA"
+                                        maxLength={30}
+                                        className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 uppercase focus:border-primary-500 outline-none"
+                                      />
+                                    </div>
+                                    <div className="space-y-1">
+                                      <label htmlFor="new-department-name" className="font-bold text-slate-500">Tên phòng ban *</label>
+                                      <input
+                                        id="new-department-name"
+                                        name="newDepartmentName"
+                                        value={newDepartment.name}
+                                        onChange={(e) => setNewDepartment((current) => ({ ...current, name: e.target.value }))}
+                                        placeholder="Nhập tên phòng ban"
+                                        maxLength={150}
+                                        className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-primary-500 outline-none"
+                                      />
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={handleCreateDepartment}
+                                      disabled={isCreatingDepartment}
+                                      className="h-8 px-3 rounded-lg bg-primary-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-primary-700 disabled:opacity-50"
+                                    >
+                                      {isCreatingDepartment ? 'Đang thêm...' : 'Thêm và chọn'}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setIsAddingDepartment(false);
+                                        setNewDepartment({ code: '', name: '' });
+                                      }}
+                                      disabled={isCreatingDepartment}
+                                      className="h-8 px-3 rounded-lg border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 disabled:opacity-50"
+                                    >
+                                      Hủy
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>
