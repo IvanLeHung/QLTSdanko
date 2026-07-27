@@ -1,6 +1,7 @@
-import { Router } from 'express';
+import { Router, Response } from 'express';
 import prisma from '../utils/prisma';
-import { authenticateToken } from '../middleware/auth.middleware';
+import { authenticateToken, requirePermission, AuthRequest } from '../middleware/auth.middleware';
+import { AuditService } from '../services/audit.service';
 import ExcelJS from 'exceljs';
 import multer from 'multer';
 
@@ -668,5 +669,81 @@ router.get('/locations', authenticateToken, async (req, res) => {
   const locs = await prisma.location.findMany({ orderBy: { code: 'asc' } });
   res.json(locs);
 });
+
+// --- PROJECT LOCATION HIERARCHY EXTENSIONS ---
+router.get('/project-location-nodes', authenticateToken, async (req, res) => {
+  try {
+    const nodes = await prisma.projectLocationNode.findMany({
+      where: { status: 'ACTIVE' },
+      orderBy: [
+        { cityName: 'asc' },
+        { projectName: 'asc' },
+        { level: 'asc' },
+        { name: 'asc' }
+      ]
+    });
+    res.json(nodes);
+  } catch (error: any) {
+    res.status(500).json({ message: 'Không thể tải danh sách vị trí bổ sung: ' + error.message });
+  }
+});
+
+router.post(
+  '/project-location-nodes',
+  requirePermission('PERMISSION_MANAGE'),
+  async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+      const cityName = String(req.body.cityName || '').trim();
+      const projectName = String(req.body.projectName || '').trim();
+      const parentPath = String(req.body.parentPath || '').trim();
+      const name = String(req.body.name || '').trim();
+      const level = Number(req.body.level);
+
+      if (!cityName || !projectName || !name || ![1, 2].includes(level)) {
+        return res.status(400).json({
+          message: 'Thành phố, dự án, tên vị trí và cấp vị trí không hợp lệ.'
+        });
+      }
+      if (level === 2 && !parentPath) {
+        return res.status(400).json({ message: 'Vui lòng chọn Khu vực trước khi thêm Địa điểm / công trình.' });
+      }
+      if (name.length > 200) {
+        return res.status(400).json({ message: 'Tên vị trí không được vượt quá 200 ký tự.' });
+      }
+
+      const node = await prisma.projectLocationNode.create({
+        data: {
+          cityName,
+          projectName,
+          parentPath: level === 1 ? '' : parentPath,
+          name,
+          level,
+          createdBy: req.user?.username || 'System'
+        }
+      });
+
+      await AuditService.log({
+        entityType: 'PROJECT_LOCATION',
+        entityId: node.id,
+        action: 'CREATE',
+        details: {
+          cityName: node.cityName,
+          projectName: node.projectName,
+          parentPath: node.parentPath,
+          name: node.name,
+          level: node.level
+        },
+        performedBy: req.user?.username || 'System'
+      });
+
+      res.status(201).json(node);
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        return res.status(409).json({ message: 'Vị trí này đã tồn tại trong cùng cấp phân loại.' });
+      }
+      res.status(500).json({ message: 'Không thể thêm vị trí mới: ' + error.message });
+    }
+  }
+);
 
 export default router;

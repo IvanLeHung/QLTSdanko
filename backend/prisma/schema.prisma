@@ -171,6 +171,22 @@ model Location {
   updatedAt DateTime @updatedAt
 }
 
+model ProjectLocationNode {
+  id          Int      @id @default(autoincrement())
+  cityName    String
+  projectName String
+  parentPath  String   @default("")
+  name        String
+  level       Int
+  status      String   @default("ACTIVE")
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([cityName, projectName, parentPath, name])
+  @@index([cityName, projectName, status])
+}
+
 model AssetCategory {
   id        Int      @id @default(autoincrement())
   code      String

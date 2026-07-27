@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   X, Check, Search, Plus, Trash2, Package, MapPin, 
   User, Building, ShieldAlert, ChevronLeft, ChevronRight, 
@@ -312,6 +312,59 @@ export const findLocationTreePath = (tree: LocationTree, location: string): stri
   return match;
 };
 
+interface ProjectLocationNode {
+  id: number;
+  cityName: string;
+  projectName: string;
+  parentPath: string;
+  name: string;
+  level: number;
+}
+
+const cloneLocationTree = (tree: LocationTree): LocationTree => Object.fromEntries(
+  Object.entries(tree).map(([name, children]) => [
+    name,
+    children ? cloneLocationTree(children) : null
+  ])
+);
+
+const mergeProjectLocationNodes = (
+  tree: LocationTree | null,
+  nodes: ProjectLocationNode[],
+  city: string,
+  project: string
+): LocationTree | null => {
+  const matchingNodes = nodes
+    .filter((node) => node.cityName === city && node.projectName === project)
+    .sort((a, b) => a.level - b.level || a.name.localeCompare(b.name, 'vi'));
+
+  if (!tree && matchingNodes.length === 0) return null;
+  const merged = tree ? cloneLocationTree(tree) : {};
+
+  matchingNodes.forEach((node) => {
+    let parent = merged;
+    const parentSegments = node.parentPath
+      .split(' / ')
+      .map((segment) => segment.trim())
+      .filter(Boolean);
+
+    for (const segment of parentSegments) {
+      if (!Object.prototype.hasOwnProperty.call(parent, segment)) {
+        parent[segment] = {};
+      } else if (parent[segment] === null) {
+        parent[segment] = {};
+      }
+      parent = parent[segment] as LocationTree;
+    }
+
+    if (!Object.prototype.hasOwnProperty.call(parent, node.name)) {
+      parent[node.name] = null;
+    }
+  });
+
+  return merged;
+};
+
 interface TransferWizardProps {
   isOpen: boolean;
   onClose: () => void;
@@ -368,9 +421,6 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const [customProject, setCustomProject] = useState('');
   const [customLocation, setCustomLocation] = useState('');
 
-  const projectLocationTree = getProjectLocationTree(selectedCity, selectedProject);
-  const projectLocationLevels = getLocationTreeLevels(projectLocationTree, selectedLocationPath);
-
   const handleProjectLocationChange = (depth: number, value: string) => {
     if (value === 'Khác') {
       setSelectedLocationPath(['Khác']);
@@ -412,9 +462,36 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   // Metadata Lists
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
+  const [projectLocationNodes, setProjectLocationNodes] = useState<ProjectLocationNode[]>([]);
   const [isAddingDepartment, setIsAddingDepartment] = useState(false);
   const [isCreatingDepartment, setIsCreatingDepartment] = useState(false);
   const [newDepartment, setNewDepartment] = useState({ code: '', name: '' });
+  const [addingLocationDepth, setAddingLocationDepth] = useState<number | null>(null);
+  const [newLocationNodeName, setNewLocationNodeName] = useState('');
+  const [isCreatingLocationNode, setIsCreatingLocationNode] = useState(false);
+
+  const resolvedCity = selectedCity === 'Khác' ? customCity.trim() : selectedCity;
+  const resolvedProject = selectedProject === 'Khác' ? customProject.trim() : selectedProject;
+  const projectLocationTree = useMemo(
+    () => mergeProjectLocationNodes(
+      getProjectLocationTree(selectedCity, selectedProject),
+      projectLocationNodes,
+      resolvedCity,
+      resolvedProject
+    ),
+    [selectedCity, selectedProject, projectLocationNodes, resolvedCity, resolvedProject]
+  );
+  const baseProjectLocationLevels = getLocationTreeLevels(projectLocationTree, selectedLocationPath);
+  const selectedArea = selectedLocationPath[0];
+  const projectLocationLevels = (
+    projectLocationTree &&
+    selectedArea &&
+    selectedArea !== 'Khác' &&
+    baseProjectLocationLevels.length === 1 &&
+    projectLocationTree[selectedArea] === null
+  )
+    ? [...baseProjectLocationLevels, []]
+    : baseProjectLocationLevels;
 
   // Search Asset Lookup
   const [assetSearch, setAssetSearch] = useState('');
@@ -424,12 +501,14 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [deptsRes, locsRes] = await Promise.all([
+        const [deptsRes, locsRes, projectNodesRes] = await Promise.all([
           api.get('/settings/departments'),
-          api.get('/settings/locations')
+          api.get('/settings/locations'),
+          api.get('/settings/project-location-nodes')
         ]);
         setDepartments(deptsRes.data);
         setLocations(locsRes.data);
+        setProjectLocationNodes(projectNodesRes.data);
       } catch (err) {
         console.error('Error loading wizard metadata:', err);
       }
@@ -644,6 +723,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     setIsAddingDepartment(false);
     setIsCreatingDepartment(false);
     setNewDepartment({ code: '', name: '' });
+    setAddingLocationDepth(null);
+    setNewLocationNodeName('');
+    setIsCreatingLocationNode(false);
   };
 
   const fetchInitialAssets = async (ids: number[]) => {
@@ -774,6 +856,51 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
       toast.error(err.response?.data?.message || 'Không thể thêm phòng ban mới');
     } finally {
       setIsCreatingDepartment(false);
+    }
+  };
+
+  const handleCreateProjectLocation = async (depth: number) => {
+    const name = newLocationNodeName.trim();
+    if (!name) {
+      toast.error(depth === 0 ? 'Vui lòng nhập tên Khu vực' : 'Vui lòng nhập tên Địa điểm / công trình');
+      return;
+    }
+    if (!resolvedCity || !resolvedProject) {
+      toast.error('Vui lòng chọn Thành phố và Dự án trước');
+      return;
+    }
+    if (depth === 1 && !selectedLocationPath[0]) {
+      toast.error('Vui lòng chọn Khu vực trước');
+      return;
+    }
+
+    setIsCreatingLocationNode(true);
+    try {
+      const parentPath = depth === 0 ? '' : selectedLocationPath.slice(0, depth).join(' / ');
+      const res = await api.post('/settings/project-location-nodes', {
+        cityName: resolvedCity,
+        projectName: resolvedProject,
+        parentPath,
+        name,
+        level: depth + 1
+      });
+      const created = res.data as ProjectLocationNode;
+      setProjectLocationNodes((current) => [
+        ...current.filter((node) => node.id !== created.id),
+        created
+      ]);
+
+      const nextPath = [...selectedLocationPath.slice(0, depth), created.name];
+      setSelectedLocationPath(nextPath);
+      setSelectedLocation(nextPath.join(' / '));
+      setCustomLocation('');
+      setAddingLocationDepth(null);
+      setNewLocationNodeName('');
+      toast.success(`Đã thêm và chọn ${created.name}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể thêm vị trí mới');
+    } finally {
+      setIsCreatingLocationNode(false);
     }
   };
 
@@ -1306,6 +1433,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                 setCustomCity('');
                                 setCustomProject('');
                                 setCustomLocation('');
+                                setAddingLocationDepth(null);
+                                setNewLocationNodeName('');
                               }}
                               className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                             >
@@ -1342,6 +1471,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                     setSelectedLocationPath([]);
                                     setCustomProject('');
                                     setCustomLocation('');
+                                    setAddingLocationDepth(null);
+                                    setNewLocationNodeName('');
                                   }}
                                   className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                                 >
@@ -1379,7 +1510,13 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                         <label className="font-bold text-slate-500">{labels[depth] || `Phân cấp ${depth + 1}`} *</label>
                                         <select
                                           value={selectedLocationPath[depth] || ''}
-                                          onChange={(e) => handleProjectLocationChange(depth, e.target.value)}
+                                          onChange={(e) => {
+                                            handleProjectLocationChange(depth, e.target.value);
+                                            if (addingLocationDepth !== null && addingLocationDepth > depth) {
+                                              setAddingLocationDepth(null);
+                                              setNewLocationNodeName('');
+                                            }
+                                          }}
                                           className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                                         >
                                           <option value="">-- Chọn {labels[depth]?.toLowerCase() || 'vị trí'} --</option>
@@ -1388,6 +1525,69 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                           ))}
                                           {depth === 0 && <option value="Khác">Khác</option>}
                                         </select>
+                                        {depth <= 1 && hasPermission('PERMISSION_MANAGE') && (
+                                          <div className="pt-1.5">
+                                            {addingLocationDepth !== depth ? (
+                                              <button
+                                                type="button"
+                                                onClick={() => {
+                                                  setAddingLocationDepth(depth);
+                                                  setNewLocationNodeName('');
+                                                }}
+                                                className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary-600 hover:text-primary-700"
+                                              >
+                                                <Plus className="h-3.5 w-3.5" />
+                                                {depth === 0 ? 'Thêm khu vực' : 'Thêm địa điểm / công trình'}
+                                              </button>
+                                            ) : (
+                                              <div className="space-y-2 border-l-2 border-primary-200 pl-3 pt-1">
+                                                <label
+                                                  htmlFor={`new-project-location-${depth}`}
+                                                  className="block font-bold text-slate-500"
+                                                >
+                                                  {depth === 0 ? 'Tên khu vực *' : 'Tên địa điểm / công trình *'}
+                                                </label>
+                                                <input
+                                                  id={`new-project-location-${depth}`}
+                                                  name={depth === 0 ? 'newProjectArea' : 'newProjectPlace'}
+                                                  value={newLocationNodeName}
+                                                  onChange={(e) => setNewLocationNodeName(e.target.value)}
+                                                  onKeyDown={(e) => {
+                                                    if (e.key === 'Enter') {
+                                                      e.preventDefault();
+                                                      handleCreateProjectLocation(depth);
+                                                    }
+                                                  }}
+                                                  placeholder={depth === 0 ? 'Nhập tên khu vực' : 'Nhập tên địa điểm / công trình'}
+                                                  maxLength={200}
+                                                  autoFocus
+                                                  className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-primary-500 outline-none"
+                                                />
+                                                <div className="flex items-center gap-2">
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => handleCreateProjectLocation(depth)}
+                                                    disabled={isCreatingLocationNode}
+                                                    className="h-8 px-3 rounded-lg bg-primary-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-primary-700 disabled:opacity-50"
+                                                  >
+                                                    {isCreatingLocationNode ? 'Đang thêm...' : 'Thêm và chọn'}
+                                                  </button>
+                                                  <button
+                                                    type="button"
+                                                    onClick={() => {
+                                                      setAddingLocationDepth(null);
+                                                      setNewLocationNodeName('');
+                                                    }}
+                                                    disabled={isCreatingLocationNode}
+                                                    className="h-8 px-3 rounded-lg border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 disabled:opacity-50"
+                                                  >
+                                                    Hủy
+                                                  </button>
+                                                </div>
+                                              </div>
+                                            )}
+                                          </div>
+                                        )}
                                       </div>
                                     );
                                   })}
