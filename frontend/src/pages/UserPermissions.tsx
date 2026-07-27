@@ -158,8 +158,9 @@ export function UserPermissions() {
         password: resetPwdNewPassword,
         mustChangePassword: resetPwdMustChange
       });
-      toast.success(`Đã đặt lại mật khẩu cho tài khoản ${resetPwdUser.username} thành công!`);
+      toast.success(`Đã đặt lại mật khẩu và mở khóa tài khoản ${resetPwdUser.username}!`);
       setIsResetPwdModalOpen(false);
+      fetchData();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi reset mật khẩu");
     } finally {

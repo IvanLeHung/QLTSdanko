@@ -27,7 +27,17 @@ function validatePassword(password: string, username: string): string | null {
 }
 
 router.post('/login', async (req, res) => {
-  const { username, password } = req.body;
+  const username = typeof req.body.username === 'string'
+    ? req.body.username.trim().toLowerCase()
+    : '';
+  const password = typeof req.body.password === 'string'
+    ? req.body.password
+    : '';
+
+  if (!username || !password) {
+    return res.status(400).json({ message: 'Vui lòng nhập đầy đủ tên đăng nhập và mật khẩu.' });
+  }
+
   console.log(`Login attempt for: ${username}`);
 
   try {

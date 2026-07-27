@@ -1333,7 +1333,8 @@ router.patch('/users/:id', requirePermission('USER_UPDATE'), async (req: AuthReq
     const id = parseInt(req.params.id as string);
     const { 
       fullName, email, phone, employeeCode, departmentId, position, 
-      roleCode, dataScope, extraDepartmentIds, status 
+      roleCode, dataScope, extraDepartmentIds, status, password,
+      mustChangePassword
     } = req.body;
 
     const u = await prisma.user.findUnique({
@@ -1357,6 +1358,16 @@ router.patch('/users/:id', requirePermission('USER_UPDATE'), async (req: AuthReq
     
     if (phone !== undefined) updateData.phone = phone ? phone.trim() : null;
     if (extraDepartmentIds !== undefined) updateData.extraDepartmentIds = extraDepartmentIds ? JSON.stringify(extraDepartmentIds) : null;
+    if (password) {
+      const pwdErr = validatePassword(password, u.username);
+      if (pwdErr) return res.status(400).json({ message: pwdErr });
+
+      updateData.passwordHash = await bcrypt.hash(password, 10);
+      updateData.mustChangePassword = !!mustChangePassword;
+      updateData.passwordChangedAt = new Date();
+      updateData.failedLoginCount = 0;
+      updateData.lockedUntil = null;
+    }
 
     if (email !== undefined) {
       const cleanEmail = email ? email.trim() : null;
@@ -1475,7 +1486,11 @@ router.post('/users/:id/reset-password', async (req: AuthRequest, res: Response)
       data: {
         passwordHash,
         mustChangePassword: !!mustChangePassword,
-        passwordChangedAt: new Date()
+        passwordChangedAt: new Date(),
+        status: 'ACTIVE',
+        isActive: true,
+        failedLoginCount: 0,
+        lockedUntil: null
       }
     });
 
@@ -1489,7 +1504,10 @@ router.post('/users/:id/reset-password', async (req: AuthRequest, res: Response)
       performedBy: currentUser
     });
 
-    res.json({ success: true, message: `Mật khẩu cho tài khoản ${u.username} đã được cài đặt lại.` });
+    res.json({
+      success: true,
+      message: `Mật khẩu cho tài khoản ${u.username} đã được cài đặt lại và tài khoản đã được mở khóa.`
+    });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi khi cài đặt lại mật khẩu: ' + error.message });
   }
