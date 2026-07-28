@@ -173,6 +173,32 @@ async function repairLegacyAssetData() {
       OR "locationName" ~* '\\mC6([ -]I|[ -]1)?\\M';
   `);
 
+  const normalizedHanoiBlocks = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET "locationName" = regexp_replace(
+      regexp_replace(
+        "locationName",
+        'Khối[[:space:]]+II\\M',
+        'C6-II',
+        'gi'
+      ),
+      'Khối[[:space:]]+I\\M',
+      'C6-I',
+      'gi'
+    )
+    WHERE "locationName" IS NOT NULL
+      AND (
+        "locationName" ~* 'Khối[[:space:]]+I\\M'
+        OR "locationName" ~* 'Khối[[:space:]]+II\\M'
+      )
+      AND (
+        trim(COALESCE("cityName", '')) ILIKE 'Hà Nội'
+        OR trim(COALESCE("projectName", '')) ILIKE 'Văn phòng C6'
+        OR "locationName" ILIKE 'Hà Nội%'
+        OR "locationName" ILIKE '%Văn phòng C6%'
+      );
+  `);
+
   const normalizedRiversideOffice = await prisma.$executeRawUnsafe(`
     UPDATE "Asset"
     SET
@@ -342,6 +368,7 @@ async function repairLegacyAssetData() {
     normalizedProjects,
     normalizedLocations,
     normalizedHanoiLocations,
+    normalizedHanoiBlocks,
     normalizedRiversideOffice,
     normalizedDankoCenter,
     normalizedLocationSpacing,

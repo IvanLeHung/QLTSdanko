@@ -631,7 +631,10 @@ export const AssetList: React.FC = () => {
     const project = String(projectName || '').trim();
     const department = String(departmentName || '').trim();
     let location = String(locationName || '').trim();
-    location = location.replace(/Văn phòng Hà Nội/gi, 'Văn phòng C6');
+    location = location
+      .replace(/Văn phòng Hà Nội/gi, 'Văn phòng C6')
+      .replace(/Khối\s+II\b/gi, 'C6-II')
+      .replace(/Khối\s+I\b/gi, 'C6-I');
     location = location
       .replace(/\b([A-Za-z]+\d+)\s*-\s*([IVXLCDM]+|\d+)(?=$|[\s,.;)\-])/gi, '$1§$2')
       .replace(/\s*-\s*/g, ' - ')

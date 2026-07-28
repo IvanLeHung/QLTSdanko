@@ -98,7 +98,9 @@ export function normalizeLocationLabel(location: string): string {
   return location
     .replace(/Mat sau C6-I/gi, 'Mặt sau C6-I')
     .replace(/Mat truoc C6-I/gi, 'Mặt trước C6-I')
-    .replace(/Tang 9 C6-I/gi, 'Tầng 9 C6-I');
+    .replace(/Tang 9 C6-I/gi, 'Tầng 9 C6-I')
+    .replace(/Khối\s+II\b/gi, 'C6-II')
+    .replace(/Khối\s+I\b/gi, 'C6-I');
 }
 
 export function normalizeLocationSeparators(location: string): string {
