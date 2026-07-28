@@ -115,6 +115,23 @@ export function normalizeLocationSeparators(location: string): string {
     .trim();
 }
 
+function stripLocationPartPrefix(value: string, prefix: string): string {
+  const cleanValue = String(value || '').trim();
+  const cleanPrefix = String(prefix || '').trim();
+  if (!cleanPrefix) return cleanValue;
+
+  const escapedPrefix = cleanPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return cleanValue
+    .replace(new RegExp(`^${escapedPrefix}(?:\\s*(?:-|/)\\s*|$)`, 'i'), '')
+    .trim();
+}
+
+function formatLocationHierarchy(city: string, project: string, location: string): string {
+  let detail = stripLocationPartPrefix(location, city);
+  detail = stripLocationPartPrefix(detail, project);
+  return [city, project, detail].filter(Boolean).join(' - ');
+}
+
 export function normalizeDepartmentName(
   departmentName: string | null | undefined,
   cityName?: string | null,
@@ -237,7 +254,7 @@ export function normalizeAssetLocation(
 
   // Existing Hà Nội-prefixed values are kept intact, except for the office rename above.
   if (alreadyHasHanoiPrefix) return value;
-  if (!belongsToHanoi) return value;
+  if (!belongsToHanoi) return formatLocationHierarchy(city, project, value);
 
   value = value
     .replace(/^Văn phòng C6\s*(?:-\s*|\/\s*)?/i, '')

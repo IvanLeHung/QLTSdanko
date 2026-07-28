@@ -73,18 +73,14 @@ function cn(...inputs: ClassValue[]) {
 }
 
 const stripLocationPrefix = (value: string, prefix?: string | null) => {
-  let result = String(value || '').trim();
+  const result = String(value || '').trim();
   const normalizedPrefix = String(prefix || '').trim();
   if (!normalizedPrefix) return result;
 
-  for (const separator of ['-', ' / ', '/']) {
-    const candidate = `${normalizedPrefix}${separator}`;
-    if (result.toLocaleLowerCase('vi').startsWith(candidate.toLocaleLowerCase('vi'))) {
-      result = result.slice(candidate.length).trim();
-      break;
-    }
-  }
-  return result;
+  const escapedPrefix = normalizedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return result
+    .replace(new RegExp(`^${escapedPrefix}(?:\\s*(?:-|/)\\s*|$)`, 'i'), '')
+    .trim();
 };
 
 const getDetailedLocationName = (city?: string | null, project?: string | null, location?: string | null) => {
@@ -93,7 +89,7 @@ const getDetailedLocationName = (city?: string | null, project?: string | null, 
 
 const formatCurrentLocation = (asset: any) => {
   const detail = getDetailedLocationName(asset?.cityName, asset?.projectName, asset?.locationName);
-  return [asset?.cityName, detail].filter(Boolean).join(' - ') || 'Chưa có vị trí';
+  return [asset?.cityName, asset?.projectName, detail].filter(Boolean).join(' - ') || 'Chưa có vị trí';
 };
 
 interface AssetDetailPopupProps {
