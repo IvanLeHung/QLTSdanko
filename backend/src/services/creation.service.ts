@@ -1,6 +1,7 @@
 import prisma from '../utils/prisma';
 import { AssetService } from './asset.service';
 import { AuditService } from './audit.service';
+import { normalizeDepartmentName } from '../utils/location.util';
 
 export class CreationService {
   static async createBatch(data: {
@@ -82,7 +83,9 @@ export class CreationService {
         serialNumber: data.serialNumbers?.[index] || null,
         status: data.assignImmediately ? 'ASSIGNED' : 'IN_STOCK',
         currentUserName: data.assignImmediately ? data.recipientName : null,
-        departmentName: data.assignImmediately ? data.recipientDepartment : null,
+        departmentName: data.assignImmediately
+          ? normalizeDepartmentName(data.recipientDepartment)
+          : null,
         handoverDate: data.assignImmediately ? new Date() : null,
         creationBatchId: batch.id
       }));

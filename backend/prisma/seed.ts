@@ -36,6 +36,58 @@ async function replaceBacGiangData() {
 }
 
 async function repairLegacyAssetData() {
+  const normalizedDepartments = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET "departmentName" = CASE
+      WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY['B. KTXD', 'B. Kinh tế Xây dựng']
+      ) THEN 'B. Kinh tế Xây dựng'
+      WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY['B. QLTK', 'B. Quản lý Thiết kế']
+      ) THEN 'B. Quản lý Thiết kế'
+      WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY['B. QLXD', 'B. Quản lý Xây dựng']
+      ) THEN 'B. Quản lý Xây dựng'
+      WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY['B. TLTK', 'B. Trợ lý - Thư ký', 'B. Trợ Lý - Thư Ký']
+      ) THEN 'B. Trợ lý - Thư ký'
+      WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY['BLĐ', 'BLD', 'Ban Lãnh đạo']
+      ) THEN 'Ban Lãnh đạo'
+      WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY[
+          'B. HCNS',
+          'HCNS',
+          'Hành chính Nhân sự',
+          'Ban Hành chính Nhân sự',
+          'B. Hành chính Nhân sự'
+        ]
+      ) THEN 'B. Hành chính Nhân sự'
+      ELSE "departmentName"
+    END
+    WHERE trim(COALESCE("departmentName", '')) ILIKE ANY (
+      ARRAY[
+        'B. KTXD',
+        'B. Kinh tế Xây dựng',
+        'B. QLTK',
+        'B. Quản lý Thiết kế',
+        'B. QLXD',
+        'B. Quản lý Xây dựng',
+        'B. TLTK',
+        'B. Trợ lý - Thư ký',
+        'B. Trợ Lý - Thư Ký',
+        'BLĐ',
+        'BLD',
+        'Ban Lãnh đạo',
+        'B. HCNS',
+        'HCNS',
+        'Hành chính Nhân sự',
+        'Ban Hành chính Nhân sự',
+        'B. Hành chính Nhân sự'
+      ]
+    );
+  `);
+
   const normalizedUnits = await prisma.$executeRawUnsafe(`
     UPDATE "Asset"
     SET "unit" = CASE
@@ -285,6 +337,7 @@ async function repairLegacyAssetData() {
   `);
 
   console.log('Legacy asset data repaired.', {
+    normalizedDepartments,
     normalizedUnits,
     normalizedProjects,
     normalizedLocations,
@@ -419,7 +472,7 @@ async function main() {
     { code: 'MKT', name: 'Marketing' },
     { code: 'KD', name: 'Kinh doanh' },
     { code: 'BQL', name: 'Ban quản lý' },
-    { code: 'BTLTK', name: 'B. Trợ Lý - Thư Ký' },
+    { code: 'BTLTK', name: 'B. Trợ lý - Thư ký' },
     { code: 'BKSNB', name: 'B. Kiểm soát Nội bộ' },
     { code: 'BTC', name: 'B. Tài chính' },
     { code: 'PL7', name: 'PL7' },
@@ -449,7 +502,7 @@ async function main() {
     { code: 'BKTXD', name: 'B. Kinh tế Xây dựng' },
     { code: 'BPLT', name: 'Bộ phận Lễ tân' },
     { code: 'PTTCSKH', name: 'P. Thủ tục & CSKH' },
-    { code: 'BHCNS', name: 'Ban Hành chính Nhân sự' },
+    { code: 'BHCNS', name: 'B. Hành chính Nhân sự' },
     { code: 'PCN', name: 'Phòng Công nghệ' },
     { code: 'PNS', name: 'Phòng Nhân sự' },
     { code: 'PCU1', name: 'P. Cung ứng 1' },

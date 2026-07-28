@@ -1,7 +1,7 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
 import { generateDocumentNo } from '../utils/document';
-import { parseAndNormalizeLocation } from '../utils/location.util';
+import { normalizeDepartmentName, parseAndNormalizeLocation } from '../utils/location.util';
 
 type HandoverType = 'HANDOVER' | 'TRANSFER' | 'RECALL';
 
@@ -45,6 +45,12 @@ export class HandoverService {
           const typeCode = data.type === 'HANDOVER' ? 'BBBG' : (data.type === 'RECALL' ? 'BBTH' : 'BBDC');
           const documentNo = await generateDocumentNo(tx, typeCode);
           const normalizedLoc = parseAndNormalizeLocation(data.newLocation);
+          const normalizedRecipientDepartment = normalizeDepartmentName(
+            data.recipientDepartment,
+            normalizedLoc.city || data.newCity,
+            normalizedLoc.project
+          );
+          const normalizedSenderDepartment = normalizeDepartmentName(data.senderDepartment);
 
           if (!data.assetIds || data.assetIds.length === 0) {
             throw new Error('Vui lòng chọn ít nhất 1 tài sản.');
@@ -100,7 +106,7 @@ export class HandoverService {
               type: data.type,
               recipientName: data.recipientName,
               recipientPosition: data.recipientPosition,
-              recipientDepartment: data.recipientDepartment,
+              recipientDepartment: normalizedRecipientDepartment || null,
               recipientPhone: data.recipientPhone,
               receiverId: data.receiverId,
               receiverDepartmentId: data.receiverDepartmentId,
@@ -108,7 +114,7 @@ export class HandoverService {
               newCity: normalizedLoc.city || data.newCity,
               targetLocationId: data.targetLocationId,
               senderName: data.senderName,
-              senderDepartment: data.senderDepartment,
+              senderDepartment: normalizedSenderDepartment || null,
               senderPosition: data.senderPosition,
               senderId: data.senderId,
               reason: data.reason,
@@ -149,7 +155,7 @@ export class HandoverService {
                   currentUserName: isWarehouseReturn ? null : data.recipientName,
                   currentUserPhone: isWarehouseReturn ? null : data.recipientPhone,
                   currentPosition: isWarehouseReturn ? null : data.recipientPosition,
-                  departmentName: data.type === 'RECALL' ? null : data.recipientDepartment,
+                  departmentName: data.type === 'RECALL' ? null : normalizedRecipientDepartment,
                   locationName: normalizedLoc.fullFormatted || data.newLocation,
                   cityName: normalizedLoc.city || data.newCity,
                   projectName: normalizedLoc.project || undefined,
@@ -164,7 +170,7 @@ export class HandoverService {
                   previousUserName: oldAsset.currentUserName,
                   newUserName: isWarehouseReturn ? 'KHO QLTS' : data.recipientName,
                   newPosition: isWarehouseReturn ? null : data.recipientPosition,
-                  newDepartmentName: data.recipientDepartment,
+                  newDepartmentName: normalizedRecipientDepartment || null,
                   newLocationName: normalizedLoc.fullFormatted || data.newLocation,
                   newCityName: normalizedLoc.city || data.newCity,
                   newStatus: item.newStatus || 'ASSIGNED',
@@ -388,6 +394,11 @@ export class HandoverService {
       }
 
       const normalizedLoc = parseAndNormalizeLocation(doc.newLocation);
+      const normalizedRecipientDepartment = normalizeDepartmentName(
+        doc.recipientDepartment,
+        normalizedLoc.city || doc.newCity,
+        normalizedLoc.project
+      );
       // Update each asset
       for (const item of doc.items) {
         const oldAsset = await tx.asset.findUnique({ where: { id: item.assetId } });
@@ -409,7 +420,7 @@ export class HandoverService {
             currentUserName: isWarehouseReturn ? null : doc.recipientName,
             currentUserPhone: isWarehouseReturn ? null : doc.recipientPhone,
             currentPosition: isWarehouseReturn ? null : doc.recipientPosition,
-            departmentName: doc.type === 'RECALL' ? null : doc.recipientDepartment,
+            departmentName: doc.type === 'RECALL' ? null : normalizedRecipientDepartment,
             locationName: normalizedLoc.fullFormatted || doc.newLocation,
             cityName: normalizedLoc.city || doc.newCity,
             projectName: normalizedLoc.project || undefined,
@@ -424,7 +435,7 @@ export class HandoverService {
             previousUserName: oldAsset.currentUserName,
             newUserName: isWarehouseReturn ? 'KHO QLTS' : doc.recipientName,
             newPosition: isWarehouseReturn ? null : doc.recipientPosition,
-            newDepartmentName: doc.recipientDepartment,
+            newDepartmentName: normalizedRecipientDepartment || null,
             newLocationName: normalizedLoc.fullFormatted || doc.newLocation,
             newCityName: normalizedLoc.city || doc.newCity,
             newStatus: finalStatus,

@@ -120,6 +120,26 @@ export function normalizeDepartmentName(
 ): string {
   const value = String(departmentName || '').trim();
   const normalized = stripAccents(value).toLowerCase().replace(/\s+/g, ' ').trim();
+  const standardDepartmentNames: Record<string, string> = {
+    'b. ktxd': 'B. Kinh tế Xây dựng',
+    'b. kinh te xay dung': 'B. Kinh tế Xây dựng',
+    'b. qltk': 'B. Quản lý Thiết kế',
+    'b. quan ly thiet ke': 'B. Quản lý Thiết kế',
+    'b. qlxd': 'B. Quản lý Xây dựng',
+    'b. quan ly xay dung': 'B. Quản lý Xây dựng',
+    'b. tltk': 'B. Trợ lý - Thư ký',
+    'b. tro ly - thu ky': 'B. Trợ lý - Thư ký',
+    'bld': 'Ban Lãnh đạo',
+    'ban lanh dao': 'Ban Lãnh đạo',
+    'b. hcns': 'B. Hành chính Nhân sự',
+    'hcns': 'B. Hành chính Nhân sự',
+    'hanh chinh nhan su': 'B. Hành chính Nhân sự',
+    'ban hanh chinh nhan su': 'B. Hành chính Nhân sự',
+    'b. hanh chinh nhan su': 'B. Hành chính Nhân sự'
+  };
+  const standardName = standardDepartmentNames[normalized];
+  if (standardName) return standardName;
+
   const city = stripAccents(String(cityName || '')).toLowerCase().trim();
   const project = stripAccents(String(projectName || '')).toLowerCase().trim();
   const isCenterContext = city === 'tuyen quang'
