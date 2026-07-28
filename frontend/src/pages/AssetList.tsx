@@ -621,27 +621,87 @@ export const AssetList: React.FC = () => {
     return missing;
   };
 
-  const cleanLocationName = (cityName?: string, locationName?: string) => {
+  const cleanLocationName = (
+    cityName?: string,
+    locationName?: string,
+    projectName?: string,
+    departmentName?: string
+  ) => {
     const city = String(cityName || '').trim();
+    const project = String(projectName || '').trim();
+    const department = String(departmentName || '').trim();
     let location = String(locationName || '').trim();
-    if (city && location.toLowerCase().startsWith(`${city.toLowerCase()}-`)) {
-      location = location.slice(city.length + 1).trim();
+    location = location.replace(/Văn phòng Hà Nội/gi, 'Văn phòng C6');
+
+    const normalizedCity = city.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const normalizedLocation = location.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    const compactLocation = normalizedLocation.replace(/[-/\\]+/g, ' ').replace(/\s+/g, ' ').trim();
+    const riversideOfficeAliases = [
+      'danko riverside',
+      'van phong ban hang danko riverside',
+      'van phong bac ninh',
+      'bac ninh danko riverside van phong ban hang'
+    ];
+
+    if (riversideOfficeAliases.includes(compactLocation)) {
+      return 'Bắc Ninh - Danko Riverside - Văn phòng Bán hàng';
     }
-    if (city && location.toLowerCase().startsWith(`${city.toLowerCase()} /`)) {
-      location = location.slice(city.length + 2).trim();
+
+    const normalizedProject = project.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    const normalizedDepartment = department.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+      .replace(/\s+/g, ' ')
+      .trim();
+    const centerDepartmentLocations: Record<string, string> = {
+      'b. cay xanh': 'B. Cây Xanh',
+      'ban cay xanh': 'B. Cây Xanh',
+      'bqlda dkt': 'Ban Quản lý Dự án',
+      'ban quan ly du an': 'Ban Quản lý Dự án',
+      'kinh doanh': 'B. Kinh doanh',
+      'b. kinh doanh': 'B. Kinh doanh',
+      'van phong ban hang kim phu': 'Văn phòng bán hàng',
+      'vpbh dkt': 'Văn phòng bán hàng',
+      'van phong ban hang': 'Văn phòng bán hàng'
+    };
+    const centerDepartmentLocation = centerDepartmentLocations[normalizedDepartment];
+    const belongsToCenter = normalizedCity === 'tuyen quang'
+      || normalizedProject === 'danko center'
+      || compactLocation === 'danko center'
+      || ['bqlda dkt', 'van phong ban hang kim phu', 'vpbh dkt'].includes(normalizedDepartment);
+    const isGenericCenterLocation = !compactLocation
+      || compactLocation === 'danko center'
+      || compactLocation === 'tuyen quang danko center van phong ban hang';
+
+    if (belongsToCenter && centerDepartmentLocation && isGenericCenterLocation) {
+      return `Tuyên Quang - Danko Center - ${centerDepartmentLocation}`;
+    }
+    if (compactLocation === 'danko center' || compactLocation === 'tuyen quang danko center van phong ban hang') {
+      return 'Tuyên Quang - Danko Center - Văn phòng bán hàng';
+    }
+
+    const alreadyHasCity = /^ha noi(?:\s*-\s*|\s*\/\s*|$)/.test(normalizedLocation);
+
+    if (normalizedCity === 'ha noi' && !alreadyHasCity) {
+      location = location.replace(/^Văn phòng C6\s*(?:-\s*|\/\s*)?/i, '').trim();
+      return location
+        ? `Hà Nội - Văn phòng C6 - ${location}`
+        : 'Hà Nội - Văn phòng C6';
     }
     return location;
   };
 
   const isNonStandardLocation = (asset: any) => {
-    const city = String(asset.cityName || '').trim();
     const location = String(asset.locationName || '').trim();
-    return !!(city && location && location.toLowerCase().startsWith(`${city.toLowerCase()}-`));
+    return cleanLocationName(
+      asset.cityName,
+      asset.locationName,
+      asset.projectName,
+      asset.departmentName
+    ) !== location;
   };
 
   const getLocationIssues = (asset: any) => {
     const issues: string[] = [];
-    if (isNonStandardLocation(asset)) issues.push('Vị trí đang lặp tỉnh/thành phố');
+    if (isNonStandardLocation(asset)) issues.push('Vị trí chưa đúng chuẩn Hà Nội - Văn phòng C6');
     return issues;
   };
 
@@ -660,7 +720,12 @@ export const AssetList: React.FC = () => {
         currentPosition: asset.currentPosition || null,
         departmentName: asset.departmentName || null,
         cityName: asset.cityName || null,
-        locationName: cleanLocationName(asset.cityName, asset.locationName) || null,
+        locationName: cleanLocationName(
+          asset.cityName,
+          asset.locationName,
+          asset.projectName,
+          asset.departmentName
+        ) || null,
         reason: 'Chuẩn hóa nhanh form Thành phố/Dự án/Vị trí từ Sổ tài sản'
       })));
       toast.success(`Đã chuẩn hóa vị trí cho ${targets.length} tài sản`);
@@ -1059,7 +1124,7 @@ export const AssetList: React.FC = () => {
       a.currentUserName || '',
       a.currentPosition || '',
       a.departmentName || '',
-      cleanLocationName(a.cityName, a.locationName) || a.locationName || '',
+      cleanLocationName(a.cityName, a.locationName, a.projectName, a.departmentName) || a.locationName || '',
       a.cityName || '',
       a.projectName || '',
       ...(hasPermission('ASSET_VIEW_PRICE') ? [a.purchasePriceExVat || 0] : []),
@@ -1143,7 +1208,7 @@ export const AssetList: React.FC = () => {
         <td>${asset.currentUserName || ''}</td>
         <td>${asset.departmentName || ''}</td>
         <td>${asset.cityName || ''}</td>
-        <td>${cleanLocationName(asset.cityName, asset.locationName) || ''}</td>
+        <td>${cleanLocationName(asset.cityName, asset.locationName, asset.projectName, asset.departmentName) || ''}</td>
         <td>${getStatusLabel(asset.status).label}</td>
       </tr>
     `).join('');
@@ -1331,7 +1396,7 @@ export const AssetList: React.FC = () => {
       const department = String(asset.departmentName || '').trim() || 'Chưa có phòng ban';
       const locationParts = [
         String(asset.cityName || '').trim(),
-        cleanLocationName(asset.cityName, asset.locationName)
+        cleanLocationName(asset.cityName, asset.locationName, asset.projectName, asset.departmentName)
       ].filter(Boolean);
       return `${department} / ${locationParts.join(' - ') || 'Chưa có vị trí'}`;
     };
@@ -2338,7 +2403,12 @@ export const AssetList: React.FC = () => {
                 const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
                 const missingFields = getMissingAssetFields(asset);
                 const locationIssues = getLocationIssues(asset);
-                const displayLocationName = cleanLocationName(asset.cityName, asset.locationName);
+                const displayLocationName = cleanLocationName(
+                  asset.cityName,
+                  asset.locationName,
+                  asset.projectName,
+                  asset.departmentName
+                );
                 const recoveryAlert = getRecoveryAlert(asset);
                 return (
                   <tr 

@@ -510,7 +510,15 @@ const AssetRow = ({
   const status = getAssetStatusConfig(asset.status);
   const assignee = asset.currentUserName || 'Chưa cấp phát';
   const position = asset.currentPosition || asset.departmentName || '-';
-  const location = [asset.cityName, asset.locationName].filter(Boolean).join(' - ') || 'Chưa có vị trí';
+  const city = String(asset.cityName || '').trim();
+  const rawLocation = String(asset.locationName || '').trim();
+  const locationAlreadyIncludesCity = city
+    && rawLocation.toLowerCase().startsWith(city.toLowerCase());
+  const location = (
+    locationAlreadyIncludesCity
+      ? rawLocation
+      : [city, rawLocation].filter(Boolean).join(' - ')
+  ) || 'Chưa có vị trí';
   const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
 
   return (

@@ -66,6 +66,164 @@ async function repairLegacyAssetData() {
        OR "locationName" LIKE '%Tang 9 C6-I%';
   `);
 
+  const normalizedHanoiLocations = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET
+      "projectName" = CASE
+        WHEN trim(COALESCE("projectName", '')) ILIKE 'Văn phòng Hà Nội' THEN 'Văn phòng C6'
+        ELSE "projectName"
+      END,
+      "locationName" = CASE
+        WHEN COALESCE("locationName", '') ~* '^\\s*Hà Nội\\s*(-|/|$)' THEN
+          regexp_replace(
+            COALESCE("locationName", ''),
+            'Văn phòng Hà Nội',
+            'Văn phòng C6',
+            'gi'
+          )
+        ELSE
+          'Hà Nội - Văn phòng C6' ||
+          CASE
+            WHEN trim(
+              regexp_replace(
+                regexp_replace(
+                  COALESCE("locationName", ''),
+                  'Văn phòng Hà Nội',
+                  'Văn phòng C6',
+                  'gi'
+                ),
+                '^\\s*Văn phòng C6\\s*(-|/)?\\s*',
+                '',
+                'i'
+              )
+            ) = '' THEN ''
+            ELSE ' - ' || trim(
+              regexp_replace(
+                regexp_replace(
+                  COALESCE("locationName", ''),
+                  'Văn phòng Hà Nội',
+                  'Văn phòng C6',
+                  'gi'
+                ),
+                '^\\s*Văn phòng C6\\s*(-|/)?\\s*',
+                '',
+                'i'
+              )
+            )
+          END
+      END
+    WHERE
+      trim(COALESCE("cityName", '')) ILIKE 'Hà Nội'
+      OR trim(COALESCE("projectName", '')) ILIKE 'Văn phòng Hà Nội'
+      OR trim(COALESCE("projectName", '')) ILIKE 'Văn phòng C6'
+      OR "locationName" ILIKE '%Văn phòng Hà Nội%'
+      OR "locationName" ILIKE '%Văn phòng C6%'
+      OR "locationName" ~* '\\mC6([ -]I|[ -]1)?\\M';
+  `);
+
+  const normalizedRiversideOffice = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET
+      "cityName" = 'Bắc Ninh',
+      "projectName" = 'Danko Riverside',
+      "locationName" = 'Bắc Ninh - Danko Riverside - Văn phòng Bán hàng'
+    WHERE lower(
+      regexp_replace(
+        trim(COALESCE("locationName", '')),
+        '\\s*[-/\\\\]+\\s*',
+        ' ',
+        'g'
+      )
+    ) IN (
+      lower('Danko Riverside'),
+      lower('Văn phòng Bán hàng Danko Riverside'),
+      lower('Văn phòng Bắc Ninh'),
+      lower('Bắc Ninh Danko Riverside Văn phòng Bán hàng')
+    )
+    OR (
+      trim(COALESCE("cityName", '')) ILIKE 'Bắc Ninh'
+      AND trim(COALESCE("projectName", '')) ILIKE 'Danko Riverside'
+      AND trim(COALESCE("locationName", '')) ILIKE 'Văn phòng Bán hàng'
+    );
+  `);
+
+  const normalizedDankoCenter = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET
+      "cityName" = 'Tuyên Quang',
+      "projectName" = 'Danko Center',
+      "departmentName" = CASE
+        WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY['B. Cây xanh', 'Ban Cây Xanh']
+        ) THEN 'B. Cây Xanh'
+        WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY['BQLDA DKT', 'Ban Quản lý Dự án']
+        ) THEN 'Ban Quản lý Dự án'
+        WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY['Kinh doanh', 'Kinh doạnh', 'B. Kinh doanh']
+        ) THEN 'B. Kinh doanh'
+        WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY['Văn phòng Bán hàng Kim Phú', 'VPBH DKT', 'Văn phòng bán hàng']
+        ) THEN 'Văn phòng bán hàng'
+        ELSE "departmentName"
+      END,
+      "locationName" = CASE
+        WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY['B. Cây xanh', 'Ban Cây Xanh']
+        ) THEN 'Tuyên Quang - Danko Center - B. Cây Xanh'
+        WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY['BQLDA DKT', 'Ban Quản lý Dự án']
+        ) THEN 'Tuyên Quang - Danko Center - Ban Quản lý Dự án'
+        WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY['Kinh doanh', 'Kinh doạnh', 'B. Kinh doanh']
+        ) THEN 'Tuyên Quang - Danko Center - B. Kinh doanh'
+        WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY['Văn phòng Bán hàng Kim Phú', 'VPBH DKT', 'Văn phòng bán hàng']
+        ) THEN 'Tuyên Quang - Danko Center - Văn phòng bán hàng'
+        ELSE 'Tuyên Quang - Danko Center - Văn phòng bán hàng'
+      END
+    WHERE
+      lower(
+        regexp_replace(
+          trim(COALESCE("locationName", '')),
+          '\\s*[-/\\\\]+\\s*',
+          ' ',
+          'g'
+        )
+      ) IN (
+        lower('Danko Center'),
+        lower('Tuyên Quang Danko Center Văn phòng bán hàng')
+      )
+      OR (
+        (
+          trim(COALESCE("cityName", '')) ILIKE 'Tuyên Quang'
+          OR trim(COALESCE("projectName", '')) ILIKE 'Danko Center'
+        )
+        AND trim(COALESCE("departmentName", '')) ILIKE ANY (
+          ARRAY[
+            'B. Cây xanh',
+            'Ban Cây Xanh',
+            'BQLDA DKT',
+            'Ban Quản lý Dự án',
+            'Kinh doanh',
+            'Kinh doạnh',
+            'B. Kinh doanh',
+            'Văn phòng Bán hàng Kim Phú',
+            'VPBH DKT',
+            'Văn phòng bán hàng'
+          ]
+        )
+        AND (
+          trim(COALESCE("locationName", '')) = ''
+          OR trim(COALESCE("locationName", '')) ILIKE 'Danko Center'
+          OR trim(COALESCE("locationName", '')) ILIKE 'Tuyên Quang%Danko Center%Văn phòng bán hàng'
+        )
+      )
+      OR trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY['BQLDA DKT', 'Văn phòng Bán hàng Kim Phú', 'VPBH DKT']
+      );
+  `);
+
   const restoredInventory = await prisma.$executeRawUnsafe(`
     WITH inventory_events AS (
       SELECT
@@ -109,6 +267,9 @@ async function repairLegacyAssetData() {
     normalizedUnits,
     normalizedProjects,
     normalizedLocations,
+    normalizedHanoiLocations,
+    normalizedRiversideOffice,
+    normalizedDankoCenter,
     restoredInventory
   });
 }
@@ -283,9 +444,9 @@ async function main() {
 
   // --- LOCATIONS ---
   const locations = [
-    { code: 'VP_HN', name: 'Văn phòng Hà Nội', city: 'Hà Nội' },
+    { code: 'VP_HN', name: 'Văn phòng C6', city: 'Hà Nội' },
     { code: 'VP_TH', name: 'Văn phòng Thanh Hóa', city: 'Thanh Hóa' },
-    { code: 'VP_BN', name: 'Văn phòng Bắc Ninh', city: 'Bắc Ninh' },
+    { code: 'VP_BN', name: 'Văn phòng Bán hàng', city: 'Bắc Ninh' },
     { code: 'VP_HCM', name: 'Văn phòng TP.HCM', city: 'TP.HCM' },
   ];
 

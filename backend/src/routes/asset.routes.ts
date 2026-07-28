@@ -12,7 +12,13 @@ import { InvoicePostService } from '../services/invoice-post.service';
 import { buildDataScopeWhere } from '../utils/data-scope.util';
 import ExcelJS from 'exceljs';
 import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
-import { normalizeAssetUnit, normalizeProjectName } from '../utils/location.util';
+import {
+  normalizeAssetLocation,
+  normalizeAssetUnit,
+  normalizeDepartmentName,
+  normalizeProjectName,
+  parseAndNormalizeLocation
+} from '../utils/location.util';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -2256,14 +2262,25 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
       const oldAsset = await tx.asset.findUnique({ where: { id } });
       if (!oldAsset) throw new Error('Asset not found');
 
+      const normalizedLocation = normalizeAssetLocation(
+        locationName,
+        cityName || oldAsset.cityName,
+        projectName || oldAsset.projectName,
+        departmentName || oldAsset.departmentName
+      );
+      const parsedLocation = parseAndNormalizeLocation(normalizedLocation);
       const assetUpdates: any = {
         currentUserName: currentUserName || null,
         currentUserPhone: currentUserPhone || null,
         currentPosition: currentPosition || null,
-        departmentName: departmentName || null,
-        locationName: locationName || null,
-        cityName: cityName || null,
-        projectName: projectName || null
+        departmentName: normalizeDepartmentName(
+          departmentName,
+          cityName || parsedLocation.city || oldAsset.cityName,
+          projectName || parsedLocation.project || oldAsset.projectName
+        ) || null,
+        locationName: normalizedLocation || null,
+        cityName: cityName || parsedLocation.city || null,
+        projectName: normalizeProjectName(projectName || parsedLocation.project) || null
       };
 
       const updatedAsset = await tx.asset.update({

@@ -5,7 +5,12 @@ import ExcelJS from 'exceljs';
 import multer from 'multer';
 import { ImportService } from '../services/import.service';
 import { AssetService } from '../services/asset.service';
-import { normalizeAssetUnit, normalizeProjectName } from '../utils/location.util';
+import {
+  normalizeAssetLocation,
+  normalizeAssetUnit,
+  normalizeDepartmentName,
+  normalizeProjectName
+} from '../utils/location.util';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -366,8 +371,17 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     usagePurpose: row.usage_purpose,
                     currentUserName: row.current_user_name,
                     currentPosition: row.current_position,
-                    departmentName: row.department_name,
-                    locationName: row.location_name,
+                    departmentName: normalizeDepartmentName(
+                      row.department_name,
+                      row.city_name,
+                      row.projectName || row['Dự án'] || row['Project']
+                    ),
+                    locationName: normalizeAssetLocation(
+                      row.location_name,
+                      row.city_name,
+                      row.projectName || row['Dự án'] || row['Project'],
+                      row.department_name
+                    ),
                     cityName: row.city_name,
                     purchasePriceExVat: row.purchase_price_ex_vat || 0,
                     purchaseDate: row.purchase_date ? new Date(row.purchase_date) : null,

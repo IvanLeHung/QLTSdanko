@@ -4,6 +4,11 @@ import { authenticateToken, AuthRequest } from '../middleware/auth.middleware';
 import ExcelJS from 'exceljs';
 import multer from 'multer';
 import { AuditService } from '../services/audit.service';
+import {
+  normalizeAssetLocation,
+  normalizeDepartmentName,
+  normalizeProjectName
+} from '../utils/location.util';
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -511,9 +516,18 @@ router.post('/confirm', authenticateToken, async (req: AuthRequest, res) => {
               runningNoText: '0000',
               status: row.newStatus || 'IN_STOCK',
               currentUserName: row.newUserName,
-              departmentName: row.newDepartmentName,
-              locationName: row.newLocationName,
-              projectName: row.newProjectName,
+              departmentName: normalizeDepartmentName(
+                row.newDepartmentName,
+                row.newCityName,
+                row.newProjectName
+              ),
+              locationName: normalizeAssetLocation(
+                row.newLocationName,
+                row.newCityName,
+                row.newProjectName,
+                row.newDepartmentName
+              ),
+              projectName: normalizeProjectName(row.newProjectName),
               cityName: row.newCityName
             }
           });
@@ -598,10 +612,25 @@ router.post('/confirm', authenticateToken, async (req: AuthRequest, res) => {
         const updates: any = {};
         if (row.newStatus && row.newStatus !== '#REF!') updates.status = row.newStatus;
         if (row.newUserName && row.newUserName !== '#REF!') updates.currentUserName = row.newUserName;
-        if (row.newDepartmentName && row.newDepartmentName !== '#REF!') updates.departmentName = row.newDepartmentName;
-        if (row.newLocationName && row.newLocationName !== '#REF!') updates.locationName = row.newLocationName;
-        if (row.newProjectName && row.newProjectName !== '#REF!') updates.projectName = row.newProjectName;
+        if (row.newDepartmentName && row.newDepartmentName !== '#REF!') {
+          updates.departmentName = normalizeDepartmentName(
+            row.newDepartmentName,
+            row.newCityName || asset.cityName,
+            row.newProjectName || asset.projectName
+          );
+        }
+        if (row.newProjectName && row.newProjectName !== '#REF!') {
+          updates.projectName = normalizeProjectName(row.newProjectName);
+        }
         if (row.newCityName && row.newCityName !== '#REF!') updates.cityName = row.newCityName;
+        if (row.newLocationName && row.newLocationName !== '#REF!') {
+          updates.locationName = normalizeAssetLocation(
+            row.newLocationName,
+            updates.cityName || asset.cityName,
+            updates.projectName || asset.projectName,
+            updates.departmentName || asset.departmentName
+          );
+        }
 
         if (Object.keys(updates).length > 0) {
           await prisma.asset.update({

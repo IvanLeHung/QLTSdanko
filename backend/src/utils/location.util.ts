@@ -12,7 +12,7 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
     return { city: '', project: '', location: '', fullFormatted: '' };
   }
 
-  const trimmed = normalizeLocationLabel(location.trim());
+  const trimmed = normalizeAssetLocation(location);
 
   // Strip accents and clean up spaces/dashes for mapping checks
   const lower = trimmed.toLowerCase();
@@ -27,7 +27,7 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
       city: 'Hà Nội',
       project: 'Văn phòng C6',
       location: 'Mặt trước C6-I',
-      fullFormatted: 'Mặt trước C6-I'
+      fullFormatted: 'Hà Nội - Văn phòng C6 - Mặt trước C6-I'
     };
   }
 
@@ -36,7 +36,7 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
       city: 'Hà Nội',
       project: 'Văn phòng C6',
       location: 'Mặt sau C6-I',
-      fullFormatted: 'Mặt sau C6-I'
+      fullFormatted: 'Hà Nội - Văn phòng C6 - Mặt sau C6-I'
     };
   }
 
@@ -45,7 +45,7 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
       city: 'Hà Nội',
       project: 'Văn phòng C6',
       location: 'Tầng 9 C6-I',
-      fullFormatted: 'Tầng 9 C6-I'
+      fullFormatted: 'Hà Nội - Văn phòng C6 - Tầng 9 C6-I'
     };
   }
 
@@ -59,7 +59,7 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
       city,
       project,
       location: loc,
-      fullFormatted: `${city}-${project}-${loc}`
+      fullFormatted: `${city} - ${normalizeProjectName(project)} - ${loc}`
     };
   } else if (parts.length === 2) {
     const city = parts[0];
@@ -68,7 +68,7 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
       city,
       project: '',
       location: loc,
-      fullFormatted: `${city}-${loc}`
+      fullFormatted: `${city} - ${loc}`
     };
   }
 
@@ -90,6 +90,7 @@ export function normalizeAssetUnit(unit: string | null | undefined): string {
 export function normalizeProjectName(project: string | null | undefined): string {
   const value = String(project || '').trim();
   if (value === 'Du an khac' || value === 'Du án khác') return 'Dự án khác';
+  if (stripAccents(value).toLowerCase() === 'van phong ha noi') return 'Văn phòng C6';
   return value;
 }
 
@@ -98,6 +99,117 @@ export function normalizeLocationLabel(location: string): string {
     .replace(/Mat sau C6-I/gi, 'Mặt sau C6-I')
     .replace(/Mat truoc C6-I/gi, 'Mặt trước C6-I')
     .replace(/Tang 9 C6-I/gi, 'Tầng 9 C6-I');
+}
+
+export function normalizeDepartmentName(
+  departmentName: string | null | undefined,
+  cityName?: string | null,
+  projectName?: string | null
+): string {
+  const value = String(departmentName || '').trim();
+  const normalized = stripAccents(value).toLowerCase().replace(/\s+/g, ' ').trim();
+  const city = stripAccents(String(cityName || '')).toLowerCase().trim();
+  const project = stripAccents(String(projectName || '')).toLowerCase().trim();
+  const isCenterContext = city === 'tuyen quang'
+    || project === 'danko center'
+    || ['bqlda dkt', 'van phong ban hang kim phu', 'vpbh dkt'].includes(normalized);
+
+  if (!isCenterContext) return value;
+  if (['b. cay xanh', 'ban cay xanh'].includes(normalized)) return 'B. Cây Xanh';
+  if (['bqlda dkt', 'ban quan ly du an'].includes(normalized)) return 'Ban Quản lý Dự án';
+  if (['kinh doanh', 'b. kinh doanh'].includes(normalized)) return 'B. Kinh doanh';
+  if (['van phong ban hang kim phu', 'vpbh dkt', 'van phong ban hang'].includes(normalized)) {
+    return 'Văn phòng bán hàng';
+  }
+  return value;
+}
+
+export function normalizeAssetLocation(
+  location: string | null | undefined,
+  cityName?: string | null,
+  projectName?: string | null,
+  departmentName?: string | null
+): string {
+  const city = String(cityName || '').trim();
+  const project = normalizeProjectName(projectName);
+  const department = String(departmentName || '').trim();
+  let value = normalizeLocationLabel(String(location || '').trim())
+    .replace(/Văn phòng Hà Nội/gi, 'Văn phòng C6');
+
+  const normalizedCity = stripAccents(city).toLowerCase();
+  const normalizedProject = stripAccents(project).toLowerCase();
+  const normalizedDepartment = stripAccents(department).toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  const normalizedValue = stripAccents(value).toLowerCase();
+  const compactValue = normalizedValue
+    .replace(/[-/\\]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  const riversideOfficeAliases = new Set([
+    'danko riverside',
+    'van phong ban hang danko riverside',
+    'van phong bac ninh',
+    'van phong ban hang',
+    'bac ninh danko riverside van phong ban hang'
+  ]);
+  const belongsToRiverside = normalizedCity === 'bac ninh'
+    && normalizedProject === 'danko riverside';
+
+  if (
+    riversideOfficeAliases.has(compactValue)
+    && (belongsToRiverside || compactValue !== 'van phong ban hang')
+  ) {
+    return 'Bắc Ninh - Danko Riverside - Văn phòng Bán hàng';
+  }
+
+  const centerDepartmentLocations: Record<string, string> = {
+    'b. cay xanh': 'B. Cây Xanh',
+    'ban cay xanh': 'B. Cây Xanh',
+    'bqlda dkt': 'Ban Quản lý Dự án',
+    'ban quan ly du an': 'Ban Quản lý Dự án',
+    'kinh doanh': 'B. Kinh doanh',
+    'kinh doạnh': 'B. Kinh doanh',
+    'b. kinh doanh': 'B. Kinh doanh',
+    'van phong ban hang kim phu': 'Văn phòng bán hàng',
+    'vpbh dkt': 'Văn phòng bán hàng',
+    'van phong ban hang': 'Văn phòng bán hàng'
+  };
+  const centerDepartmentLocation = centerDepartmentLocations[normalizedDepartment];
+  const belongsToCenter = normalizedCity === 'tuyen quang'
+    || normalizedProject === 'danko center'
+    || compactValue === 'danko center'
+    || compactValue.startsWith('tuyen quang danko center')
+    || ['bqlda dkt', 'van phong ban hang kim phu', 'vpbh dkt'].includes(normalizedDepartment);
+  const isGenericCenterLocation = !compactValue
+    || compactValue === 'danko center'
+    || compactValue === 'tuyen quang danko center van phong ban hang';
+
+  if (belongsToCenter && centerDepartmentLocation && isGenericCenterLocation) {
+    return `Tuyên Quang - Danko Center - ${centerDepartmentLocation}`;
+  }
+  if (compactValue === 'danko center' || compactValue === 'tuyen quang danko center van phong ban hang') {
+    return 'Tuyên Quang - Danko Center - Văn phòng bán hàng';
+  }
+
+  const alreadyHasHanoiPrefix = /^ha noi(?:\s*-\s*|\s*\/\s*|$)/.test(normalizedValue);
+  const belongsToHanoi = normalizedCity === 'ha noi'
+    || normalizedProject === 'van phong c6'
+    || normalizedProject === 'van phong ha noi'
+    || normalizedValue.includes('van phong c6')
+    || /\bc6(?:\s*-\s*[i1]+)?\b/.test(normalizedValue);
+
+  // Existing Hà Nội-prefixed values are kept intact, except for the office rename above.
+  if (alreadyHasHanoiPrefix) return value;
+  if (!belongsToHanoi) return value;
+
+  value = value
+    .replace(/^Văn phòng C6\s*(?:-\s*|\/\s*)?/i, '')
+    .trim();
+
+  return value
+    ? `Hà Nội - Văn phòng C6 - ${value}`
+    : 'Hà Nội - Văn phòng C6';
 }
 
 function stripAccents(str: string): string {
