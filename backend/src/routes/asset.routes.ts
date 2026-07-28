@@ -23,6 +23,17 @@ import {
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
+const parsePastedAssetCodes = (value: unknown): string[] => {
+  const tokens = String(value || '')
+    .split(/[\s,;]+/)
+    .map((token) => token.trim())
+    .filter(Boolean);
+  const assetCodes = tokens.filter((token) => /^\d+(?:\.\d+){2,}$/.test(token));
+  return assetCodes.length > 1
+    ? Array.from(new Set(assetCodes)).slice(0, 200)
+    : [];
+};
+
 const startOfDay = (value: Date) => {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
@@ -133,9 +144,13 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
 
     // Advanced Search
     if (search) {
-      const searchString = String(search);
-      andClauses.push({
-        OR: [
+      const assetCodes = parsePastedAssetCodes(search);
+      if (assetCodes.length > 1) {
+        andClauses.push({ assetCode: { in: assetCodes } });
+      } else {
+        const searchString = String(search).trim();
+        andClauses.push({
+          OR: [
           { assetCode: { contains: searchString, mode: 'insensitive' } },
           { assetName: { contains: searchString, mode: 'insensitive' } },
           { assetNameShort: { contains: searchString, mode: 'insensitive' } },
@@ -166,9 +181,10 @@ router.get('/stats', authenticateToken, async (req: AuthRequest, res) => {
           { attachments: { contains: searchString, mode: 'insensitive' } },
           { technicalSpecsJson: { contains: searchString, mode: 'insensitive' } },
           { originalInvoiceItemName: { contains: searchString, mode: 'insensitive' } },
-          { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
-        ]
-      });
+            { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
+          ]
+        });
+      }
     }
 
     if (companyCode) where.companyCode = String(companyCode);
@@ -550,9 +566,13 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
 
   // Advanced Search (Global Search Box)
   if (search) {
-    const searchString = String(search);
-    andClauses.push({
-      OR: [
+    const assetCodes = parsePastedAssetCodes(search);
+    if (assetCodes.length > 1) {
+      andClauses.push({ assetCode: { in: assetCodes } });
+    } else {
+      const searchString = String(search).trim();
+      andClauses.push({
+        OR: [
         { assetCode: { contains: searchString, mode: 'insensitive' } },
         { assetName: { contains: searchString, mode: 'insensitive' } },
         { assetNameShort: { contains: searchString, mode: 'insensitive' } },
@@ -583,9 +603,10 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
         { attachments: { contains: searchString, mode: 'insensitive' } },
         { technicalSpecsJson: { contains: searchString, mode: 'insensitive' } },
         { originalInvoiceItemName: { contains: searchString, mode: 'insensitive' } },
-        { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
-      ]
-    });
+          { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
+        ]
+      });
+    }
   }
 
   // Multi-status filter
@@ -1714,9 +1735,13 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
 
   // Advanced Search
   if (search) {
-    const searchString = String(search);
-    andClauses.push({
-      OR: [
+    const assetCodes = parsePastedAssetCodes(search);
+    if (assetCodes.length > 1) {
+      andClauses.push({ assetCode: { in: assetCodes } });
+    } else {
+      const searchString = String(search).trim();
+      andClauses.push({
+        OR: [
         { assetCode: { contains: searchString, mode: 'insensitive' } },
         { assetName: { contains: searchString, mode: 'insensitive' } },
         { assetNameShort: { contains: searchString, mode: 'insensitive' } },
@@ -1747,9 +1772,10 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
         { attachments: { contains: searchString, mode: 'insensitive' } },
         { technicalSpecsJson: { contains: searchString, mode: 'insensitive' } },
         { originalInvoiceItemName: { contains: searchString, mode: 'insensitive' } },
-        { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
-      ]
-    });
+          { lastInventoryStatus: { contains: searchString, mode: 'insensitive' } }
+        ]
+      });
+    }
   }
 
   if (status) {
