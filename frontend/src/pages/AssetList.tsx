@@ -104,7 +104,7 @@ export const AssetList: React.FC = () => {
   const [lv4Categories, setLv4Categories] = useState<any[]>([]);
   const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState(false);
   const [showAssetControls, setShowAssetControls] = useState(false);
-  const [assetViewMode, setAssetViewMode] = useState<'table' | 'grouped'>('table');
+  const [assetViewMode, setAssetViewMode] = useState<'table' | 'grouped' | 'location'>('table');
 
   // Sync temporary states with URL filters
   const [tempStatus, setTempStatus] = useState<string[]>([]);
@@ -473,7 +473,7 @@ export const AssetList: React.FC = () => {
   }, [searchParams]);
 
   const fetchGroupedViewAssets = useCallback(async () => {
-    if (assetViewMode !== 'grouped') return;
+    if (assetViewMode === 'table') return;
     const requestId = ++groupedRequestSeq.current;
     setGroupedViewLoading(true);
     try {
@@ -490,7 +490,7 @@ export const AssetList: React.FC = () => {
     } catch (err) {
       if (requestId !== groupedRequestSeq.current) return;
       console.error(err);
-      toast.error("Không thể tải view nhóm tài sản");
+      toast.error("Không thể tải dữ liệu view tài sản");
     } finally {
       if (requestId === groupedRequestSeq.current) setGroupedViewLoading(false);
     }
@@ -1462,6 +1462,130 @@ export const AssetList: React.FC = () => {
     }));
   }, [cleanLocationName, groupedViewAssets]);
 
+  const locationAssetBooks = useMemo<AssetGroupedBook[]>(() => {
+    const normalize = (value: unknown) => String(value || '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+
+    const isNeedsAction = (asset: any) => {
+      return ['DAMAGED', 'BROKEN', 'LOST', 'UNDER_REPAIR', 'PENDING_DISPOSAL'].includes(asset.status)
+        || (asset.offboardingAlert && !asset.offboardingResolvedAt);
+    };
+
+    const getLocationHierarchy = (asset: any) => {
+      let city = String(asset.cityName || '').trim();
+      let project = String(asset.projectName || '').trim();
+      const department = String(asset.departmentName || '').trim() || 'Chưa có phòng ban';
+      const fullLocation = cleanLocationName(
+        asset.cityName,
+        asset.locationName,
+        asset.projectName,
+        asset.departmentName
+      );
+      const parts = String(fullLocation || '')
+        .split(/\s+-\s+/)
+        .map((part) => part.trim())
+        .filter(Boolean);
+
+      if (city && normalize(parts[0]) === normalize(city)) parts.shift();
+      if (!city && parts.length >= 3) city = parts.shift() || '';
+
+      if (project && normalize(parts[0]) === normalize(project)) parts.shift();
+      if (!project && parts.length > 1) project = parts.shift() || '';
+
+      const location = parts.join(' - ')
+        || String(asset.locationName || '').trim()
+        || 'Chưa có vị trí';
+
+      return {
+        city: city || 'Chưa có thành phố',
+        project: project || 'Chưa có dự án',
+        location,
+        department,
+      };
+    };
+
+    const getCategoryLabel = (asset: any) => {
+      const categoryParts = [
+        asset.level1Name,
+        asset.level2Name,
+        asset.level3Name,
+        asset.level4Name,
+      ].map((part) => String(part || '').trim()).filter(Boolean);
+      return categoryParts.length > 0
+        ? `Nhóm tài sản / ${categoryParts.join(' / ')}`
+        : 'Nhóm tài sản / Chưa phân loại';
+    };
+
+    const groupMap = new Map<string, any>();
+    groupedViewAssets.forEach((asset) => {
+      const hierarchy = getLocationHierarchy(asset);
+      const key = [hierarchy.city, hierarchy.project, hierarchy.location, hierarchy.department]
+        .map(normalize)
+        .join('|');
+
+      if (!groupMap.has(key)) {
+        groupMap.set(key, {
+          key: `location:${key}`,
+          codePath: '',
+          name: '',
+          breadcrumb: [
+            {
+              label: hierarchy.city,
+              filterKey: asset.cityName ? 'cityName' : undefined,
+              filterValue: asset.cityName || undefined,
+            },
+            {
+              label: hierarchy.project,
+              filterKey: asset.projectName ? 'projectName' : undefined,
+              filterValue: asset.projectName || undefined,
+            },
+            {
+              label: hierarchy.location,
+              filterKey: asset.locationName ? 'locationQuery' : undefined,
+              filterValue: asset.locationName || undefined,
+            },
+            {
+              label: hierarchy.department,
+              filterKey: asset.departmentName ? 'departmentName' : undefined,
+              filterValue: asset.departmentName || undefined,
+            },
+          ],
+          sortPath: [hierarchy.city, hierarchy.project, hierarchy.location, hierarchy.department].join(' - '),
+          assets: [],
+          locations: new Map<string, any>(),
+          statusSummary: {
+            assigned: 0,
+            inStock: 0,
+            needsAction: 0,
+          },
+        });
+      }
+
+      const group = groupMap.get(key);
+      group.assets.push(asset);
+      if (asset.status === 'ASSIGNED') group.statusSummary.assigned += 1;
+      if (asset.status === 'IN_STOCK') group.statusSummary.inStock += 1;
+      if (isNeedsAction(asset)) group.statusSummary.needsAction += 1;
+
+      const categoryKey = getCategoryLabel(asset);
+      if (!group.locations.has(categoryKey)) {
+        group.locations.set(categoryKey, { key: categoryKey, assets: [] });
+      }
+      group.locations.get(categoryKey).assets.push(asset);
+    });
+
+    return Array.from(groupMap.values())
+      .sort((a, b) => a.sortPath.localeCompare(b.sortPath, 'vi'))
+      .map((group) => ({
+        ...group,
+        locations: Array.from(group.locations.values())
+          .sort((a: any, b: any) => a.key.localeCompare(b.key, 'vi')),
+      }));
+  }, [cleanLocationName, groupedViewAssets]);
+
   const handleSortSelection = (key: string, order: string, isFilter: boolean = false, filterKey?: string, filterValue?: string) => {
     const newParams = new URLSearchParams(searchParams);
     if (isFilter && filterKey) {
@@ -1786,6 +1910,16 @@ export const AssetList: React.FC = () => {
                 )}
               >
                 Nhóm
+              </button>
+              <button
+                type="button"
+                onClick={() => setAssetViewMode('location')}
+                className={cn(
+                  "h-full px-3 rounded-full text-[11px] font-black transition-all whitespace-nowrap",
+                  assetViewMode === 'location' ? "bg-slate-900 text-white shadow-sm" : "text-slate-500 hover:text-slate-900"
+                )}
+              >
+                Vị trí
               </button>
             </div>
           </div>
@@ -2354,11 +2488,13 @@ export const AssetList: React.FC = () => {
 
       {/* ASSET TABLE — fills remaining space */}
       <main className="asset-table-section flex-1 min-h-0 p-2 sm:p-3">
-        {assetViewMode === 'grouped' ? (
+        {assetViewMode !== 'table' ? (
           <AssetGroupedView
-            groups={groupedAssetBooks}
+            groups={assetViewMode === 'location' ? locationAssetBooks : groupedAssetBooks}
             assetCount={groupedViewAssets.length}
             loading={groupedViewLoading}
+            viewLabel={assetViewMode === 'location' ? 'View tài sản theo vị trí' : 'View theo nhóm tài sản'}
+            groupLabel={assetViewMode === 'location' ? 'vị trí / phòng ban' : 'nhóm'}
             selectedAssetId={selectedAssetId}
             isDetailOpen={isDetailOpen}
             onOpenAsset={openAssetDetail}

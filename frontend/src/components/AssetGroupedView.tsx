@@ -65,6 +65,8 @@ interface AssetGroupedViewProps {
   groups: AssetGroupedBook[];
   assetCount: number;
   loading: boolean;
+  viewLabel?: string;
+  groupLabel?: string;
   selectedAssetId?: number | null;
   isDetailOpen: boolean;
   onOpenAsset: (assetId: number, tab?: string) => void;
@@ -77,6 +79,8 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
   groups,
   assetCount,
   loading,
+  viewLabel = 'View theo nhóm tài sản',
+  groupLabel = 'nhóm',
   selectedAssetId,
   isDetailOpen,
   onOpenAsset,
@@ -192,9 +196,9 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
     <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
       <div className="min-h-14 shrink-0 px-4 border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3 bg-[#F8FAFC]">
         <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">View theo nhóm tài sản</p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{viewLabel}</p>
           <p className="text-[12px] font-bold text-slate-700 truncate">
-            {assetCount.toLocaleString('vi-VN')} tài sản trong {groups.length.toLocaleString('vi-VN')} nhóm
+            {assetCount.toLocaleString('vi-VN')} tài sản trong {groups.length.toLocaleString('vi-VN')} {groupLabel}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -299,10 +303,12 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                                 </React.Fragment>
                               ))}
                             </div>
-                            <div className="mt-1 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
-                              <p className="font-mono text-[13px] font-black tracking-tight text-slate-900 break-words">{group.codePath}</p>
-                              {group.name && <p className="text-[12px] font-semibold text-slate-500 truncate">{group.name}</p>}
-                            </div>
+                            {(group.codePath || group.name) && (
+                              <div className="mt-1 flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-3">
+                                {group.codePath && <p className="font-mono text-[13px] font-black tracking-tight text-slate-900 break-words">{group.codePath}</p>}
+                                {group.name && <p className="text-[12px] font-semibold text-slate-500 truncate">{group.name}</p>}
+                              </div>
+                            )}
                           </div>
                         </div>
                       </div>
@@ -340,7 +346,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                             type="button"
                             onClick={() => setOpenGroupMenuKey(openGroupMenuKey === group.key ? null : group.key)}
                             className="h-10 px-3 inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white text-[11px] font-black text-slate-600 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-primary-100"
-                            aria-label={`Mở thao tác nhóm ${group.codePath}`}
+                            aria-label={`Mở thao tác nhóm ${group.codePath || group.breadcrumb.map((item) => item.label).join(' - ')}`}
                           >
                             <MoreVertical className="h-4 w-4" />
                             Thao tác nhóm
