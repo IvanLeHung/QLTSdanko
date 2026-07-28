@@ -224,6 +224,27 @@ async function repairLegacyAssetData() {
       );
   `);
 
+  const normalizedLocationSpacing = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET "locationName" = replace(
+      regexp_replace(
+        regexp_replace(
+          trim("locationName"),
+          '([A-Za-z]+[0-9]+)\\s*-\\s*([IVXLCDM]+|[0-9]+)([[:space:],.;)-]|$)',
+          '\\1§\\2\\3',
+          'gi'
+        ),
+        '\\s*-\\s*',
+        ' - ',
+        'g'
+      ),
+      '§',
+      '-'
+    )
+    WHERE "locationName" IS NOT NULL
+      AND "locationName" LIKE '%-%';
+  `);
+
   const restoredInventory = await prisma.$executeRawUnsafe(`
     WITH inventory_events AS (
       SELECT
@@ -270,6 +291,7 @@ async function repairLegacyAssetData() {
     normalizedHanoiLocations,
     normalizedRiversideOffice,
     normalizedDankoCenter,
+    normalizedLocationSpacing,
     restoredInventory
   });
 }

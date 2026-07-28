@@ -101,6 +101,18 @@ export function normalizeLocationLabel(location: string): string {
     .replace(/Tang 9 C6-I/gi, 'Tầng 9 C6-I');
 }
 
+export function normalizeLocationSeparators(location: string): string {
+  const value = String(location || '').trim();
+  if (!value.includes('-')) return value;
+
+  return value
+    .replace(/\b([A-Za-z]+\d+)\s*-\s*([IVXLCDM]+|\d+)(?=$|[\s,.;)\-])/gi, '$1§$2')
+    .replace(/\s*-\s*/g, ' - ')
+    .replace(/§/g, '-')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 export function normalizeDepartmentName(
   departmentName: string | null | undefined,
   cityName?: string | null,
@@ -133,8 +145,10 @@ export function normalizeAssetLocation(
   const city = String(cityName || '').trim();
   const project = normalizeProjectName(projectName);
   const department = String(departmentName || '').trim();
-  let value = normalizeLocationLabel(String(location || '').trim())
-    .replace(/Văn phòng Hà Nội/gi, 'Văn phòng C6');
+  let value = normalizeLocationSeparators(
+    normalizeLocationLabel(String(location || '').trim())
+      .replace(/Văn phòng Hà Nội/gi, 'Văn phòng C6')
+  );
 
   const normalizedCity = stripAccents(city).toLowerCase();
   const normalizedProject = stripAccents(project).toLowerCase();
