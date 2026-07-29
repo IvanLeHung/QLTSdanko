@@ -66,6 +66,9 @@ async function repairLegacyAssetData() {
       WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
         ARRAY['BQLVH DKC', 'B. Quản lý Vận hành Danko City']
       ) THEN 'B. Quản lý Vận hành Danko City'
+      WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY['BQLDA DKC', 'B. Quản lý Dự án Danko City']
+      ) THEN 'B. Quản lý Dự án Danko City'
       ELSE "departmentName"
     END
     WHERE trim(COALESCE("departmentName", '')) ILIKE ANY (
@@ -88,8 +91,18 @@ async function repairLegacyAssetData() {
         'Ban Hành chính Nhân sự',
         'B. Hành chính Nhân sự',
         'BQLVH DKC',
-        'B. Quản lý Vận hành Danko City'
+        'B. Quản lý Vận hành Danko City',
+        'BQLDA DKC',
+        'B. Quản lý Dự án Danko City'
       ]
+    );
+  `);
+
+  const normalizedCurrentUsers = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET "currentUserName" = 'B. Quản lý Dự án Danko City'
+    WHERE trim(COALESCE("currentUserName", '')) ILIKE ANY (
+      ARRAY['BQLDA DKC', 'B. Quản lý Dự án Danko City']
     );
   `);
 
@@ -369,6 +382,7 @@ async function repairLegacyAssetData() {
 
   console.log('Legacy asset data repaired.', {
     normalizedDepartments,
+    normalizedCurrentUsers,
     normalizedUnits,
     normalizedProjects,
     normalizedLocations,
