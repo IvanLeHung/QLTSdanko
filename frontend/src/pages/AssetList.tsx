@@ -1458,7 +1458,7 @@ export const AssetList: React.FC = () => {
     && currentPageAssetIds.some(id => selectedIds.includes(id))
     && !isCurrentPageFullySelected;
 
-  const applyTableColumnFilter = (columnKey: string, selectedValues: string[]) => {
+  const updateTableColumnFilter = (columnKey: string, selectedValues: string[]) => {
     const allValues = tableFilterOptions[columnKey] || [];
     setTableColumnFilters((previous) => {
       const next = { ...previous };
@@ -1469,8 +1469,7 @@ export const AssetList: React.FC = () => {
       }
       return next;
     });
-    setOpenTableFilterKey(null);
-    updateParam('page', '1');
+    if (page !== 1) updateParam('page', '1');
   };
 
   const clearTableColumnFilters = () => {
@@ -2714,14 +2713,14 @@ export const AssetList: React.FC = () => {
                       </div>
                       {openTableFilterKey === col.key && (
                         <TableColumnFilterMenu
-                          key={`${col.key}-${tableFilterDatasetKey}-${(tableColumnFilters[col.key] || []).join('|')}`}
+                          key={`${col.key}-${tableFilterDatasetKey}`}
                           columnKey={col.key}
                           columnLabel={col.label}
                           options={tableFilterOptions[col.key] || []}
                           selectedValues={tableColumnFilters[col.key]}
                           loading={tableFilterLoading || !tableFilterDataReady}
                           alignRight={col.key === 'cityName' || col.key === 'status'}
-                          onApply={(selectedValues) => applyTableColumnFilter(col.key, selectedValues)}
+                          onApply={(selectedValues) => updateTableColumnFilter(col.key, selectedValues)}
                           onClose={() => setOpenTableFilterKey(null)}
                         />
                       )}
@@ -3333,21 +3332,19 @@ const TableColumnFilterMenu = ({
     && visibleOptions.every((option) => draftValues.includes(option));
 
   const toggleVisibleOptions = () => {
-    setDraftValues((previous) => {
-      if (allVisibleSelected) {
-        const visibleSet = new Set(visibleOptions);
-        return previous.filter((value) => !visibleSet.has(value));
-      }
-      return Array.from(new Set([...previous, ...visibleOptions]));
-    });
+    const nextValues = allVisibleSelected
+      ? draftValues.filter((value) => !new Set(visibleOptions).has(value))
+      : Array.from(new Set([...draftValues, ...visibleOptions]));
+    setDraftValues(nextValues);
+    onApply(nextValues);
   };
 
   const toggleOption = (option: string) => {
-    setDraftValues((previous) => (
-      previous.includes(option)
-        ? previous.filter((value) => value !== option)
-        : [...previous, option]
-    ));
+    const nextValues = draftValues.includes(option)
+      ? draftValues.filter((value) => value !== option)
+      : [...draftValues, option];
+    setDraftValues(nextValues);
+    onApply(nextValues);
   };
 
   return (
@@ -3436,29 +3433,22 @@ const TableColumnFilterMenu = ({
         <div className="mt-3 flex items-center justify-between gap-2">
           <button
             type="button"
-            onClick={() => onApply(options)}
+            onClick={() => {
+              setDraftValues(options);
+              onApply(options);
+            }}
             disabled={loading}
             className="min-h-9 px-2 text-[11px] font-black text-slate-500 hover:text-slate-800"
           >
             Xóa lọc
           </button>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={onClose}
-              className="min-h-9 rounded-lg border border-slate-200 px-3 text-[11px] font-black text-slate-600 hover:bg-slate-50"
-            >
-              Hủy
-            </button>
-            <button
-              type="button"
-              onClick={() => onApply(draftValues)}
-              disabled={loading}
-              className="min-h-9 rounded-lg bg-slate-900 px-3 text-[11px] font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              Áp dụng
-            </button>
-          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-9 rounded-lg bg-slate-900 px-3 text-[11px] font-black text-white hover:bg-slate-800"
+          >
+            Đóng
+          </button>
         </div>
       </div>
     </>
