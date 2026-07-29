@@ -488,8 +488,8 @@ export const AssetList: React.FC = () => {
     return params.toString();
   }, [searchParams]);
 
-  const fetchTableFilterAssets = useCallback(async () => {
-    if (!tableFilterEnabled || (tableFilterDatasetKey !== null && tableFilterDatasetKey === tableFilterQueryKey)) return;
+  const fetchTableFilterAssets = useCallback(async (force = false) => {
+    if (!tableFilterEnabled || (!force && tableFilterDatasetKey !== null && tableFilterDatasetKey === tableFilterQueryKey)) return;
     const requestId = ++tableFilterRequestSeq.current;
     setTableFilterLoading(true);
     try {
@@ -537,11 +537,14 @@ export const AssetList: React.FC = () => {
     }
   }, [assetViewMode, searchParams]);
 
-  const refreshAssetData = useCallback(() => {
-    fetchAssets();
-    fetchStats();
-    fetchGroupedViewAssets();
-  }, [fetchAssets, fetchStats, fetchGroupedViewAssets]);
+  const refreshAssetData = useCallback(async () => {
+    await Promise.all([
+      fetchAssets(),
+      fetchStats(),
+      fetchGroupedViewAssets(),
+      fetchTableFilterAssets(true)
+    ]);
+  }, [fetchAssets, fetchStats, fetchGroupedViewAssets, fetchTableFilterAssets]);
 
   useEffect(() => {
     fetchAssets();
