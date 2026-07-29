@@ -742,16 +742,37 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     if (!isGroupedCompact) {
       await refreshRecoveryPriorities();
     }
+    const allowedSortFields = new Set([
+      'assetCode',
+      'assetName',
+      'level4Name',
+      'currentUserName',
+      'departmentName',
+      'cityName',
+      'projectName',
+      'locationName',
+      'status',
+      'purchasePriceExVat',
+      'purchaseDate',
+      'handoverDate',
+      'updatedAt',
+      'createdAt'
+    ]);
+    const safeSortBy = allowedSortFields.has(String(sortBy)) ? String(sortBy) : 'updatedAt';
+    const safeSortOrder: 'asc' | 'desc' = String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
+    const hasExplicitSort = typeof req.query.sortBy === 'string' && allowedSortFields.has(req.query.sortBy);
     const assetQuery: any = {
       where,
       skip,
       take: Number(limit),
       orderBy: isGroupedCompact
-        ? [{ [String(sortBy)]: sortOrder }]
-        : [
+        ? [{ [safeSortBy]: safeSortOrder }, { assetCode: 'asc' }]
+        : hasExplicitSort
+          ? [{ [safeSortBy]: safeSortOrder }, { assetCode: 'asc' }]
+          : [
             { recoveryPriority: 'desc' },
             { expectedRecoveryDate: 'asc' },
-            { [String(sortBy)]: sortOrder }
+            { updatedAt: 'desc' }
           ]
     };
 

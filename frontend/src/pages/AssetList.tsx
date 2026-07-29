@@ -108,7 +108,7 @@ export const AssetList: React.FC = () => {
   const [openTableFilterKey, setOpenTableFilterKey] = useState<string | null>(null);
   const [tableColumnFilters, setTableColumnFilters] = useState<Record<string, string[]>>({});
   const [tableFilterAssets, setTableFilterAssets] = useState<any[]>([]);
-  const [tableFilterDatasetKey, setTableFilterDatasetKey] = useState('');
+  const [tableFilterDatasetKey, setTableFilterDatasetKey] = useState<string | null>(null);
   const [tableFilterEnabled, setTableFilterEnabled] = useState(false);
   const [tableFilterLoading, setTableFilterLoading] = useState(false);
   const tableFilterRequestSeq = useRef(0);
@@ -489,7 +489,7 @@ export const AssetList: React.FC = () => {
   }, [searchParams]);
 
   const fetchTableFilterAssets = useCallback(async () => {
-    if (!tableFilterEnabled || tableFilterDatasetKey === tableFilterQueryKey) return;
+    if (!tableFilterEnabled || (tableFilterDatasetKey !== null && tableFilterDatasetKey === tableFilterQueryKey)) return;
     const requestId = ++tableFilterRequestSeq.current;
     setTableFilterLoading(true);
     try {
@@ -1405,7 +1405,7 @@ export const AssetList: React.FC = () => {
     }
   };
 
-  const tableFilterDataReady = tableFilterDatasetKey === tableFilterQueryKey;
+  const tableFilterDataReady = tableFilterDatasetKey !== null && tableFilterDatasetKey === tableFilterQueryKey;
   const tableFilterOptionAssets = tableFilterEnabled
     ? (tableFilterDataReady ? tableFilterAssets : [])
     : assets;
