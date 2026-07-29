@@ -1346,6 +1346,7 @@ export const AssetList: React.FC = () => {
 
   const sortableColumns = [
     { key: "assetCode", label: "Mã tài sản", className: "w-[170px]" },
+    { key: "level4Name", label: "Nhóm tài sản LV4", className: "w-[190px]" },
     { key: "assetName", label: "Tên tài sản", className: "w-[280px] md:w-[320px]" },
     { key: "currentUserName", label: "Người sử dụng / Chức vụ", className: "hidden xl:table-cell w-[190px]" },
     { key: "departmentName", label: "Phòng ban", className: "hidden xl:table-cell w-[160px]" },
@@ -2507,7 +2508,7 @@ export const AssetList: React.FC = () => {
           <div 
             className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth"
           >
-            <table className="min-w-[860px] xl:min-w-[1320px] w-full text-left border-collapse table-fixed">
+            <table className="min-w-[1050px] xl:min-w-[1510px] w-full text-left border-collapse table-fixed">
               <thead className="sticky top-0 z-10 bg-[#F8FAFC] border-b border-[#E2E8F0]">
                 <tr className="h-9">
                   <th className="px-3 w-12 sticky left-0 bg-[#F8FAFC] z-10">
@@ -2542,7 +2543,7 @@ export const AssetList: React.FC = () => {
               </thead>
             <tbody className="divide-y divide-[#F1F5F9]">
               {loading ? (
-                <tr><td colSpan={8} className="p-12 text-center"><Loader2 className="h-6 w-6 animate-spin text-primary-500 mx-auto" /></td></tr>
+                <tr><td colSpan={9} className="p-12 text-center"><Loader2 className="h-6 w-6 animate-spin text-primary-500 mx-auto" /></td></tr>
               ) : assets.map((asset) => {
                 const status = getStatusLabel(asset.status);
                 const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
@@ -2575,6 +2576,17 @@ export const AssetList: React.FC = () => {
                     </td>
                     <td className="px-3 text-[12px] font-bold text-primary-700 font-mono" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
                       {asset.assetCode}
+                    </td>
+                    <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
+                      <p
+                        className={cn(
+                          "truncate text-[12px] font-semibold leading-tight",
+                          asset.level4Name ? "text-slate-700" : "text-slate-400 italic"
+                        )}
+                        title={asset.level4Name || 'Chưa phân nhóm LV4'}
+                      >
+                        {asset.level4Name || 'Chưa phân nhóm'}
+                      </p>
                     </td>
                     <td className="px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'info'); }}>
                       <div className="flex items-start gap-2">
