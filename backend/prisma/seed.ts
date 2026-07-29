@@ -63,6 +63,9 @@ async function repairLegacyAssetData() {
           'B. Hành chính Nhân sự'
         ]
       ) THEN 'B. Hành chính Nhân sự'
+      WHEN trim(COALESCE("departmentName", '')) ILIKE ANY (
+        ARRAY['BQLVH DKC', 'B. Quản lý Vận hành Danko City']
+      ) THEN 'B. Quản lý Vận hành Danko City'
       ELSE "departmentName"
     END
     WHERE trim(COALESCE("departmentName", '')) ILIKE ANY (
@@ -83,7 +86,9 @@ async function repairLegacyAssetData() {
         'HCNS',
         'Hành chính Nhân sự',
         'Ban Hành chính Nhân sự',
-        'B. Hành chính Nhân sự'
+        'B. Hành chính Nhân sự',
+        'BQLVH DKC',
+        'B. Quản lý Vận hành Danko City'
       ]
     );
   `);

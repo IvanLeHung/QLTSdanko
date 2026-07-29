@@ -154,7 +154,9 @@ export function normalizeDepartmentName(
     'hcns': 'B. Hành chính Nhân sự',
     'hanh chinh nhan su': 'B. Hành chính Nhân sự',
     'ban hanh chinh nhan su': 'B. Hành chính Nhân sự',
-    'b. hanh chinh nhan su': 'B. Hành chính Nhân sự'
+    'b. hanh chinh nhan su': 'B. Hành chính Nhân sự',
+    'bqlvh dkc': 'B. Quản lý Vận hành Danko City',
+    'b. quan ly van hanh danko city': 'B. Quản lý Vận hành Danko City'
   };
   const standardName = standardDepartmentNames[normalized];
   if (standardName) return standardName;
