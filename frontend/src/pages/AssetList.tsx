@@ -1359,7 +1359,14 @@ export const AssetList: React.FC = () => {
   };
 
   const tableFilterOptions = sortableColumns.reduce<Record<string, string[]>>((result, column) => {
-    result[column.key] = Array.from(new Set(assets.map((asset) => getTableColumnValue(asset, column.key))))
+    const assetsMatchingOtherFilters = assets.filter((asset) => (
+      Object.entries(tableColumnFilters).every(([filterKey, selectedValues]) => (
+        filterKey === column.key || selectedValues.includes(getTableColumnValue(asset, filterKey))
+      ))
+    ));
+    result[column.key] = Array.from(new Set(
+      assetsMatchingOtherFilters.map((asset) => getTableColumnValue(asset, column.key))
+    ))
       .sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
     return result;
   }, {});
@@ -3217,7 +3224,9 @@ const TableColumnFilterMenu = ({
   onClose: () => void;
 }) => {
   const [searchValue, setSearchValue] = useState('');
-  const [draftValues, setDraftValues] = useState<string[]>(selectedValues || options);
+  const [draftValues, setDraftValues] = useState<string[]>(
+    selectedValues ? selectedValues.filter((value) => options.includes(value)) : options
+  );
   const normalizedSearch = searchValue.trim().toLocaleLowerCase('vi');
   const visibleOptions = options.filter((option) => (
     !normalizedSearch || option.toLocaleLowerCase('vi').includes(normalizedSearch)
