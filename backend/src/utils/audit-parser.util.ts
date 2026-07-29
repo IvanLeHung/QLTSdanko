@@ -8,6 +8,7 @@ export const ACTION_MAP: Record<string, string> = {
   EXPORT: 'Xuất báo cáo',
   PRINT: 'In',
   CANCEL: 'Hủy',
+  UNDO: 'Hoàn tác',
   CONFIRM: 'Xác nhận',
   ASSIGN: 'Bàn giao',
   REPAIR: 'Sửa chữa',

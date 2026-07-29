@@ -847,7 +847,7 @@ model HandoverDocument {
   documentNo           String         @unique
   documentDate         DateTime       @default(now())
   type                 String         @default("HANDOVER") // HANDOVER, TRANSFER, RECALL
-  status               String         @default("DRAFT")    // DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED
+  status               String         @default("DRAFT")    // DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED, REVERSED
   
   recipientName        String
   recipientPosition    String?
@@ -872,6 +872,9 @@ model HandoverDocument {
   createdAt            DateTime       @default(now())
   confirmedAt          DateTime?
   cancelledAt          DateTime?
+  reversedAt           DateTime?
+  reversedBy           String?
+  reversalReason       String?
   
   items                HandoverItem[]
 }
@@ -885,6 +888,15 @@ model HandoverItem {
   unit               String?
   oldStatus          String?
   newStatus          String?
+  oldUserName        String?
+  oldUserPhone       String?
+  oldPosition        String?
+  oldDepartmentName  String?
+  oldLocationName    String?
+  oldCityName        String?
+  oldProjectName     String?
+  oldHandoverDate    DateTime?
+  snapshotCapturedAt DateTime?
   handoverDocument   HandoverDocument @relation(fields: [handoverDocumentId], references: [id])
 }
 

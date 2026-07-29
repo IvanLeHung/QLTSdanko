@@ -133,6 +133,20 @@ router.post('/:id/cancel', authenticateToken, requirePermission('TRANSFER_CANCEL
   }
 });
 
+router.post('/:id/reverse', authenticateToken, requirePermission('TRANSFER_CANCEL'), async (req: AuthRequest, res) => {
+  const performedBy = req.user?.username || 'system';
+  try {
+    const document = await HandoverService.reverseHandover(
+      Number(req.params.id),
+      req.body?.reason,
+      performedBy
+    );
+    res.json(document);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
 router.post('/bulk-cancel', authenticateToken, requirePermission('TRANSFER_CANCEL'), async (req: AuthRequest, res) => {
   const performedBy = req.user?.username || 'system';
   const { ids } = req.body;
@@ -282,6 +296,7 @@ router.get('/export-by-time', authenticateToken, requirePermission('TRANSFER_VIE
       const docStatus = doc.status === 'DRAFT' ? 'Nháp' :
                         doc.status === 'PENDING_CONFIRMATION' ? 'Chờ xác nhận' :
                         doc.status === 'COMPLETED' ? 'Hoàn thành' :
+                        doc.status === 'REVERSED' ? 'Đã hoàn tác' :
                         doc.status === 'CANCELLED' ? 'Đã hủy' : doc.status;
 
       if (doc.items && doc.items.length > 0) {

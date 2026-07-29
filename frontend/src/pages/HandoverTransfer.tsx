@@ -25,12 +25,14 @@ import {
   CheckSquare,
   ArrowRight,
   Eye,
-  AlertTriangle
+  AlertTriangle,
+  Undo2
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { useModal } from '../context/ModalContext';
 import { useLocation, useNavigate, useSearchParams } from 'react-router-dom';
+import { Can } from '../components/Can';
 
 export const HandoverTransfer: React.FC = () => {
   const [searchParams] = useSearchParams();
@@ -45,7 +47,7 @@ export const HandoverTransfer: React.FC = () => {
   // Master data lists for Wizard dropdowns
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState(initialStatus); // ALL, DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED
+  const [activeTab, setActiveTab] = useState(initialStatus); // ALL, DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED, REVERSED
 
   // Pagination & List State
   const [documents, setDocuments] = useState<any[]>([]);
@@ -266,6 +268,35 @@ export const HandoverTransfer: React.FC = () => {
           fetchDocuments();
         } catch (err: any) {
           toast.error(err.response?.data?.message || 'Có lỗi xảy ra.');
+        }
+      }
+    });
+  };
+
+  const handleReverseDoc = (doc: any) => {
+    const reason = window.prompt(
+      `Nhập lý do hoàn tác hồ sơ ${doc.documentNo}:`,
+      'Hoàn tác do thao tác nhầm'
+    );
+    if (reason === null) return;
+    if (!reason.trim()) {
+      toast.warning('Vui lòng nhập lý do hoàn tác.');
+      return;
+    }
+
+    openConfirm({
+      title: 'Hoàn tác hồ sơ đã hoàn tất',
+      message: `Hệ thống sẽ khôi phục trạng thái, người sử dụng và vị trí trước hồ sơ ${doc.documentNo}. Chỉ thực hiện được khi tài sản chưa phát sinh thay đổi mới.`,
+      danger: true,
+      confirmText: 'Hoàn tác',
+      onConfirm: async () => {
+        try {
+          await api.post(`/handover/${doc.id}/reverse`, { reason: reason.trim() });
+          toast.success('Đã hoàn tác hồ sơ và khôi phục trạng thái tài sản.');
+          setViewingDoc(null);
+          fetchDocuments();
+        } catch (err: any) {
+          toast.error(err.response?.data?.message || 'Không thể hoàn tác hồ sơ.');
         }
       }
     });
@@ -551,7 +582,8 @@ export const HandoverTransfer: React.FC = () => {
                   { key: 'DRAFT', label: 'Nháp' },
                   { key: 'PENDING_CONFIRMATION', label: 'Chờ xác nhận' },
                   { key: 'COMPLETED', label: 'Hoàn tất' },
-                  { key: 'CANCELLED', label: 'Đã hủy' }
+                  { key: 'CANCELLED', label: 'Đã hủy' },
+                  { key: 'REVERSED', label: 'Đã hoàn tác' }
                 ].map((tab) => (
                   <button 
                     key={tab.key}
@@ -712,6 +744,10 @@ export const HandoverTransfer: React.FC = () => {
                           <span className="flex items-center text-slate-400 text-[9px] font-black uppercase tracking-wider bg-slate-100 px-2 py-1 rounded-full w-fit">
                             <X className="mr-1 h-3 w-3" /> Đã hủy
                           </span>
+                        ) : doc.status === 'REVERSED' ? (
+                          <span className="flex items-center text-violet-600 text-[9px] font-black uppercase tracking-wider bg-violet-50 px-2 py-1 rounded-full w-fit">
+                            <Undo2 className="mr-1 h-3 w-3" /> Đã hoàn tác
+                          </span>
                         ) : doc.status === 'PENDING_CONFIRMATION' ? (
                           <span className="flex items-center text-amber-600 text-[9px] font-black uppercase tracking-wider bg-amber-50 px-2 py-1 rounded-full w-fit">
                             <Clock className="mr-1 h-3 w-3" /> Chờ xác nhận
@@ -805,12 +841,33 @@ export const HandoverTransfer: React.FC = () => {
                                   >
                                     <History className="h-3.5 w-3.5 text-slate-400" /> Xem lịch sử
                                   </button>
+                                  <Can permission="TRANSFER_CANCEL">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setActiveMenuId(null);
+                                        handleReverseDoc(doc);
+                                      }}
+                                      className="w-full px-4 py-2 hover:bg-amber-50 text-xs font-bold text-amber-700 flex items-center gap-2"
+                                    >
+                                      <Undo2 className="h-3.5 w-3.5 text-amber-600" /> Hoàn tác
+                                    </button>
+                                  </Can>
                                 </>
                               )}
 
                               {/* state is CANCELLED */}
                               {doc.status === 'CANCELLED' && (
                                 <button 
+                                  onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); handleOpenDetailDrawer(doc.id); setDrawerTab('history'); }}
+                                  className="w-full px-4 py-2 hover:bg-slate-50 text-xs font-bold text-slate-600 flex items-center gap-2"
+                                >
+                                  <History className="h-3.5 w-3.5 text-slate-400" /> Xem lịch sử
+                                </button>
+                              )}
+
+                              {doc.status === 'REVERSED' && (
+                                <button
                                   onClick={(e) => { e.stopPropagation(); setActiveMenuId(null); handleOpenDetailDrawer(doc.id); setDrawerTab('history'); }}
                                   className="w-full px-4 py-2 hover:bg-slate-50 text-xs font-bold text-slate-600 flex items-center gap-2"
                                 >
@@ -915,10 +972,19 @@ export const HandoverTransfer: React.FC = () => {
                     Biên bản {viewingDoc.documentNo}
                   </h2>
                   <span className={`text-[9px] px-2 py-0.5 rounded-full font-black uppercase tracking-wider ${
-                    viewingDoc.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' : 
-                    (viewingDoc.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-655')
+                    viewingDoc.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-800' :
+                    (viewingDoc.status === 'REVERSED' ? 'bg-violet-100 text-violet-800' :
+                    (viewingDoc.status === 'CANCELLED' ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-655'))
                   }`}>
-                    {viewingDoc.status === 'COMPLETED' ? 'Hoàn tất' : (viewingDoc.status === 'CANCELLED' ? 'Đã hủy' : (viewingDoc.status === 'DRAFT' ? 'Nháp' : 'Chờ xác nhận'))}
+                    {viewingDoc.status === 'COMPLETED'
+                      ? 'Hoàn tất'
+                      : viewingDoc.status === 'REVERSED'
+                        ? 'Đã hoàn tác'
+                        : viewingDoc.status === 'CANCELLED'
+                          ? 'Đã hủy'
+                          : viewingDoc.status === 'DRAFT'
+                            ? 'Nháp'
+                            : 'Chờ xác nhận'}
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">Khởi tạo bởi hệ thống ngày {viewingDoc.createdAt ? format(new Date(viewingDoc.createdAt), 'dd/MM/yyyy') : '---'}</p>
@@ -984,6 +1050,15 @@ export const HandoverTransfer: React.FC = () => {
                     <div className="p-4 bg-slate-50 rounded-xl space-y-2">
                       <h4 className="text-xs font-bold text-slate-455 uppercase tracking-wider flex items-center gap-1.5"><AlertTriangle className="h-4 w-4" /> Lý do luân chuyển</h4>
                       <p className="text-xs text-slate-655 leading-relaxed font-semibold">{viewingDoc.reason}</p>
+                    </div>
+                  )}
+
+                  {viewingDoc.status === 'REVERSED' && viewingDoc.reversalReason && (
+                    <div className="p-4 bg-violet-50 border border-violet-100 rounded-xl space-y-2">
+                      <h4 className="text-xs font-bold text-violet-700 uppercase tracking-wider flex items-center gap-1.5">
+                        <Undo2 className="h-4 w-4" /> Lý do hoàn tác
+                      </h4>
+                      <p className="text-xs text-violet-800 leading-relaxed font-semibold">{viewingDoc.reversalReason}</p>
                     </div>
                   )}
                 </div>
@@ -1118,6 +1193,19 @@ export const HandoverTransfer: React.FC = () => {
                         <p className="font-extrabold text-rose-600">Hồ sơ đã hủy</p>
                         <p className="text-[10px] text-slate-500 font-semibold">{format(new Date(viewingDoc.cancelledAt), 'HH:mm dd/MM/yyyy')}</p>
                         <p className="text-slate-500 mt-1">Hành động hủy thực hiện bởi quản trị viên.</p>
+                      </div>
+                    )}
+
+                    {viewingDoc.status === 'REVERSED' && viewingDoc.reversedAt && (
+                      <div className="relative">
+                        <span className="absolute -left-[31px] top-0 h-4 w-4 rounded-full border-2 border-white bg-violet-500 shadow-sm flex items-center justify-center">
+                          <Undo2 className="h-2 w-2 text-white" />
+                        </span>
+                        <p className="font-extrabold text-violet-700">Đã hoàn tác hồ sơ</p>
+                        <p className="text-[10px] text-slate-500 font-semibold">
+                          {format(new Date(viewingDoc.reversedAt), 'HH:mm dd/MM/yyyy')} • {viewingDoc.reversedBy || 'QLTS Admin'}
+                        </p>
+                        <p className="text-slate-500 mt-1">{viewingDoc.reversalReason}</p>
                       </div>
                     )}
                   </div>

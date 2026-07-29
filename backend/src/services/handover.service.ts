@@ -132,7 +132,16 @@ export class HandoverService {
                     assetName: asset.assetName,
                     unit: asset.unit,
                     oldStatus: asset.status,
-                    newStatus: itemNewStatus
+                    newStatus: itemNewStatus,
+                    oldUserName: asset.currentUserName,
+                    oldUserPhone: asset.currentUserPhone,
+                    oldPosition: asset.currentPosition,
+                    oldDepartmentName: asset.departmentName,
+                    oldLocationName: asset.locationName,
+                    oldCityName: asset.cityName,
+                    oldProjectName: asset.projectName,
+                    oldHandoverDate: asset.handoverDate,
+                    snapshotCapturedAt: new Date()
                   };
                 }))
               }
@@ -263,6 +272,7 @@ export class HandoverService {
       if (!doc) throw new Error('Hồ sơ không tồn tại.');
       if (doc.status === 'COMPLETED') throw new Error('Không thể sửa hồ sơ đã hoàn tất.');
       if (doc.status === 'CANCELLED') throw new Error('Không thể sửa hồ sơ đã hủy.');
+      if (doc.status === 'REVERSED') throw new Error('Không thể sửa hồ sơ đã hoàn tác.');
 
       if (data.assetIds) {
         if (data.assetIds.length === 0) {
@@ -365,6 +375,7 @@ export class HandoverService {
       if (!doc) throw new Error('Hồ sơ không tồn tại.');
       if (doc.status === 'COMPLETED') throw new Error('Hồ sơ đã được hoàn tất trước đó.');
       if (doc.status === 'CANCELLED') throw new Error('Không thể hoàn tất hồ sơ đã hủy.');
+      if (doc.status === 'REVERSED') throw new Error('Không thể hoàn tất hồ sơ đã hoàn tác.');
 
       // Perform validation check for each asset at confirmation time
       const activeHandovers = await tx.handoverDocument.findMany({
@@ -407,12 +418,22 @@ export class HandoverService {
         const finalStatus = getHandoverItemNewStatus(doc.type as HandoverType, oldAsset.status);
         const isRecall = doc.type === 'RECALL';
         const isWarehouseReturn = isRecall || finalStatus === 'IN_STOCK';
-        if (item.newStatus !== finalStatus) {
-          await tx.handoverItem.update({
-            where: { id: item.id },
-            data: { newStatus: finalStatus }
-          });
-        }
+        await tx.handoverItem.update({
+          where: { id: item.id },
+          data: {
+            oldStatus: oldAsset.status,
+            newStatus: finalStatus,
+            oldUserName: oldAsset.currentUserName,
+            oldUserPhone: oldAsset.currentUserPhone,
+            oldPosition: oldAsset.currentPosition,
+            oldDepartmentName: oldAsset.departmentName,
+            oldLocationName: oldAsset.locationName,
+            oldCityName: oldAsset.cityName,
+            oldProjectName: oldAsset.projectName,
+            oldHandoverDate: oldAsset.handoverDate,
+            snapshotCapturedAt: new Date()
+          }
+        });
         const updatedAsset = await tx.asset.update({
           where: { id: item.assetId },
           data: {
@@ -496,12 +517,244 @@ export class HandoverService {
     }, { timeout: 60000 });
   }
 
+  static async reverseHandover(id: number, reason: string, performedBy: string) {
+    const cleanReason = String(reason || '').trim();
+    if (!cleanReason) throw new Error('Vui lòng nhập lý do hoàn tác.');
+
+    return await prisma.$transaction(async (tx) => {
+      const doc = await tx.handoverDocument.findUnique({
+        where: { id },
+        include: { items: true }
+      });
+
+      if (!doc) throw new Error('Hồ sơ không tồn tại.');
+      if (doc.status === 'REVERSED') throw new Error('Hồ sơ đã được hoàn tác trước đó.');
+      if (doc.status !== 'COMPLETED') throw new Error('Chỉ có thể hoàn tác hồ sơ đã hoàn tất.');
+
+      const confirmedAt = doc.confirmedAt || doc.createdAt;
+      const normalizedLocation = parseAndNormalizeLocation(doc.newLocation);
+      const expectedLocation = normalizedLocation.fullFormatted || doc.newLocation || null;
+      const expectedDepartment = doc.type === 'RECALL'
+        ? null
+        : normalizeDepartmentName(
+            doc.recipientDepartment,
+            normalizedLocation.city || doc.newCity,
+            normalizedLocation.project
+          ) || null;
+
+      for (const item of doc.items) {
+        const laterDocument = await tx.handoverDocument.findFirst({
+          where: {
+            id: { not: id },
+            status: 'COMPLETED',
+            confirmedAt: { gt: confirmedAt },
+            items: { some: { assetId: item.assetId } }
+          },
+          select: { documentNo: true }
+        });
+        if (laterDocument) {
+          throw new Error(
+            `Tài sản ${item.assetCode} đã phát sinh hồ sơ ${laterDocument.documentNo} sau giao dịch này, không thể hoàn tác.`
+          );
+        }
+
+        const asset = await tx.asset.findUnique({ where: { id: item.assetId } });
+        if (!asset) throw new Error(`Tài sản ${item.assetCode} không còn tồn tại.`);
+
+        const isWarehouseReturn = doc.type === 'RECALL' || item.newStatus === 'IN_STOCK';
+        const expectedUser = isWarehouseReturn ? null : doc.recipientName;
+        const expectedPhone = isWarehouseReturn ? null : doc.recipientPhone;
+        const expectedPosition = isWarehouseReturn ? null : doc.recipientPosition;
+        const expectedCity = normalizedLocation.city || doc.newCity || null;
+        const expectedProject = normalizedLocation.project || item.oldProjectName || null;
+        const sameText = (left: unknown, right: unknown) => String(left || '').trim() === String(right || '').trim();
+        if (
+          asset.status !== item.newStatus
+          || !sameText(asset.currentUserName, expectedUser)
+          || !sameText(asset.currentUserPhone, expectedPhone)
+          || !sameText(asset.currentPosition, expectedPosition)
+          || !sameText(asset.departmentName, expectedDepartment)
+          || !sameText(asset.locationName, expectedLocation)
+          || !sameText(asset.cityName, expectedCity)
+          || (expectedProject !== null && !sameText(asset.projectName, expectedProject))
+        ) {
+          throw new Error(
+            `Tài sản ${item.assetCode} đã thay đổi sau khi hồ sơ hoàn tất. Vui lòng kiểm tra lịch sử trước khi hoàn tác.`
+          );
+        }
+
+        const windowStart = new Date(confirmedAt.getTime() - 5 * 60 * 1000);
+        const windowEnd = new Date(confirmedAt.getTime() + 5 * 60 * 1000);
+        const auditLogs = await tx.auditLog.findMany({
+          where: {
+            entityType: 'ASSET',
+            entityId: item.assetId,
+            action: 'UPDATE',
+            createdAt: { gte: windowStart, lte: windowEnd }
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+        const matchingAudit = auditLogs.find((log) => {
+          try {
+            const details = log.details ? JSON.parse(log.details) : {};
+            const changes = details?.changes || {};
+            return (!changes.status || changes.status.new === item.newStatus)
+              && (!changes.locationName || sameText(changes.locationName.new, expectedLocation));
+          } catch {
+            return false;
+          }
+        });
+        let changes: Record<string, { old: any; new: any }> = {};
+        try {
+          changes = matchingAudit?.details
+            ? (JSON.parse(matchingAudit.details)?.changes || {})
+            : {};
+        } catch {
+          changes = {};
+        }
+        const hasStoredSnapshot = Boolean(item.snapshotCapturedAt);
+        if (!hasStoredSnapshot && !matchingAudit) {
+          throw new Error(
+            `Hồ sơ cũ ${doc.documentNo} không có đủ ảnh chụp dữ liệu trước giao dịch cho tài sản ${item.assetCode}, không thể hoàn tác tự động.`
+          );
+        }
+
+        const assignmentForDocument = await tx.assetAssignment.findFirst({
+          where: {
+            assetId: item.assetId,
+            note: { contains: doc.documentNo }
+          },
+          orderBy: { createdAt: 'desc' }
+        });
+        const previousAssignment = assignmentForDocument
+          ? await tx.assetAssignment.findFirst({
+              where: {
+                assetId: item.assetId,
+                createdAt: { lt: assignmentForDocument.createdAt }
+              },
+              orderBy: { createdAt: 'desc' }
+            })
+          : null;
+
+        const auditOld = (field: string, fallback: any) => (
+          Object.prototype.hasOwnProperty.call(changes, field) ? changes[field].old ?? null : fallback
+        );
+        const oldUserName = hasStoredSnapshot
+          ? item.oldUserName
+          : auditOld(
+              'currentUserName',
+              assignmentForDocument?.previousUserName ?? previousAssignment?.newUserName ?? null
+            );
+        const oldPosition = hasStoredSnapshot
+          ? item.oldPosition
+          : auditOld('currentPosition', previousAssignment?.newPosition ?? null);
+        const oldDepartmentName = hasStoredSnapshot
+          ? item.oldDepartmentName
+          : auditOld('departmentName', previousAssignment?.newDepartmentName ?? null);
+        const oldLocationName = hasStoredSnapshot
+          ? item.oldLocationName
+          : auditOld('locationName', previousAssignment?.newLocationName ?? null);
+        const oldCityName = hasStoredSnapshot
+          ? item.oldCityName
+          : auditOld('cityName', previousAssignment?.newCityName ?? null);
+        const parsedOldLocation = parseAndNormalizeLocation(oldLocationName);
+        const oldProjectName = hasStoredSnapshot
+          ? item.oldProjectName
+          : parsedOldLocation.project || null;
+        const oldUser = oldUserName
+          ? await tx.user.findFirst({ where: { fullName: oldUserName }, select: { phone: true } })
+          : null;
+        const oldUserPhone = hasStoredSnapshot ? item.oldUserPhone : oldUser?.phone ?? null;
+        const oldStatus = hasStoredSnapshot
+          ? item.oldStatus || 'IN_STOCK'
+          : auditOld('status', item.oldStatus ?? previousAssignment?.newStatus ?? 'IN_STOCK');
+        const oldHandoverDate = hasStoredSnapshot
+          ? item.oldHandoverDate
+          : (oldUserName ? previousAssignment?.effectiveAt : null) ?? null;
+
+        const restoredAsset = await tx.asset.update({
+          where: { id: item.assetId },
+          data: {
+            status: oldStatus,
+            currentUserName: oldUserName,
+            currentUserPhone: oldUserPhone,
+            currentPosition: oldPosition,
+            departmentName: oldDepartmentName,
+            locationName: oldLocationName,
+            cityName: oldCityName,
+            projectName: oldProjectName,
+            handoverDate: oldHandoverDate
+          }
+        });
+
+        await tx.assetAssignment.create({
+          data: {
+            assetId: item.assetId,
+            previousUserName: asset.currentUserName,
+            newUserName: oldUserName || 'KHO QLTS',
+            newPosition: oldPosition,
+            newDepartmentName: oldDepartmentName,
+            newLocationName: oldLocationName,
+            newCityName: oldCityName,
+            newStatus: oldStatus,
+            effectiveAt: new Date(),
+            note: `Hoàn tác hồ sơ ${doc.documentNo}: ${cleanReason}`
+          }
+        });
+
+        await AuditService.logAssetChange(
+          item.assetId,
+          asset,
+          restoredAsset,
+          performedBy,
+          tx,
+          `Hoàn tác hồ sơ ${doc.documentNo}: ${cleanReason}`
+        );
+      }
+
+      await tx.generatedDocument.updateMany({
+        where: {
+          fileUrl: `/handover/${doc.id}/pdf`,
+          status: 'COMPLETED'
+        },
+        data: { status: 'CANCELLED' }
+      });
+
+      const reversedDocument = await tx.handoverDocument.update({
+        where: { id },
+        data: {
+          status: 'REVERSED',
+          reversedAt: new Date(),
+          reversedBy: performedBy,
+          reversalReason: cleanReason
+        },
+        include: { items: true }
+      });
+
+      await AuditService.log({
+        entityType: 'HANDOVER',
+        entityId: id,
+        action: 'UNDO',
+        details: {
+          documentNo: doc.documentNo,
+          reason: cleanReason,
+          assetCount: doc.items.length
+        },
+        performedBy,
+        tx
+      });
+
+      return reversedDocument;
+    }, { timeout: 60000, isolationLevel: 'Serializable' });
+  }
+
   static async cancelHandover(id: number, performedBy: string) {
     return await prisma.$transaction(async (tx) => {
       const doc = await tx.handoverDocument.findUnique({ where: { id } });
       if (!doc) throw new Error('Hồ sơ không tồn tại.');
       if (doc.status === 'COMPLETED') throw new Error('Không thể hủy hồ sơ đã hoàn tất.');
       if (doc.status === 'CANCELLED') throw new Error('Hồ sơ đã được hủy trước đó.');
+      if (doc.status === 'REVERSED') throw new Error('Hồ sơ đã được hoàn tác trước đó.');
 
       const updatedDoc = await tx.handoverDocument.update({
         where: { id },
@@ -532,6 +785,7 @@ export class HandoverService {
         if (!doc) throw new Error(`Hồ sơ ID ${id} không tồn tại.`);
         if (doc.status === 'COMPLETED') throw new Error(`Hồ sơ ${doc.documentNo} đã hoàn tất, không thể hủy.`);
         if (doc.status === 'CANCELLED') continue;
+        if (doc.status === 'REVERSED') continue;
 
         const updated = await tx.handoverDocument.update({
           where: { id },
@@ -674,7 +928,15 @@ export class HandoverService {
 
     for (const doc of documents) {
       const typeText = doc.type === 'HANDOVER' ? 'Bàn giao' : (doc.type === 'TRANSFER' ? 'Điều chuyển' : 'Thu hồi');
-      const statusText = doc.status === 'COMPLETED' ? 'Hoàn tất' : (doc.status === 'CANCELLED' ? 'Đã hủy' : (doc.status === 'DRAFT' ? 'Nháp' : 'Chờ xác nhận'));
+      const statusText = doc.status === 'COMPLETED'
+        ? 'Hoàn tất'
+        : doc.status === 'REVERSED'
+          ? 'Đã hoàn tác'
+          : doc.status === 'CANCELLED'
+            ? 'Đã hủy'
+            : doc.status === 'DRAFT'
+              ? 'Nháp'
+              : 'Chờ xác nhận';
       const createdAtText = new Date(doc.createdAt).toLocaleDateString('vi-VN');
       const confirmedAtText = doc.confirmedAt ? new Date(doc.confirmedAt).toLocaleDateString('vi-VN') : '---';
       

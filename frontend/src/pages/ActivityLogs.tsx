@@ -252,6 +252,7 @@ export const ActivityLogs: React.FC = () => {
               <option value="UPDATE">Cập nhật</option>
               <option value="DELETE">Xóa</option>
               <option value="CREATE_AND_COMPLETE">Tạo và hoàn tất</option>
+              <option value="UNDO">Hoàn tác</option>
             </select>
           </div>
 
