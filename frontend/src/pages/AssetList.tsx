@@ -860,7 +860,9 @@ export const AssetList: React.FC = () => {
   };
 
   const openAssetDetail = (assetId: number, tab: string = 'info') => {
-    const asset = assets.find(a => a.id === assetId) || groupedViewAssets.find(a => a.id === assetId);
+    const asset = assets.find(a => a.id === assetId)
+      || tableFilterAssets.find(a => a.id === assetId)
+      || groupedViewAssets.find(a => a.id === assetId);
     if (!asset) return;
 
     let targetTab = tab;
@@ -888,7 +890,9 @@ export const AssetList: React.FC = () => {
         if (action === 'refresh') {
           refreshAssetData();
         } else {
-          const targetAsset = assets.find(a => a.id === id) || groupedViewAssets.find(a => a.id === id);
+          const targetAsset = assets.find(a => a.id === id)
+            || tableFilterAssets.find(a => a.id === id)
+            || groupedViewAssets.find(a => a.id === id);
           if (targetAsset) handleAssetAction(action, targetAsset);
         }
       }
