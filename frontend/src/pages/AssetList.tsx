@@ -107,6 +107,11 @@ export const AssetList: React.FC = () => {
   const [assetViewMode, setAssetViewMode] = useState<'table' | 'grouped' | 'location'>('table');
   const [openTableFilterKey, setOpenTableFilterKey] = useState<string | null>(null);
   const [tableColumnFilters, setTableColumnFilters] = useState<Record<string, string[]>>({});
+  const [tableFilterAssets, setTableFilterAssets] = useState<any[]>([]);
+  const [tableFilterDatasetKey, setTableFilterDatasetKey] = useState('');
+  const [tableFilterEnabled, setTableFilterEnabled] = useState(false);
+  const [tableFilterLoading, setTableFilterLoading] = useState(false);
+  const tableFilterRequestSeq = useRef(0);
 
   // Sync temporary states with URL filters
   const [tempStatus, setTempStatus] = useState<string[]>([]);
@@ -474,6 +479,40 @@ export const AssetList: React.FC = () => {
     }
   }, [searchParams]);
 
+  const tableFilterQueryKey = useMemo(() => {
+    const params = new URLSearchParams(searchParams);
+    params.delete('page');
+    params.delete('limit');
+    params.delete('sortBy');
+    params.delete('sortOrder');
+    return params.toString();
+  }, [searchParams]);
+
+  const fetchTableFilterAssets = useCallback(async () => {
+    if (!tableFilterEnabled || tableFilterDatasetKey === tableFilterQueryKey) return;
+    const requestId = ++tableFilterRequestSeq.current;
+    setTableFilterLoading(true);
+    try {
+      const params = Object.fromEntries(searchParams.entries());
+      delete params.page;
+      params.limit = String(GROUPED_VIEW_FETCH_LIMIT);
+      params.sortBy = sortBy;
+      params.sortOrder = sortOrder;
+      params.compact = 'grouped';
+      params.skipCount = 'true';
+      const res = await api.get('/assets', { params });
+      if (requestId !== tableFilterRequestSeq.current) return;
+      setTableFilterAssets(res.data.assets || []);
+      setTableFilterDatasetKey(tableFilterQueryKey);
+    } catch (err) {
+      if (requestId !== tableFilterRequestSeq.current) return;
+      console.error(err);
+      toast.error('Không thể tải đầy đủ dữ liệu cho bộ lọc cột');
+    } finally {
+      if (requestId === tableFilterRequestSeq.current) setTableFilterLoading(false);
+    }
+  }, [searchParams, sortBy, sortOrder, tableFilterDatasetKey, tableFilterEnabled, tableFilterQueryKey]);
+
   const fetchGroupedViewAssets = useCallback(async () => {
     if (assetViewMode === 'table') return;
     const requestId = ++groupedRequestSeq.current;
@@ -515,6 +554,14 @@ export const AssetList: React.FC = () => {
   useEffect(() => {
     fetchGroupedViewAssets();
   }, [fetchGroupedViewAssets]);
+
+  useEffect(() => {
+    fetchTableFilterAssets();
+  }, [fetchTableFilterAssets]);
+
+  useEffect(() => {
+    setTableColumnFilters({});
+  }, [tableFilterQueryKey]);
 
   const clearSelection = () => {
     setSelectedIds([]);
@@ -1358,8 +1405,13 @@ export const AssetList: React.FC = () => {
     }
   };
 
+  const tableFilterDataReady = tableFilterDatasetKey === tableFilterQueryKey;
+  const tableFilterOptionAssets = tableFilterEnabled
+    ? (tableFilterDataReady ? tableFilterAssets : [])
+    : assets;
+
   const tableFilterOptions = sortableColumns.reduce<Record<string, string[]>>((result, column) => {
-    const assetsMatchingOtherFilters = assets.filter((asset) => (
+    const assetsMatchingOtherFilters = tableFilterOptionAssets.filter((asset) => (
       Object.entries(tableColumnFilters).every(([filterKey, selectedValues]) => (
         filterKey === column.key || selectedValues.includes(getTableColumnValue(asset, filterKey))
       ))
@@ -1371,13 +1423,28 @@ export const AssetList: React.FC = () => {
     return result;
   }, {});
 
-  const visibleTableAssets = assets.filter((asset) => (
+  const activeTableFilterCount = Object.keys(tableColumnFilters).length;
+  const filteredTableAssets = (
+    activeTableFilterCount > 0 && tableFilterDataReady ? tableFilterAssets : assets
+  ).filter((asset) => (
     Object.entries(tableColumnFilters).every(([columnKey, selectedValues]) => (
       selectedValues.includes(getTableColumnValue(asset, columnKey))
     ))
   ));
+  const sortedFilteredTableAssets = activeTableFilterCount > 0
+    && sortableColumns.some((column) => column.key === sortBy)
+    ? [...filteredTableAssets].sort((left, right) => {
+        const comparison = getTableColumnValue(left, sortBy)
+          .localeCompare(getTableColumnValue(right, sortBy), 'vi', { numeric: true });
+        return sortOrder === 'asc' ? comparison : -comparison;
+      })
+    : filteredTableAssets;
 
-  const activeTableFilterCount = Object.keys(tableColumnFilters).length;
+  const filteredTableTotal = activeTableFilterCount > 0 ? sortedFilteredTableAssets.length : total;
+  const filteredTableTotalPages = Math.max(1, Math.ceil(filteredTableTotal / limit));
+  const visibleTableAssets = activeTableFilterCount > 0
+    ? sortedFilteredTableAssets.slice((page - 1) * limit, page * limit)
+    : assets;
   const currentPageAssetIds = visibleTableAssets.map((asset) => asset.id);
   const isCurrentPageFullySelected = visibleTableAssets.length > 0 && currentPageAssetIds.every(id => selectedIds.includes(id));
   const isCurrentPagePartiallySelected = visibleTableAssets.length > 0
@@ -1396,6 +1463,25 @@ export const AssetList: React.FC = () => {
       return next;
     });
     setOpenTableFilterKey(null);
+    updateParam('page', '1');
+  };
+
+  const clearTableColumnFilters = () => {
+    setTableColumnFilters({});
+    setOpenTableFilterKey(null);
+    updateParam('page', '1');
+  };
+
+  const toggleTableFilterMenu = (columnKey: string) => {
+    if (openTableFilterKey === columnKey) {
+      setOpenTableFilterKey(null);
+      return;
+    }
+    setTableFilterEnabled(true);
+    setOpenTableFilterKey(columnKey);
+    if (tableFilterEnabled && !tableFilterDataReady && !tableFilterLoading) {
+      fetchTableFilterAssets();
+    }
   };
 
   const toggleSelectAll = () => {
@@ -2606,7 +2692,7 @@ export const AssetList: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setOpenTableFilterKey(openTableFilterKey === col.key ? null : col.key)}
+                          onClick={() => toggleTableFilterMenu(col.key)}
                           className={cn(
                             "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-100",
                             tableColumnFilters[col.key]
@@ -2621,11 +2707,12 @@ export const AssetList: React.FC = () => {
                       </div>
                       {openTableFilterKey === col.key && (
                         <TableColumnFilterMenu
-                          key={`${col.key}-${(tableColumnFilters[col.key] || []).join('|')}`}
+                          key={`${col.key}-${tableFilterDatasetKey}-${(tableColumnFilters[col.key] || []).join('|')}`}
                           columnKey={col.key}
                           columnLabel={col.label}
                           options={tableFilterOptions[col.key] || []}
                           selectedValues={tableColumnFilters[col.key]}
+                          loading={tableFilterLoading || !tableFilterDataReady}
                           alignRight={col.key === 'cityName' || col.key === 'status'}
                           onApply={(selectedValues) => applyTableColumnFilter(col.key, selectedValues)}
                           onClose={() => setOpenTableFilterKey(null)}
@@ -2646,7 +2733,7 @@ export const AssetList: React.FC = () => {
                     <p className="text-[13px] font-bold text-slate-500">Không có dòng nào phù hợp bộ lọc cột</p>
                     <button
                       type="button"
-                      onClick={() => setTableColumnFilters({})}
+                      onClick={clearTableColumnFilters}
                       className="mt-2 text-[11px] font-black text-primary-700 hover:underline"
                     >
                       Xóa bộ lọc cột
@@ -2857,16 +2944,18 @@ export const AssetList: React.FC = () => {
         {/* PAGINATION — fixed at bottom */}
         <div className="min-h-12 shrink-0 px-3 sm:px-4 border-t border-[#E2E8F0] flex justify-between items-center bg-white">
            <div className="flex items-center gap-4">
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Trang {page} / {Math.ceil(total/limit)} ({total} tài sản)</p>
+              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                Trang {page} / {activeTableFilterCount > 0 ? filteredTableTotalPages : Math.ceil(total / limit)} ({filteredTableTotal} tài sản)
+              </p>
               {activeTableFilterCount > 0 && (
                 <button
                   type="button"
-                  onClick={() => setTableColumnFilters({})}
+                  onClick={clearTableColumnFilters}
                   className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-primary-50 px-2 text-[10px] font-black text-primary-700 hover:bg-primary-100"
                   title="Xóa toàn bộ bộ lọc cột"
                 >
                   <Filter className="h-3 w-3" />
-                  {visibleTableAssets.length}/{assets.length} dòng
+                  {filteredTableTotal}/{tableFilterAssets.length} tài sản
                   <X className="h-3 w-3" />
                 </button>
               )}
@@ -2887,7 +2976,7 @@ export const AssetList: React.FC = () => {
            </div>
            <div className="flex space-x-1.5">
              <button disabled={page === 1} onClick={() => updateParam('page', String(page - 1))} className="h-11 w-11 lg:h-8 lg:w-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-             <button disabled={page * limit >= total} onClick={() => updateParam('page', String(page + 1))} className="h-11 w-11 lg:h-8 lg:w-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
+             <button disabled={page >= filteredTableTotalPages} onClick={() => updateParam('page', String(page + 1))} className="h-11 w-11 lg:h-8 lg:w-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
            </div>
         </div>
       </div>
@@ -3211,6 +3300,7 @@ const TableColumnFilterMenu = ({
   columnLabel,
   options,
   selectedValues,
+  loading,
   alignRight,
   onApply,
   onClose,
@@ -3219,6 +3309,7 @@ const TableColumnFilterMenu = ({
   columnLabel: string;
   options: string[];
   selectedValues?: string[];
+  loading?: boolean;
   alignRight?: boolean;
   onApply: (selectedValues: string[]) => void;
   onClose: () => void;
@@ -3288,12 +3379,19 @@ const TableColumnFilterMenu = ({
             type="text"
             value={searchValue}
             onChange={(event) => setSearchValue(event.target.value)}
-            placeholder="Tìm trong các dòng hiện tại..."
+            placeholder="Tìm trong toàn bộ danh sách..."
             className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-2 text-[11px] font-semibold text-slate-700 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
           />
         </div>
 
         <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-100 p-1 custom-scrollbar">
+          {loading ? (
+            <div className="flex min-h-32 items-center justify-center gap-2 text-[11px] font-bold text-slate-500">
+              <Loader2 className="h-4 w-4 animate-spin text-primary-500" />
+              Đang tải đầy đủ danh sách...
+            </div>
+          ) : (
+            <>
           <label className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-[11px] font-black text-slate-700 hover:bg-slate-50">
             <input
               id={`table-column-filter-${columnKey}-all`}
@@ -3324,12 +3422,15 @@ const TableColumnFilterMenu = ({
               <span className="truncate">{option}</span>
             </label>
           ))}
+            </>
+          )}
         </div>
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => onApply(options)}
+            disabled={loading}
             className="min-h-9 px-2 text-[11px] font-black text-slate-500 hover:text-slate-800"
           >
             Xóa lọc
@@ -3345,7 +3446,8 @@ const TableColumnFilterMenu = ({
             <button
               type="button"
               onClick={() => onApply(draftValues)}
-              className="min-h-9 rounded-lg bg-slate-900 px-3 text-[11px] font-black text-white hover:bg-slate-800"
+              disabled={loading}
+              className="min-h-9 rounded-lg bg-slate-900 px-3 text-[11px] font-black text-white hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Áp dụng
             </button>
