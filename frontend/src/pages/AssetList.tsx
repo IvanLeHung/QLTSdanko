@@ -105,6 +105,8 @@ export const AssetList: React.FC = () => {
   const [isAdvancedFilterOpen, setIsAdvancedFilterOpen] = useState(false);
   const [showAssetControls, setShowAssetControls] = useState(false);
   const [assetViewMode, setAssetViewMode] = useState<'table' | 'grouped' | 'location'>('table');
+  const [openTableFilterKey, setOpenTableFilterKey] = useState<string | null>(null);
+  const [tableColumnFilters, setTableColumnFilters] = useState<Record<string, string[]>>({});
 
   // Sync temporary states with URL filters
   const [tempStatus, setTempStatus] = useState<string[]>([]);
@@ -514,10 +516,6 @@ export const AssetList: React.FC = () => {
     fetchGroupedViewAssets();
   }, [fetchGroupedViewAssets]);
 
-  const currentPageAssetIds = useMemo(() => assets.map(a => a.id), [assets]);
-  const isCurrentPageFullySelected = assets.length > 0 && currentPageAssetIds.every(id => selectedIds.includes(id));
-  const isCurrentPagePartiallySelected = assets.length > 0 && currentPageAssetIds.some(id => selectedIds.includes(id)) && !isCurrentPageFullySelected;
-
   const clearSelection = () => {
     setSelectedIds([]);
     setSelectedAssetMap({});
@@ -535,28 +533,6 @@ export const AssetList: React.FC = () => {
         return next;
       }
       return { ...prev, [asset.id]: asset };
-    });
-  };
-
-  const toggleSelectAll = () => {
-    if (isCurrentPageFullySelected) {
-      const pageIdSet = new Set(currentPageAssetIds);
-      setSelectedIds(prev => prev.filter(id => !pageIdSet.has(id)));
-      setSelectedAssetMap(prev => {
-        const next = { ...prev };
-        currentPageAssetIds.forEach(id => delete next[id]);
-        return next;
-      });
-      return;
-    }
-
-    setSelectedIds(prev => Array.from(new Set([...prev, ...currentPageAssetIds])));
-    setSelectedAssetMap(prev => {
-      const next = { ...prev };
-      assets.forEach(asset => {
-        next[asset.id] = asset;
-      });
-      return next;
     });
   };
 
@@ -1353,6 +1329,89 @@ export const AssetList: React.FC = () => {
     { key: "cityName", label: "Thành phố / Dự án / Vị trí", className: "hidden xl:table-cell w-[250px]" },
     { key: "status", label: "Trạng thái", className: "w-[150px]" },
   ];
+
+  const getTableColumnValue = (asset: any, columnKey: string) => {
+    switch (columnKey) {
+      case 'assetCode':
+        return String(asset.assetCode || 'Chưa có mã');
+      case 'level4Name':
+        return String(asset.level4Name || 'Chưa phân nhóm');
+      case 'assetName':
+        return String(asset.assetNameShort || asset.assetName || 'Chưa có tên');
+      case 'currentUserName':
+        return String(asset.currentUserName || 'Chưa cấp phát');
+      case 'departmentName':
+        return String(asset.departmentName || 'Chưa có phòng ban');
+      case 'cityName': {
+        const location = cleanLocationName(
+          asset.cityName,
+          asset.locationName,
+          asset.projectName,
+          asset.departmentName
+        );
+        return [asset.cityName, location].filter(Boolean).join(' - ') || 'Chưa có vị trí';
+      }
+      case 'status':
+        return getStatusLabel(asset.status).label;
+      default:
+        return String(asset[columnKey] || '-');
+    }
+  };
+
+  const tableFilterOptions = sortableColumns.reduce<Record<string, string[]>>((result, column) => {
+    result[column.key] = Array.from(new Set(assets.map((asset) => getTableColumnValue(asset, column.key))))
+      .sort((a, b) => a.localeCompare(b, 'vi', { numeric: true }));
+    return result;
+  }, {});
+
+  const visibleTableAssets = assets.filter((asset) => (
+    Object.entries(tableColumnFilters).every(([columnKey, selectedValues]) => (
+      selectedValues.includes(getTableColumnValue(asset, columnKey))
+    ))
+  ));
+
+  const activeTableFilterCount = Object.keys(tableColumnFilters).length;
+  const currentPageAssetIds = visibleTableAssets.map((asset) => asset.id);
+  const isCurrentPageFullySelected = visibleTableAssets.length > 0 && currentPageAssetIds.every(id => selectedIds.includes(id));
+  const isCurrentPagePartiallySelected = visibleTableAssets.length > 0
+    && currentPageAssetIds.some(id => selectedIds.includes(id))
+    && !isCurrentPageFullySelected;
+
+  const applyTableColumnFilter = (columnKey: string, selectedValues: string[]) => {
+    const allValues = tableFilterOptions[columnKey] || [];
+    setTableColumnFilters((previous) => {
+      const next = { ...previous };
+      if (selectedValues.length === allValues.length && selectedValues.every((value) => allValues.includes(value))) {
+        delete next[columnKey];
+      } else {
+        next[columnKey] = selectedValues;
+      }
+      return next;
+    });
+    setOpenTableFilterKey(null);
+  };
+
+  const toggleSelectAll = () => {
+    if (isCurrentPageFullySelected) {
+      const pageIdSet = new Set(currentPageAssetIds);
+      setSelectedIds(prev => prev.filter(id => !pageIdSet.has(id)));
+      setSelectedAssetMap(prev => {
+        const next = { ...prev };
+        currentPageAssetIds.forEach(id => delete next[id]);
+        return next;
+      });
+      return;
+    }
+
+    setSelectedIds(prev => Array.from(new Set([...prev, ...currentPageAssetIds])));
+    setSelectedAssetMap(prev => {
+      const next = { ...prev };
+      visibleTableAssets.forEach(asset => {
+        next[asset.id] = asset;
+      });
+      return next;
+    });
+  };
 
   const statCards = useMemo(() => {
     if (!stats) return [];
@@ -2523,19 +2582,48 @@ export const AssetList: React.FC = () => {
                     </button>
                   </th>
                   {sortableColumns.map(col => (
-                    <th key={col.key} className={cn("px-3 uppercase text-[10px] font-black text-slate-400 tracking-widest overflow-hidden", col.className)}>
-                      <button 
-                        onClick={() => handleSort(col.key)}
-                        className="group inline-flex items-center gap-1.5 hover:text-slate-700 transition-colors whitespace-nowrap"
-                      >
-                        {col.label}
-                        <span className={cn(
-                          "transition-colors",
-                          sortBy === col.key ? "text-primary-600" : "text-slate-300 group-hover:text-slate-400"
-                        )}>
-                          {sortBy === col.key ? (sortOrder === 'desc' ? '▴' : '▾') : '▾'}
-                        </span>
-                      </button>
+                    <th key={col.key} className={cn("relative px-3 uppercase text-[10px] font-black text-slate-400 tracking-widest", col.className)}>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          onClick={() => handleSort(col.key)}
+                          className="group inline-flex min-w-0 items-center gap-1.5 hover:text-slate-700 transition-colors whitespace-nowrap"
+                          title={`Sắp xếp ${col.label} A-Z / Z-A`}
+                        >
+                          <span className="truncate">{col.label}</span>
+                          {sortBy === col.key && (
+                            <span className="shrink-0 text-primary-600">
+                              {sortOrder === 'asc' ? 'A-Z' : 'Z-A'}
+                            </span>
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setOpenTableFilterKey(openTableFilterKey === col.key ? null : col.key)}
+                          className={cn(
+                            "inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors focus:outline-none focus:ring-2 focus:ring-primary-100",
+                            tableColumnFilters[col.key]
+                              ? "bg-primary-100 text-primary-700"
+                              : "text-slate-300 hover:bg-slate-100 hover:text-slate-600"
+                          )}
+                          aria-label={`Lọc cột ${col.label}`}
+                          title={`Lọc các dòng đang hiển thị theo ${col.label}`}
+                        >
+                          <Filter className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                      {openTableFilterKey === col.key && (
+                        <TableColumnFilterMenu
+                          key={`${col.key}-${(tableColumnFilters[col.key] || []).join('|')}`}
+                          columnKey={col.key}
+                          columnLabel={col.label}
+                          options={tableFilterOptions[col.key] || []}
+                          selectedValues={tableColumnFilters[col.key]}
+                          alignRight={col.key === 'cityName' || col.key === 'status'}
+                          onApply={(selectedValues) => applyTableColumnFilter(col.key, selectedValues)}
+                          onClose={() => setOpenTableFilterKey(null)}
+                        />
+                      )}
                     </th>
                   ))}
                   <th className="px-3 w-16 text-right uppercase text-[10px] font-black text-slate-400 tracking-widest">Tác vụ</th>
@@ -2544,7 +2632,21 @@ export const AssetList: React.FC = () => {
             <tbody className="divide-y divide-[#F1F5F9]">
               {loading ? (
                 <tr><td colSpan={9} className="p-12 text-center"><Loader2 className="h-6 w-6 animate-spin text-primary-500 mx-auto" /></td></tr>
-              ) : assets.map((asset) => {
+              ) : visibleTableAssets.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="p-12 text-center">
+                    <Filter className="mx-auto mb-2 h-6 w-6 text-slate-300" />
+                    <p className="text-[13px] font-bold text-slate-500">Không có dòng nào phù hợp bộ lọc cột</p>
+                    <button
+                      type="button"
+                      onClick={() => setTableColumnFilters({})}
+                      className="mt-2 text-[11px] font-black text-primary-700 hover:underline"
+                    >
+                      Xóa bộ lọc cột
+                    </button>
+                  </td>
+                </tr>
+              ) : visibleTableAssets.map((asset) => {
                 const status = getStatusLabel(asset.status);
                 const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
                 const missingFields = getMissingAssetFields(asset);
@@ -2749,6 +2851,18 @@ export const AssetList: React.FC = () => {
         <div className="min-h-12 shrink-0 px-3 sm:px-4 border-t border-[#E2E8F0] flex justify-between items-center bg-white">
            <div className="flex items-center gap-4">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Trang {page} / {Math.ceil(total/limit)} ({total} tài sản)</p>
+              {activeTableFilterCount > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setTableColumnFilters({})}
+                  className="inline-flex min-h-8 items-center gap-1.5 rounded-lg bg-primary-50 px-2 text-[10px] font-black text-primary-700 hover:bg-primary-100"
+                  title="Xóa toàn bộ bộ lọc cột"
+                >
+                  <Filter className="h-3 w-3" />
+                  {visibleTableAssets.length}/{assets.length} dòng
+                  <X className="h-3 w-3" />
+                </button>
+              )}
               <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
                 <span>Hiển thị</span>
                 <select 
@@ -3083,6 +3197,154 @@ export const AssetList: React.FC = () => {
       )}
   </div>
 );
+};
+
+const TableColumnFilterMenu = ({
+  columnKey,
+  columnLabel,
+  options,
+  selectedValues,
+  alignRight,
+  onApply,
+  onClose,
+}: {
+  columnKey: string;
+  columnLabel: string;
+  options: string[];
+  selectedValues?: string[];
+  alignRight?: boolean;
+  onApply: (selectedValues: string[]) => void;
+  onClose: () => void;
+}) => {
+  const [searchValue, setSearchValue] = useState('');
+  const [draftValues, setDraftValues] = useState<string[]>(selectedValues || options);
+  const normalizedSearch = searchValue.trim().toLocaleLowerCase('vi');
+  const visibleOptions = options.filter((option) => (
+    !normalizedSearch || option.toLocaleLowerCase('vi').includes(normalizedSearch)
+  ));
+  const allVisibleSelected = visibleOptions.length > 0
+    && visibleOptions.every((option) => draftValues.includes(option));
+
+  const toggleVisibleOptions = () => {
+    setDraftValues((previous) => {
+      if (allVisibleSelected) {
+        const visibleSet = new Set(visibleOptions);
+        return previous.filter((value) => !visibleSet.has(value));
+      }
+      return Array.from(new Set([...previous, ...visibleOptions]));
+    });
+  };
+
+  const toggleOption = (option: string) => {
+    setDraftValues((previous) => (
+      previous.includes(option)
+        ? previous.filter((value) => value !== option)
+        : [...previous, option]
+    ));
+  };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="fixed inset-0 z-40 cursor-default"
+        aria-label="Đóng bộ lọc cột"
+        onClick={onClose}
+      />
+      <div
+        className={cn(
+          "absolute top-full z-50 mt-1 w-72 rounded-xl border border-slate-200 bg-white p-3 text-left normal-case tracking-normal shadow-2xl",
+          alignRight ? "right-2" : "left-2"
+        )}
+      >
+        <div className="mb-2 flex items-center justify-between gap-2">
+          <p className="truncate text-[11px] font-black uppercase text-slate-600" title={columnLabel}>
+            Lọc: {columnLabel}
+          </p>
+          <button
+            type="button"
+            onClick={onClose}
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-700"
+            aria-label="Đóng"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <div className="relative mb-2">
+          <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-slate-400" />
+          <input
+            id={`table-column-filter-${columnKey}`}
+            name={`tableColumnFilter${columnKey}`}
+            type="text"
+            value={searchValue}
+            onChange={(event) => setSearchValue(event.target.value)}
+            placeholder="Tìm trong các dòng hiện tại..."
+            className="h-9 w-full rounded-lg border border-slate-200 bg-slate-50 pl-8 pr-2 text-[11px] font-semibold text-slate-700 outline-none focus:border-primary-400 focus:ring-2 focus:ring-primary-100"
+          />
+        </div>
+
+        <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-100 p-1 custom-scrollbar">
+          <label className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-[11px] font-black text-slate-700 hover:bg-slate-50">
+            <input
+              id={`table-column-filter-${columnKey}-all`}
+              name={`tableColumnFilter${columnKey}All`}
+              type="checkbox"
+              checked={allVisibleSelected}
+              onChange={toggleVisibleOptions}
+              className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+            />
+            <span>{normalizedSearch ? 'Chọn tất cả kết quả tìm' : 'Chọn tất cả'}</span>
+          </label>
+          {visibleOptions.length === 0 ? (
+            <p className="px-2 py-5 text-center text-[11px] font-semibold text-slate-400">Không tìm thấy giá trị</p>
+          ) : visibleOptions.map((option, index) => (
+            <label
+              key={option}
+              className="flex min-h-9 cursor-pointer items-center gap-2 rounded-md px-2 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+              title={option}
+            >
+              <input
+                id={`table-column-filter-${columnKey}-${index}`}
+                name={`tableColumnFilter${columnKey}Value`}
+                type="checkbox"
+                checked={draftValues.includes(option)}
+                onChange={() => toggleOption(option)}
+                className="h-4 w-4 shrink-0 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+              />
+              <span className="truncate">{option}</span>
+            </label>
+          ))}
+        </div>
+
+        <div className="mt-3 flex items-center justify-between gap-2">
+          <button
+            type="button"
+            onClick={() => onApply(options)}
+            className="min-h-9 px-2 text-[11px] font-black text-slate-500 hover:text-slate-800"
+          >
+            Xóa lọc
+          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-9 rounded-lg border border-slate-200 px-3 text-[11px] font-black text-slate-600 hover:bg-slate-50"
+            >
+              Hủy
+            </button>
+            <button
+              type="button"
+              onClick={() => onApply(draftValues)}
+              className="min-h-9 rounded-lg bg-slate-900 px-3 text-[11px] font-black text-white hover:bg-slate-800"
+            >
+              Áp dụng
+            </button>
+          </div>
+        </div>
+      </div>
+    </>
+  );
 };
 
 const StatCard = ({ label, value, icon, color, active, onClick }: any) => {
