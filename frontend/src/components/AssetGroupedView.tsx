@@ -29,6 +29,7 @@ import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import { useAuth } from '../context/AuthContext';
 import { getAssetStatusConfig } from '../constants/assetStatus';
+import { getAssetAssigneeDisplay } from '../utils/assetAssignee';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -440,7 +441,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                             </th>
                             <th className="w-[170px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Mã tài sản</th>
                             <th className="px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Tên tài sản</th>
-                            <th className="w-[210px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Người sử dụng / quản lý</th>
+                            <th className="w-[210px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Người sử dụng / Khu vực</th>
                             <th className="w-[260px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Đơn vị / vị trí</th>
                             <th className="w-[170px] px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">Trạng thái</th>
                             <th className="w-16 px-3 text-right text-[10px] font-black uppercase tracking-widest text-slate-400">Tác vụ</th>
@@ -565,8 +566,7 @@ const AssetRow = ({
   onAction: (action: string, asset: any) => void;
 }) => {
   const status = getAssetStatusConfig(asset.status);
-  const assignee = asset.currentUserName || 'Chưa cấp phát';
-  const position = asset.currentPosition || asset.departmentName || '-';
+  const assignee = getAssetAssigneeDisplay(asset);
   const city = String(asset.cityName || '').trim();
   const rawLocation = String(asset.locationName || '').trim();
   const locationAlreadyIncludesCity = city
@@ -606,10 +606,12 @@ const AssetRow = ({
       </td>
       <td className="px-3">
         <div className="flex min-w-0 items-start gap-2">
-          <User className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+          {assignee.isArea
+            ? <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-primary-500" />
+            : <User className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />}
           <div className="min-w-0">
-            <p className={cn("truncate text-[12px] font-bold", asset.currentUserName ? "text-slate-800" : "text-slate-400 italic")} title={assignee}>{assignee}</p>
-            <p className="truncate text-[10px] font-medium text-slate-400" title={position}>{position}</p>
+            <p className={cn("truncate text-[12px] font-bold", assignee.isArea || asset.currentUserName ? "text-slate-800" : "text-slate-400 italic")} title={assignee.name}>{assignee.name}</p>
+            <p className={cn("truncate text-[10px] font-medium", assignee.isArea ? "text-primary-500" : "text-slate-400")} title={assignee.detail}>{assignee.detail}</p>
           </div>
         </div>
       </td>

@@ -58,6 +58,7 @@ import { CompleteRepairForm } from './CompleteRepairForm';
 import { toast } from 'react-toastify';
 import { AppliedFormsBlock } from './AppliedFormsBlock';
 import { AssetDocumentsTab } from './AssetDocumentsTab';
+import { getAssetAssigneeDisplay } from '../utils/assetAssignee';
 import { BMFormDispatcher } from './forms/BMFormDispatcher';
 import { BaseModal } from './BaseModal';
 import {
@@ -274,6 +275,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const currentOpenTicket = asset?.repairTickets?.find((t: any) => t.status === 'OPEN' || t.status === 'IN_PROGRESS');
   const latestAssignment = asset?.assignments?.[0];
   const latestHandover = asset?.latestHandoverDocument;
+  const assigneeDisplay = getAssetAssigneeDisplay(asset);
   const currentAssignmentPhone = asset?.currentUserPhone || asset?.latestAssignmentPhone || latestHandover?.recipientPhone || latestAssignment?.recipientPhone;
   const assignProjectLocationTree = getProjectLocationTree(assignLocationSelection.city, assignLocationSelection.project);
   const assignProjectLocationLevels = getLocationTreeLevels(assignProjectLocationTree, assignLocationSelection.path);
@@ -637,8 +639,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
             <div className="px-8 mb-6">
               <div className="grid grid-cols-3 gap-4 p-4 bg-slate-50/80 rounded-3xl border border-slate-100">
                 <div className="px-4 space-y-1">
-                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Người dùng hiện tại</p>
-                  <p className="text-sm font-bold text-slate-700 truncate">{asset.currentUserName || 'Chưa cấp phát'}</p>
+                  <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Người dùng / Khu vực hiện tại</p>
+                  <p className="text-sm font-bold text-slate-700 truncate" title={assigneeDisplay.name}>{assigneeDisplay.name}</p>
                 </div>
                 <div className="px-4 space-y-1 border-x border-slate-200">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kiểm kê cuối</p>
@@ -1165,9 +1167,13 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                 <div className="space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300">
                   <div className="p-6 bg-blue-50/50 rounded-3xl border border-blue-100 flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">Người đang sử dụng</p>
-                      <h4 className="text-lg font-black text-slate-900">{asset.currentUserName || 'Sẵn sàng cấp phát'}</h4>
-                      <p className="text-xs font-bold text-blue-500 mt-1">{asset.departmentName} {asset.currentPosition ? ` • ${asset.currentPosition}` : ''}</p>
+                      <p className="text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">
+                        {assigneeDisplay.isArea ? 'Khu vực đang sử dụng' : 'Người đang sử dụng'}
+                      </p>
+                      <h4 className="text-lg font-black text-slate-900">{assigneeDisplay.name}</h4>
+                      <p className="text-xs font-bold text-blue-500 mt-1">
+                        {assigneeDisplay.isArea ? assigneeDisplay.detail : `${asset.departmentName || ''}${asset.currentPosition ? ` • ${asset.currentPosition}` : ''}`}
+                      </p>
                     </div>
                     <button
                       type="button"
@@ -1883,8 +1889,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <InfoRow label="Họ tên người nhận" value={asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName} icon={User} />
-                    <InfoRow label="Chức vụ" value={asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition} icon={Tag} />
+                    <InfoRow label={assigneeDisplay.isArea ? "Khu vực nhận" : "Họ tên người nhận"} value={assigneeDisplay.name} icon={assigneeDisplay.isArea ? MapPin : User} />
+                    <InfoRow label={assigneeDisplay.isArea ? "Loại phân bổ" : "Chức vụ"} value={assigneeDisplay.isArea ? assigneeDisplay.detail : asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition} icon={Tag} />
                     <InfoRow label="Số điện thoại" value={currentAssignmentPhone} icon={Info} />
                     <InfoRow label="Phòng ban" value={asset.departmentName || latestAssignment?.newDepartmentName || latestHandover?.recipientDepartment} icon={Building2} />
                     <InfoRow label="Dự án" value={asset.projectName} icon={Building2} />

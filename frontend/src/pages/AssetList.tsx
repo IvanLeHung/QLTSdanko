@@ -44,6 +44,7 @@ import { NormalizationModal } from '../components/NormalizationModal';
 import { useModal } from '../context/ModalContext';
 import { AssetGroupedView, type AssetGroupedBook } from '../components/AssetGroupedView';
 import { getAssetStatusConfig } from '../constants/assetStatus';
+import { getAssetAssigneeDisplay } from '../utils/assetAssignee';
 
 const GROUPED_VIEW_FETCH_LIMIT = 10000;
 
@@ -654,7 +655,7 @@ export const AssetList: React.FC = () => {
     if (isEmpty(asset.serialNumber)) missing.push('Serial');
     if (isEmpty(asset.cityName)) missing.push('Thành phố');
     if (isEmpty(asset.locationName)) missing.push('Vị trí');
-    if (asset.status === 'ASSIGNED' && isEmpty(asset.currentUserName)) missing.push('Người dùng');
+    if (asset.status === 'ASSIGNED' && isEmpty(asset.currentUserName) && !asset.assignedAreaName) missing.push('Người dùng / Khu vực');
     if (asset.status === 'ASSIGNED' && isEmpty(asset.departmentName)) missing.push('Phòng ban');
     return missing;
   };
@@ -1381,7 +1382,7 @@ export const AssetList: React.FC = () => {
     { key: "assetCode", label: "Mã tài sản", className: "w-[170px]" },
     { key: "level4Name", label: "Nhóm tài sản LV4", className: "w-[190px]" },
     { key: "assetName", label: "Tên tài sản", className: "w-[280px] md:w-[320px]" },
-    { key: "currentUserName", label: "Người sử dụng / Chức vụ", className: "hidden xl:table-cell w-[190px]" },
+    { key: "currentUserName", label: "Người sử dụng / Khu vực", className: "hidden xl:table-cell w-[190px]" },
     { key: "departmentName", label: "Phòng ban", className: "hidden xl:table-cell w-[160px]" },
     { key: "cityName", label: "Thành phố / Dự án / Vị trí", className: "hidden xl:table-cell w-[250px]" },
     { key: "status", label: "Trạng thái", className: "w-[150px]" },
@@ -1396,7 +1397,7 @@ export const AssetList: React.FC = () => {
       case 'assetName':
         return String(asset.assetNameShort || asset.assetName || 'Chưa có tên');
       case 'currentUserName':
-        return String(asset.currentUserName || 'Chưa cấp phát');
+        return getAssetAssigneeDisplay(asset).name;
       case 'departmentName':
         return String(asset.departmentName || 'Chưa có phòng ban');
       case 'cityName': {
@@ -2762,6 +2763,7 @@ export const AssetList: React.FC = () => {
                   asset.departmentName
                 );
                 const recoveryAlert = getRecoveryAlert(asset);
+                const assigneeDisplay = getAssetAssigneeDisplay(asset);
                 return (
                   <tr 
                     key={asset.id} 
@@ -2817,8 +2819,18 @@ export const AssetList: React.FC = () => {
                       </div>
                     </td>
                     <td className="hidden xl:table-cell px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
-                      <p className="text-[13px] font-semibold text-slate-800 leading-tight">{asset.currentUserName || <span className="text-slate-300 font-medium italic">Chưa cấp phát</span>}</p>
-                      <p className="text-[10px] font-medium text-slate-400 leading-tight">{asset.currentPosition || '-'}</p>
+                      <p className={cn(
+                        "text-[13px] font-semibold leading-tight truncate",
+                        assigneeDisplay.isArea || asset.currentUserName ? "text-slate-800" : "text-slate-300 italic"
+                      )} title={assigneeDisplay.name}>
+                        {assigneeDisplay.name}
+                      </p>
+                      <p className={cn(
+                        "text-[10px] font-medium leading-tight",
+                        assigneeDisplay.isArea ? "text-primary-500" : "text-slate-400"
+                      )}>
+                        {assigneeDisplay.detail}
+                      </p>
                     </td>
                     <td className="hidden xl:table-cell px-3" onClick={(e) => { e.stopPropagation(); openAssetDetail(asset.id, 'assignment'); }}>
                       <p className="text-[12px] font-semibold text-slate-700 leading-tight flex items-center gap-1.5 truncate" title={asset.departmentName || 'Chưa có phòng ban'}>

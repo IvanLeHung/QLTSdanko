@@ -22,8 +22,10 @@ const assets = [
     id: 2,
     assetCode: 'TS-002',
     assetName: 'Tài sản 2',
-    status: 'IN_STOCK',
-    currentUserName: 'Kho',
+    status: 'ASSIGNED',
+    currentUserName: null,
+    currentAssigneeType: 'AREA',
+    assignedAreaName: 'Bể bơi Danko City',
     cityName: 'Hà Nội',
     locationName: 'Kho C6',
   },
@@ -37,8 +39,8 @@ const groups: AssetGroupedBook[] = [{
   assets,
   locations: [{ key: 'Hà Nội', assets }],
   statusSummary: {
-    assigned: 1,
-    inStock: 1,
+    assigned: 2,
+    inStock: 0,
     needsAction: 0,
   },
 }];
@@ -102,5 +104,12 @@ describe('AssetGroupedView', () => {
     fireEvent.click(screen.getByRole('button', { name: /Mở thao tác nhóm/i }));
     fireEvent.click(screen.getByRole('button', { name: 'Thanh lý nhóm' }));
     expect(baseProps.onAssetsAction).toHaveBeenCalledWith('liquidation', assets);
+  });
+
+  it('shows an assigned area instead of marking the asset as unassigned', () => {
+    render(<AssetGroupedView {...baseProps} />);
+
+    expect(screen.getByText('Bể bơi Danko City')).toBeInTheDocument();
+    expect(screen.getByText('Khu vực sử dụng')).toBeInTheDocument();
   });
 });

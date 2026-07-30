@@ -47,6 +47,44 @@ const addDays = (value: Date, days: number) => {
   return date;
 };
 
+const AREA_ASSIGNEE_PREFIX = /^KHU\s+VỰC:\s*/i;
+
+const attachAreaAssignees = async (assets: any[]) => {
+  const candidateIds = assets
+    .filter((asset) => asset.status === 'ASSIGNED' && !String(asset.currentUserName || '').trim())
+    .map((asset) => asset.id);
+  if (candidateIds.length === 0) return assets;
+
+  const latestAssignments = await prisma.assetAssignment.findMany({
+    where: { assetId: { in: candidateIds } },
+    orderBy: [
+      { assetId: 'asc' },
+      { effectiveAt: 'desc' },
+      { id: 'desc' }
+    ],
+    distinct: ['assetId'],
+    select: {
+      assetId: true,
+      newUserName: true
+    }
+  });
+
+  const areaByAssetId = new Map<number, string>();
+  latestAssignments.forEach((assignment) => {
+    if (!AREA_ASSIGNEE_PREFIX.test(assignment.newUserName)) return;
+    const areaName = assignment.newUserName.replace(AREA_ASSIGNEE_PREFIX, '').trim();
+    if (areaName) areaByAssetId.set(assignment.assetId, areaName);
+  });
+  if (areaByAssetId.size === 0) return assets;
+
+  return assets.map((asset) => {
+    const assignedAreaName = areaByAssetId.get(asset.id);
+    return assignedAreaName
+      ? { ...asset, currentAssigneeType: 'AREA', assignedAreaName }
+      : asset;
+  });
+};
+
 router.post('/group-report', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
   try {
     const rawIds = Array.isArray(req.body?.assetIds) ? req.body.assetIds : [];
@@ -891,8 +929,10 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
           prisma.asset.count({ where })
         ]);
 
+    const assetsWithAreaAssignees = await attachAreaAssignees(assets);
+
     res.json({
-      assets,
+      assets: assetsWithAreaAssignees,
       pagination: {
         total,
         page: Number(page),
