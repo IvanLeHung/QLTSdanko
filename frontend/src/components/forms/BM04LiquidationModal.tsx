@@ -2,15 +2,18 @@ import React, { useState } from 'react';
 import { BaseFormModal, FormSection, FormField, FormInput, FormSelect, FormTextArea } from './BaseFormModal';
 import { AttachmentUploader, SignatureBlock } from './FormComponents';
 import { Trash2, DollarSign, Search, FileText } from 'lucide-react';
+import api from '../../lib/api';
+import { toast } from 'react-toastify';
 
 interface BM04ModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSubmit: (data: any) => void;
   asset?: any;
+  assets?: any[];
 }
 
-export const BM04LiquidationModal: React.FC<BM04ModalProps> = ({ isOpen, onClose, onSubmit, asset }) => {
+export const BM04LiquidationModal: React.FC<BM04ModalProps> = ({ isOpen, onClose, onSubmit, asset, assets = [] }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     documentNo: `BM04-${new Date().getFullYear()}${Math.floor(Math.random()*10000).toString().padStart(4, '0')}`,
@@ -23,14 +26,38 @@ export const BM04LiquidationModal: React.FC<BM04ModalProps> = ({ isOpen, onClose
     note: '',
     status: 'COMPLETED'
   });
+  const targetAssets = assets.length > 0 ? assets : asset ? [asset] : [];
+  const isBulkAction = targetAssets.length > 1;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (targetAssets.length === 0) {
+      toast.error('Thiếu thông tin tài sản');
+      return;
+    }
+    if (!formData.reason.trim()) {
+      toast.error('Vui lòng nhập lý do thanh lý');
+      return;
+    }
     setLoading(true);
-    setTimeout(() => {
-      onSubmit(formData);
-      setLoading(false);
+    try {
+      const response = await api.post('/operational/liquidation', {
+        assetIds: targetAssets.map((item) => item.id),
+        liquidationDate: formData.date,
+        liquidationType: formData.method,
+        reason: formData.reason,
+        buyerName: formData.buyer,
+        documentNo: formData.documentRef || formData.documentNo,
+        totalValue: formData.liquidationValue,
+        note: formData.note
+      });
+      toast.success(`Đã thanh lý ${targetAssets.length} tài sản`);
+      onSubmit(response.data);
       onClose();
-    }, 800);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể thanh lý tài sản');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -49,12 +76,21 @@ export const BM04LiquidationModal: React.FC<BM04ModalProps> = ({ isOpen, onClose
         <div className="col-span-2 p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center">
           <div>
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tài sản</p>
-            <p className="text-sm font-black text-slate-800">{asset?.assetName || '---'}</p>
-            <p className="text-[10px] font-bold text-primary-600">{asset?.assetCode || 'Mã TS'}</p>
+            <p className="text-sm font-black text-slate-800">
+              {isBulkAction ? `${targetAssets.length} tài sản đã chọn` : targetAssets[0]?.assetName || '---'}
+            </p>
+            <p className="text-[10px] font-bold text-primary-600">
+              {isBulkAction
+                ? targetAssets.slice(0, 3).map((item) => item.assetCode).filter(Boolean).join(', ')
+                : targetAssets[0]?.assetCode || 'Mã TS'}
+              {isBulkAction && targetAssets.length > 3 ? ` +${targetAssets.length - 3}` : ''}
+            </p>
           </div>
           <div className="text-right">
              <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Giá trị còn lại</p>
-             <p className="text-sm font-black text-rose-600">{(asset?.currentValue || 0).toLocaleString()}đ</p>
+             <p className="text-sm font-black text-rose-600">
+               {targetAssets.reduce((sum, item) => sum + Number(item.currentValue || 0), 0).toLocaleString()}đ
+             </p>
           </div>
         </div>
       </FormSection>

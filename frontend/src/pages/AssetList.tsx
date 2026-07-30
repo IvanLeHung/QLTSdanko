@@ -98,6 +98,7 @@ export const AssetList: React.FC = () => {
 
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [selectedAssetMap, setSelectedAssetMap] = useState<Record<number, any>>({});
+  const [groupSelectionResetKey, setGroupSelectionResetKey] = useState(0);
   const [localSearch, setLocalSearch] = useState(search);
 
   // Compact Filters States
@@ -546,6 +547,17 @@ export const AssetList: React.FC = () => {
     ]);
   }, [fetchAssets, fetchStats, fetchGroupedViewAssets, fetchTableFilterAssets]);
 
+  const resetAllAssetSelections = useCallback(() => {
+    setSelectedIds([]);
+    setSelectedAssetMap({});
+    setGroupSelectionResetKey((current) => current + 1);
+  }, []);
+
+  const completeGroupedAction = useCallback(() => {
+    resetAllAssetSelections();
+    void refreshAssetData();
+  }, [refreshAssetData, resetAllAssetSelections]);
+
   useEffect(() => {
     fetchAssets();
   }, [fetchAssets]);
@@ -913,7 +925,7 @@ export const AssetList: React.FC = () => {
           initialAssetIds: [asset.id],
           defaultType: asset.status === 'IN_STOCK' ? 'HANDOVER' : 'TRANSFER',
           source: 'ASSET_DETAIL',
-          onComplete: refreshAssetData
+          onComplete: completeGroupedAction
         });
         break;
       case 'revoke':
@@ -921,34 +933,34 @@ export const AssetList: React.FC = () => {
           initialAssetIds: [asset.id],
           defaultType: 'RECALL',
           source: 'ASSET_DETAIL',
-          onComplete: refreshAssetData
+          onComplete: completeGroupedAction
         });
         break;
       case 'inventory':
         openModal("INVENTORY_WIZARD", {
           initialAssetIds: [asset.id],
-          onComplete: refreshAssetData
+          onComplete: completeGroupedAction
         });
         break;
       case 'repair':
         if (asset.repairTickets && asset.repairTickets.length > 0) {
           openModal('REPAIR_PROCESSING', {
             ticketId: asset.repairTickets[0].id,
-            onSuccess: refreshAssetData
+            onSuccess: completeGroupedAction
           });
           break;
         }
         openModal("BM_FORM", {
           code: 'BM03/QLTS',
           data: { asset },
-          onSubmit: refreshAssetData
+          onSubmit: completeGroupedAction
         });
         break;
       case 'liquidation':
         openModal("BM_FORM", {
           code: 'BM04/QLTS',
           data: { asset },
-          onSubmit: refreshAssetData
+          onSubmit: completeGroupedAction
         });
         break;
       case 'print_label':
@@ -967,6 +979,7 @@ export const AssetList: React.FC = () => {
             selectedAssets: [asset]
           }
         });
+        resetAllAssetSelections();
         toast.success("Đã thêm tài sản vào danh sách in tem");
         break;
       case 'history':
@@ -1151,6 +1164,7 @@ export const AssetList: React.FC = () => {
         `bao_cao_nhom_tai_san_${new Date().toISOString().slice(0, 10)}.xlsx`
       );
       toast.success('Đã tải báo cáo nhóm gồm Dashboard, chi tiết và lịch sử bàn giao.');
+      resetAllAssetSelections();
     } catch (err: any) {
       console.error(err);
       toast.error(await getExportErrorMessage(err, 'Không thể xuất báo cáo Excel của nhóm.'));
@@ -1170,13 +1184,14 @@ export const AssetList: React.FC = () => {
           }
         });
         toast.success(`Đã thêm ${actionAssets.length} tài sản vào danh sách in tem`);
+        resetAllAssetSelections();
         break;
       case 'handover':
         openModal("TRANSFER_WIZARD", {
           initialAssetIds: actionAssetIds,
           defaultType: actionAssets.some((asset: any) => asset.status === 'IN_STOCK') ? 'HANDOVER' : 'TRANSFER',
           source: 'ASSET_DETAIL',
-          onComplete: refreshAssetData
+          onComplete: completeGroupedAction
         });
         break;
       case 'revoke':
@@ -1184,13 +1199,33 @@ export const AssetList: React.FC = () => {
           initialAssetIds: actionAssetIds,
           defaultType: 'RECALL',
           source: 'ASSET_DETAIL',
-          onComplete: refreshAssetData
+          onComplete: completeGroupedAction
         });
         break;
       case 'inventory':
         openModal("INVENTORY_WIZARD", {
           initialAssetIds: actionAssetIds,
-          onComplete: refreshAssetData
+          onComplete: completeGroupedAction
+        });
+        break;
+      case 'repair':
+        openModal("BM_FORM", {
+          code: 'BM03/QLTS',
+          data: {
+            asset: actionAssets[0],
+            assets: actionAssets
+          },
+          onSubmit: completeGroupedAction
+        });
+        break;
+      case 'liquidation':
+        openModal("BM_FORM", {
+          code: 'BM04/QLTS',
+          data: {
+            asset: actionAssets[0],
+            assets: actionAssets
+          },
+          onSubmit: completeGroupedAction
         });
         break;
       case 'export':
@@ -2628,6 +2663,7 @@ export const AssetList: React.FC = () => {
             onAssetAction={handleAssetAction}
             onAssetsAction={handleGroupedAssetsAction}
             onApplyFilter={updateParam}
+            selectionResetKey={groupSelectionResetKey}
           />
         ) : (
         <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
@@ -2878,7 +2914,7 @@ export const AssetList: React.FC = () => {
                                        icon={<Wrench className="h-4 w-4 text-amber-500" />} 
                                        onClick={() => {
                                          setActiveMenuId(null);
-                                         openModal('REPAIR_PROCESSING', { ticketId: asset.repairTickets[0].id, onSuccess: refreshAssetData });
+                                         openModal('REPAIR_PROCESSING', { ticketId: asset.repairTickets[0].id, onSuccess: completeGroupedAction });
                                        }} 
                                      />
                                    </Can>

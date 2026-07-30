@@ -10,9 +10,10 @@ interface BM03ModalProps {
   onClose: () => void;
   onSubmit: (data: any) => void;
   asset?: any;
+  assets?: any[];
 }
 
-export const BM03DamagedModal: React.FC<BM03ModalProps> = ({ isOpen, onClose, onSubmit, asset }) => {
+export const BM03DamagedModal: React.FC<BM03ModalProps> = ({ isOpen, onClose, onSubmit, asset, assets = [] }) => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     documentNo: `BM03-${new Date().getFullYear()}${Math.floor(Math.random()*10000).toString().padStart(4, '0')}`,
@@ -26,30 +27,47 @@ export const BM03DamagedModal: React.FC<BM03ModalProps> = ({ isOpen, onClose, on
     initialAssessment: 'Hao mòn tự nhiên',
     action: 'Chuyển sửa chữa'
   });
+  const targetAssets = assets.length > 0 ? assets : asset ? [asset] : [];
+  const isBulkAction = targetAssets.length > 1;
 
   const submitTicket = async (statusType: 'OPEN' | 'DRAFT') => {
     if (!formData.description) {
       toast.error("Vui lòng nhập mô tả sự cố");
       return;
     }
-    if (!asset) {
+    if (targetAssets.length === 0) {
       toast.error("Thiếu thông tin tài sản");
       return;
     }
     setLoading(true);
     try {
-      const response = await api.post('/repairs', {
-        assetId: asset.id,
-        reportedBy: formData.reportedBy,
-        reportedDate: new Date(formData.discoveryDate),
-        damageLevel: formData.level,
-        damageDescription: formData.description,
-        cause: formData.cause,
-        canContinueUsing: formData.canContinue,
-        repairAction: formData.action,
-        status: statusType
-      });
-      toast.success(statusType === 'DRAFT' ? "Đã lưu nháp biên bản hỏng thành công" : "Đã gửi báo hỏng tài sản thành công");
+      const response = isBulkAction
+        ? await api.post('/operational/damage', {
+            assetIds: targetAssets.map((item) => item.id),
+            reportDate: formData.discoveryDate,
+            damageLevel: formData.level,
+            description: formData.description,
+            solution: formData.action === 'Chuyển sửa chữa' ? 'REPAIRING' : 'DAMAGED',
+            note: [formData.cause, formData.initialAssessment, formData.action].filter(Boolean).join(' - ')
+          })
+        : await api.post('/repairs', {
+            assetId: targetAssets[0].id,
+            reportedBy: formData.reportedBy,
+            reportedDate: new Date(formData.discoveryDate),
+            damageLevel: formData.level,
+            damageDescription: formData.description,
+            cause: formData.cause,
+            canContinueUsing: formData.canContinue,
+            repairAction: formData.action,
+            status: statusType
+          });
+      toast.success(
+        isBulkAction
+          ? `Đã lập hồ sơ sửa chữa / bảo trì cho ${targetAssets.length} tài sản`
+          : statusType === 'DRAFT'
+            ? "Đã lưu nháp biên bản hỏng thành công"
+            : "Đã gửi báo hỏng tài sản thành công"
+      );
       onSubmit(response.data);
       onClose();
     } catch (err: any) {
@@ -68,7 +86,7 @@ export const BM03DamagedModal: React.FC<BM03ModalProps> = ({ isOpen, onClose, on
       documentNo={formData.documentNo}
       date={formData.date}
       onConfirm={() => submitTicket('OPEN')}
-      onSaveDraft={() => submitTicket('DRAFT')}
+      onSaveDraft={isBulkAction ? undefined : () => submitTicket('DRAFT')}
       submitting={loading}
       confirmLabel="Xác nhận báo hỏng"
       isCompleted={false}
@@ -78,16 +96,25 @@ export const BM03DamagedModal: React.FC<BM03ModalProps> = ({ isOpen, onClose, on
         <div className="col-span-2 p-6 bg-slate-50 rounded-2xl border border-slate-100 grid grid-cols-2 md:grid-cols-3 gap-6">
           <div className="space-y-1">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Tài sản</p>
-            <p className="text-sm font-black text-slate-800">{asset?.assetName || '---'}</p>
-            <p className="text-[10px] font-black text-primary-600 uppercase">{asset?.assetCode || 'Mã TS'}</p>
+            <p className="text-sm font-black text-slate-800">
+              {isBulkAction ? `${targetAssets.length} tài sản đã chọn` : targetAssets[0]?.assetName || '---'}
+            </p>
+            <p className="text-[10px] font-black text-primary-600 uppercase">
+              {isBulkAction
+                ? targetAssets.slice(0, 3).map((item) => item.assetCode).filter(Boolean).join(', ')
+                : targetAssets[0]?.assetCode || 'Mã TS'}
+              {isBulkAction && targetAssets.length > 3 ? ` +${targetAssets.length - 3}` : ''}
+            </p>
           </div>
           <div className="space-y-1">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Người đang giữ</p>
-            <p className="text-sm font-bold text-slate-700">{asset?.currentUserName || 'Trong kho'}</p>
+            <p className="text-sm font-bold text-slate-700">{isBulkAction ? 'Nhiều người dùng / đơn vị' : targetAssets[0]?.currentUserName || 'Trong kho'}</p>
           </div>
           <div className="space-y-1">
             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí</p>
-            <p className="text-sm font-bold text-slate-700 truncate">{asset?.cityName} - {asset?.locationName}</p>
+            <p className="text-sm font-bold text-slate-700 truncate">
+              {isBulkAction ? 'Theo vị trí hiện tại của từng tài sản' : `${targetAssets[0]?.cityName || ''} - ${targetAssets[0]?.locationName || ''}`}
+            </p>
           </div>
         </div>
       </FormSection>

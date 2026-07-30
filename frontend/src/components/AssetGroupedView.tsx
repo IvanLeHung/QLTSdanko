@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   Activity,
   ArrowRightLeft,
@@ -73,6 +73,7 @@ interface AssetGroupedViewProps {
   onAssetAction: (action: string, asset: any) => void;
   onAssetsAction?: (action: string, assets: any[]) => void;
   onApplyFilter: (key: string, value: string) => void;
+  selectionResetKey?: number;
 }
 
 export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
@@ -87,6 +88,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
   onAssetAction,
   onAssetsAction,
   onApplyFilter,
+  selectionResetKey = 0,
 }) => {
   const { hasPermission } = useAuth();
   const [openAssetMenuId, setOpenAssetMenuId] = useState<number | null>(null);
@@ -94,6 +96,13 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [groupQuickFilters, setGroupQuickFilters] = useState<Record<string, GroupQuickFilter>>({});
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    setSelectedIds(new Set());
+    setOpenAssetMenuId(null);
+    setOpenGroupMenuKey(null);
+  }, [selectionResetKey]);
 
   const selectedAssets = useMemo(() => {
     if (selectedIds.size === 0) return [];
@@ -190,6 +199,29 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
     if (assets.length === 1) onAssetAction(action, assets[0]);
   };
 
+  const scrollToLastSelectedAsset = () => {
+    const lastSelectedId = Array.from(selectedIds).at(-1);
+    if (!lastSelectedId) return;
+
+    const containingGroup = groups.find((group) => group.assets.some((asset) => asset.id === lastSelectedId));
+    if (containingGroup) {
+      setCollapsedGroups((prev) => {
+        if (!prev.has(containingGroup.key)) return prev;
+        const next = new Set(prev);
+        next.delete(containingGroup.key);
+        return next;
+      });
+    }
+
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        const row = scrollContainerRef.current?.querySelector<HTMLElement>(`[data-asset-id="${lastSelectedId}"]`);
+        row?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        row?.focus({ preventScroll: true });
+      });
+    });
+  };
+
   const selectedLabel = `${selectedAssets.length.toLocaleString('vi-VN')} tài sản`;
 
   return (
@@ -216,7 +248,14 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
 
       {selectedAssets.length > 0 && (
         <div className="shrink-0 border-b border-slate-200 bg-slate-900 px-4 py-2 text-white flex flex-wrap items-center justify-between gap-2">
-          <div className="text-[12px] font-black uppercase tracking-wide">Đã chọn {selectedLabel}</div>
+          <button
+            type="button"
+            onClick={scrollToLastSelectedAsset}
+            className="min-h-10 rounded-xl px-2 text-left text-[12px] font-black uppercase tracking-wide hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-white/20"
+            title="Đi tới tài sản cuối cùng đã chọn"
+          >
+            Đã chọn {selectedLabel}
+          </button>
           <div className="flex flex-wrap items-center gap-2">
             {hasPermission('TRANSFER_CREATE') && (
               <>
@@ -226,6 +265,12 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
             )}
             <ToolbarButton icon={<Printer className="h-4 w-4" />} label="In QR" onClick={() => runAssetsAction('print_label', selectedAssets)} />
             <ToolbarButton icon={<ClipboardCheck className="h-4 w-4" />} label="Kiểm kê" onClick={() => runAssetsAction('inventory', selectedAssets)} />
+            {hasPermission('REPAIR_CREATE') && (
+              <>
+                <ToolbarButton icon={<Wrench className="h-4 w-4" />} label="Sửa chữa / Bảo trì" onClick={() => runAssetsAction('repair', selectedAssets)} />
+                <ToolbarButton icon={<Trash className="h-4 w-4" />} label="Thanh lý" onClick={() => runAssetsAction('liquidation', selectedAssets)} />
+              </>
+            )}
             <button
               type="button"
               onClick={() => setSelectedIds(new Set())}
@@ -238,7 +283,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
         </div>
       )}
 
-      <div className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth bg-slate-50/60 p-2 sm:p-3">
+      <div ref={scrollContainerRef} className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth bg-slate-50/60 p-2 sm:p-3">
         {loading ? (
           <div className="h-full flex items-center justify-center">
             <Loader2 className="h-6 w-6 animate-spin text-primary-500" />
@@ -362,6 +407,12 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                                   <>
                                     <MenuItem icon={<ArrowRightLeft className="h-4 w-4" />} label="Bàn giao nhóm" onClick={() => runAssetsAction('handover', group.assets)} />
                                     <MenuItem icon={<RotateCcw className="h-4 w-4" />} label="Thu hồi nhóm" onClick={() => runAssetsAction('revoke', group.assets)} />
+                                  </>
+                                )}
+                                {hasPermission('REPAIR_CREATE') && (
+                                  <>
+                                    <MenuItem icon={<Wrench className="h-4 w-4" />} label="Sửa chữa / Bảo trì nhóm" onClick={() => runAssetsAction('repair', group.assets)} />
+                                    <MenuItem icon={<Trash className="h-4 w-4" />} label="Thanh lý nhóm" onClick={() => runAssetsAction('liquidation', group.assets)} />
                                   </>
                                 )}
                               </div>
@@ -528,7 +579,11 @@ const AssetRow = ({
   const hasOpenTicket = asset.repairTickets && asset.repairTickets.length > 0;
 
   return (
-    <tr className={cn("h-12 hover:bg-slate-50 transition-colors", active ? "bg-primary-50/50" : selected ? "bg-primary-50/25" : "bg-white")}>
+    <tr
+      data-asset-id={asset.id}
+      tabIndex={-1}
+      className={cn("h-12 hover:bg-slate-50 transition-colors focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-300", active ? "bg-primary-50/50" : selected ? "bg-primary-50/25" : "bg-white")}
+    >
       <td className="px-3">
         <button
           type="button"
