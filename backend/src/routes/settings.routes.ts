@@ -699,13 +699,20 @@ router.post(
       const name = String(req.body.name || '').trim();
       const level = Number(req.body.level);
 
-      if (!cityName || !projectName || !name || ![1, 2].includes(level)) {
+      if (!cityName || !projectName || !name || ![1, 2, 3, 4].includes(level)) {
         return res.status(400).json({
           message: 'Thành phố, dự án, tên vị trí và cấp vị trí không hợp lệ.'
         });
       }
-      if (level === 2 && !parentPath) {
-        return res.status(400).json({ message: 'Vui lòng chọn Khu vực trước khi thêm Địa điểm / công trình.' });
+      const parentSegments = parentPath
+        .split(' / ')
+        .map((segment) => segment.trim())
+        .filter(Boolean);
+      if (level > 1 && parentSegments.length !== level - 1) {
+        const parentLabels = ['Khu vực', 'Địa điểm / công trình', 'Tầng / khu chức năng'];
+        return res.status(400).json({
+          message: `Vui lòng chọn đầy đủ ${parentLabels.slice(0, level - 1).join(', ')} trước khi thêm vị trí.`
+        });
       }
       if (name.length > 200) {
         return res.status(400).json({ message: 'Tên vị trí không được vượt quá 200 ký tự.' });

@@ -261,6 +261,13 @@ const PROJECT_LOCATION_TREES: Record<string, LocationTree> = {
 
 export const getProjectLocationTree = (city: string, project: string) => PROJECT_LOCATION_TREES[`${city}::${project}`] || null;
 
+const PROJECT_LOCATION_LEVEL_LABELS = [
+  'Khu vực',
+  'Địa điểm / công trình',
+  'Tầng / khu chức năng',
+  'Vị trí chi tiết'
+];
+
 export const getLocationTreeLevels = (tree: LocationTree | null, selectedPath: string[]) => {
   const levels: string[][] = [];
   let node: LocationTree | null = tree;
@@ -482,14 +489,14 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     [selectedCity, selectedProject, projectLocationNodes, resolvedCity, resolvedProject]
   );
   const baseProjectLocationLevels = getLocationTreeLevels(projectLocationTree, selectedLocationPath);
-  const selectedArea = selectedLocationPath[0];
-  const projectLocationLevels = (
-    projectLocationTree &&
-    selectedArea &&
-    selectedArea !== 'Khác' &&
-    baseProjectLocationLevels.length === 1 &&
-    projectLocationTree[selectedArea] === null
-  )
+  const canAddChildToSelectedLeaf = Boolean(
+    projectLocationTree
+    && selectedLocationPath.length > 0
+    && selectedLocationPath[0] !== 'Khác'
+    && selectedLocationPath.length < PROJECT_LOCATION_LEVEL_LABELS.length
+    && isLocationPathComplete(projectLocationTree, selectedLocationPath)
+  );
+  const projectLocationLevels = canAddChildToSelectedLeaf
     ? [...baseProjectLocationLevels, []]
     : baseProjectLocationLevels;
 
@@ -861,16 +868,18 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
 
   const handleCreateProjectLocation = async (depth: number) => {
     const name = newLocationNodeName.trim();
+    const levelLabel = PROJECT_LOCATION_LEVEL_LABELS[depth] || `Phân cấp ${depth + 1}`;
     if (!name) {
-      toast.error(depth === 0 ? 'Vui lòng nhập tên Khu vực' : 'Vui lòng nhập tên Địa điểm / công trình');
+      toast.error(`Vui lòng nhập tên ${levelLabel}`);
       return;
     }
     if (!resolvedCity || !resolvedProject) {
       toast.error('Vui lòng chọn Thành phố và Dự án trước');
       return;
     }
-    if (depth === 1 && !selectedLocationPath[0]) {
-      toast.error('Vui lòng chọn Khu vực trước');
+    if (depth > 0 && selectedLocationPath.slice(0, depth).filter(Boolean).length !== depth) {
+      const parentLabel = PROJECT_LOCATION_LEVEL_LABELS[depth - 1] || `phân cấp ${depth}`;
+      toast.error(`Vui lòng chọn ${parentLabel} trước`);
       return;
     }
 
@@ -1504,10 +1513,12 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               {projectLocationTree ? (
                                 <div className="space-y-3">
                                   {projectLocationLevels.map((options, depth) => {
-                                    const labels = ['Khu vực', 'Địa điểm / công trình', 'Tầng / khu chức năng', 'Vị trí chi tiết'];
+                                    const labels = PROJECT_LOCATION_LEVEL_LABELS;
                                     return (
                                       <div key={depth} className="space-y-1">
-                                        <label className="font-bold text-slate-500">{labels[depth] || `Phân cấp ${depth + 1}`} *</label>
+                                        <label className="font-bold text-slate-500">
+                                          {labels[depth] || `Phân cấp ${depth + 1}`}{options.length > 0 ? ' *' : ''}
+                                        </label>
                                         <select
                                           value={selectedLocationPath[depth] || ''}
                                           onChange={(e) => {
@@ -1525,7 +1536,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                           ))}
                                           {depth === 0 && <option value="Khác">Khác</option>}
                                         </select>
-                                        {depth <= 1 && hasPermission('PERMISSION_MANAGE') && (
+                                        {depth < PROJECT_LOCATION_LEVEL_LABELS.length && hasPermission('PERMISSION_MANAGE') && (
                                           <div className="pt-1.5">
                                             {addingLocationDepth !== depth ? (
                                               <button
@@ -1537,7 +1548,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                                 className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary-600 hover:text-primary-700"
                                               >
                                                 <Plus className="h-3.5 w-3.5" />
-                                                {depth === 0 ? 'Thêm khu vực' : 'Thêm địa điểm / công trình'}
+                                                Thêm {(labels[depth] || `phân cấp ${depth + 1}`).toLowerCase()}
                                               </button>
                                             ) : (
                                               <div className="space-y-2 border-l-2 border-primary-200 pl-3 pt-1">
@@ -1545,11 +1556,11 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                                   htmlFor={`new-project-location-${depth}`}
                                                   className="block font-bold text-slate-500"
                                                 >
-                                                  {depth === 0 ? 'Tên khu vực *' : 'Tên địa điểm / công trình *'}
+                                                  Tên {labels[depth]?.toLowerCase() || `phân cấp ${depth + 1}`} *
                                                 </label>
                                                 <input
                                                   id={`new-project-location-${depth}`}
-                                                  name={depth === 0 ? 'newProjectArea' : 'newProjectPlace'}
+                                                  name={`newProjectLocationLevel${depth + 1}`}
                                                   value={newLocationNodeName}
                                                   onChange={(e) => setNewLocationNodeName(e.target.value)}
                                                   onKeyDown={(e) => {
@@ -1558,7 +1569,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                                       handleCreateProjectLocation(depth);
                                                     }
                                                   }}
-                                                  placeholder={depth === 0 ? 'Nhập tên khu vực' : 'Nhập tên địa điểm / công trình'}
+                                                  placeholder={`Nhập tên ${labels[depth]?.toLowerCase() || `phân cấp ${depth + 1}`}`}
                                                   maxLength={200}
                                                   autoFocus
                                                   className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-primary-500 outline-none"
