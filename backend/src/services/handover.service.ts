@@ -4,6 +4,7 @@ import { generateDocumentNo } from '../utils/document';
 import { normalizeDepartmentName, parseAndNormalizeLocation } from '../utils/location.util';
 
 type HandoverType = 'HANDOVER' | 'TRANSFER' | 'RECALL';
+type HandoverRecipientType = 'PERSON' | 'AREA';
 
 const RECALLABLE_ASSET_STATUSES = new Set(['ASSIGNED', 'RETIRED', 'IN_STOCK', 'DAMAGED']);
 
@@ -18,7 +19,9 @@ const getHandoverItemNewStatus = (type: HandoverType, currentStatus: string) => 
 export class HandoverService {
   static async createHandover(data: {
     type: 'HANDOVER' | 'TRANSFER' | 'RECALL';
-    recipientName: string;
+    recipientName?: string;
+    recipientType?: HandoverRecipientType;
+    recipientArea?: string;
     recipientPosition?: string;
     recipientDepartment?: string;
     recipientPhone?: string;
@@ -51,17 +54,26 @@ export class HandoverService {
             normalizedLoc.project
           );
           const normalizedSenderDepartment = normalizeDepartmentName(data.senderDepartment);
+          const recipientType: HandoverRecipientType =
+            data.type !== 'RECALL' && data.recipientType === 'AREA' ? 'AREA' : 'PERSON';
+          const recipientArea = recipientType === 'AREA' ? data.recipientArea?.trim() : undefined;
+          const recipientName = data.recipientName?.trim() || '';
 
           if (!data.assetIds || data.assetIds.length === 0) {
             throw new Error('Vui lòng chọn ít nhất 1 tài sản.');
           }
 
           // 1. Validate recipient/location based on workflow type
-          if ((data.type === 'HANDOVER' || data.type === 'TRANSFER') && !data.recipientName?.trim()) {
+          if ((data.type === 'HANDOVER' || data.type === 'TRANSFER') && recipientType === 'PERSON' && !recipientName) {
             throw new Error('Vui lòng chọn người nhận.');
           }
-          if (data.type === 'RECALL' && !data.newLocation?.trim()) {
-            throw new Error('Vui lòng chọn kho/vị trí nhận.');
+          if ((data.type === 'HANDOVER' || data.type === 'TRANSFER') && recipientType === 'AREA' && !recipientArea) {
+            throw new Error('Vui lòng nhập khu vực nhận hoặc nơi đặt tài sản.');
+          }
+          if (!data.newLocation?.trim()) {
+            throw new Error(data.type === 'RECALL'
+              ? 'Vui lòng chọn kho/vị trí nhận.'
+              : 'Vui lòng chọn vị trí bàn giao tài sản.');
           }
 
           // Check active locked assets in other active DRAFT/PENDING handovers
@@ -104,7 +116,9 @@ export class HandoverService {
             data: {
               documentNo,
               type: data.type,
-              recipientName: data.recipientName,
+              recipientName,
+              recipientType,
+              recipientArea: recipientArea || null,
               recipientPosition: data.recipientPosition,
               recipientDepartment: normalizedRecipientDepartment || null,
               recipientPhone: data.recipientPhone,
@@ -157,13 +171,14 @@ export class HandoverService {
 
               const isRecall = data.type === 'RECALL';
               const isWarehouseReturn = isRecall || item.newStatus === 'IN_STOCK';
+              const isAreaAssignment = recipientType === 'AREA' && !isWarehouseReturn;
               const updatedAsset = await tx.asset.update({
                 where: { id: item.assetId },
                 data: {
                   status: item.newStatus || 'ASSIGNED',
-                  currentUserName: isWarehouseReturn ? null : data.recipientName,
-                  currentUserPhone: isWarehouseReturn ? null : data.recipientPhone,
-                  currentPosition: isWarehouseReturn ? null : data.recipientPosition,
+                  currentUserName: isWarehouseReturn || isAreaAssignment ? null : recipientName,
+                  currentUserPhone: isWarehouseReturn || isAreaAssignment ? null : data.recipientPhone,
+                  currentPosition: isWarehouseReturn || isAreaAssignment ? null : data.recipientPosition,
                   departmentName: data.type === 'RECALL' ? null : normalizedRecipientDepartment,
                   locationName: normalizedLoc.fullFormatted || data.newLocation,
                   cityName: normalizedLoc.city || data.newCity,
@@ -177,8 +192,10 @@ export class HandoverService {
                 data: {
                   assetId: item.assetId,
                   previousUserName: oldAsset.currentUserName,
-                  newUserName: isWarehouseReturn ? 'KHO QLTS' : data.recipientName,
-                  newPosition: isWarehouseReturn ? null : data.recipientPosition,
+                  newUserName: isWarehouseReturn
+                    ? 'KHO QLTS'
+                    : (isAreaAssignment ? `KHU VỰC: ${recipientArea}` : recipientName),
+                  newPosition: isWarehouseReturn || isAreaAssignment ? null : data.recipientPosition,
                   newDepartmentName: normalizedRecipientDepartment || null,
                   newLocationName: normalizedLoc.fullFormatted || data.newLocation,
                   newCityName: normalizedLoc.city || data.newCity,
@@ -247,6 +264,8 @@ export class HandoverService {
   static async updateHandover(id: number, data: {
     type?: 'HANDOVER' | 'TRANSFER' | 'RECALL';
     recipientName?: string;
+    recipientType?: HandoverRecipientType;
+    recipientArea?: string;
     recipientPosition?: string;
     recipientDepartment?: string;
     recipientPhone?: string;
@@ -319,6 +338,8 @@ export class HandoverService {
           type: data.type,
           status: data.status,
           recipientName: data.recipientName,
+          recipientType: data.recipientType,
+          recipientArea: data.recipientArea,
           recipientPosition: data.recipientPosition,
           recipientDepartment: data.recipientDepartment,
           recipientPhone: data.recipientPhone,
@@ -376,6 +397,17 @@ export class HandoverService {
       if (doc.status === 'COMPLETED') throw new Error('Hồ sơ đã được hoàn tất trước đó.');
       if (doc.status === 'CANCELLED') throw new Error('Không thể hoàn tất hồ sơ đã hủy.');
       if (doc.status === 'REVERSED') throw new Error('Không thể hoàn tất hồ sơ đã hoàn tác.');
+      if ((doc.type === 'HANDOVER' || doc.type === 'TRANSFER') && doc.recipientType === 'PERSON' && !doc.recipientName.trim()) {
+        throw new Error('Vui lòng chọn người nhận.');
+      }
+      if ((doc.type === 'HANDOVER' || doc.type === 'TRANSFER') && doc.recipientType === 'AREA' && !doc.recipientArea?.trim()) {
+        throw new Error('Vui lòng nhập khu vực nhận hoặc nơi đặt tài sản.');
+      }
+      if (!doc.newLocation?.trim()) {
+        throw new Error(doc.type === 'RECALL'
+          ? 'Vui lòng chọn kho/vị trí nhận.'
+          : 'Vui lòng chọn vị trí bàn giao tài sản.');
+      }
 
       // Perform validation check for each asset at confirmation time
       const activeHandovers = await tx.handoverDocument.findMany({
@@ -418,6 +450,7 @@ export class HandoverService {
         const finalStatus = getHandoverItemNewStatus(doc.type as HandoverType, oldAsset.status);
         const isRecall = doc.type === 'RECALL';
         const isWarehouseReturn = isRecall || finalStatus === 'IN_STOCK';
+        const isAreaAssignment = doc.recipientType === 'AREA' && !isWarehouseReturn;
         await tx.handoverItem.update({
           where: { id: item.id },
           data: {
@@ -438,9 +471,9 @@ export class HandoverService {
           where: { id: item.assetId },
           data: {
             status: finalStatus,
-            currentUserName: isWarehouseReturn ? null : doc.recipientName,
-            currentUserPhone: isWarehouseReturn ? null : doc.recipientPhone,
-            currentPosition: isWarehouseReturn ? null : doc.recipientPosition,
+            currentUserName: isWarehouseReturn || isAreaAssignment ? null : doc.recipientName,
+            currentUserPhone: isWarehouseReturn || isAreaAssignment ? null : doc.recipientPhone,
+            currentPosition: isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition,
             departmentName: doc.type === 'RECALL' ? null : normalizedRecipientDepartment,
             locationName: normalizedLoc.fullFormatted || doc.newLocation,
             cityName: normalizedLoc.city || doc.newCity,
@@ -454,8 +487,10 @@ export class HandoverService {
           data: {
             assetId: item.assetId,
             previousUserName: oldAsset.currentUserName,
-            newUserName: isWarehouseReturn ? 'KHO QLTS' : doc.recipientName,
-            newPosition: isWarehouseReturn ? null : doc.recipientPosition,
+            newUserName: isWarehouseReturn
+              ? 'KHO QLTS'
+              : (isAreaAssignment ? `KHU VỰC: ${doc.recipientArea || doc.newLocation || doc.recipientName}` : doc.recipientName),
+            newPosition: isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition,
             newDepartmentName: normalizedRecipientDepartment || null,
             newLocationName: normalizedLoc.fullFormatted || doc.newLocation,
             newCityName: normalizedLoc.city || doc.newCity,
@@ -562,9 +597,10 @@ export class HandoverService {
         if (!asset) throw new Error(`Tài sản ${item.assetCode} không còn tồn tại.`);
 
         const isWarehouseReturn = doc.type === 'RECALL' || item.newStatus === 'IN_STOCK';
-        const expectedUser = isWarehouseReturn ? null : doc.recipientName;
-        const expectedPhone = isWarehouseReturn ? null : doc.recipientPhone;
-        const expectedPosition = isWarehouseReturn ? null : doc.recipientPosition;
+        const isAreaAssignment = doc.recipientType === 'AREA' && !isWarehouseReturn;
+        const expectedUser = isWarehouseReturn || isAreaAssignment ? null : doc.recipientName;
+        const expectedPhone = isWarehouseReturn || isAreaAssignment ? null : doc.recipientPhone;
+        const expectedPosition = isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition;
         const expectedCity = normalizedLocation.city || doc.newCity || null;
         const expectedProject = normalizedLocation.project || item.oldProjectName || null;
         const sameText = (left: unknown, right: unknown) => String(left || '').trim() === String(right || '').trim();
@@ -849,6 +885,7 @@ export class HandoverService {
       where.OR = [
         { documentNo: { contains: search } },
         { recipientName: { contains: search } },
+        { recipientArea: { contains: search } },
         { recipientDepartment: { contains: search } },
         { senderName: { contains: search } },
         { items: { some: { assetCode: { contains: search } } } },
@@ -944,7 +981,7 @@ export class HandoverService {
         doc.documentNo,
         typeText,
         doc.senderName || '---',
-        doc.recipientName,
+        doc.recipientType === 'AREA' ? (doc.recipientArea || doc.newLocation || '---') : doc.recipientName,
         doc.recipientDepartment || '---',
         doc.items.length.toString(),
         createdAtText,

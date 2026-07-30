@@ -401,6 +401,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   // Form Fields
   const [wizardForm, setWizardForm] = useState({
     recipientName: '',
+    recipientType: 'PERSON' as 'PERSON' | 'AREA',
+    recipientArea: '',
     recipientPosition: '',
     recipientDepartment: '',
     recipientPhone: '',
@@ -654,6 +656,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         senderName: 'Nhân viên QLTS',
         senderDepartment: 'Bộ phận QLTS',
         recipientName: '',
+        recipientType: 'PERSON',
+        recipientArea: '',
         recipientPosition: '',
         recipientDepartment: '',
         receiverDepartmentId: null,
@@ -668,6 +672,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         senderName: firstAsset?.currentUserName || 'Nhân viên QLTS',
         senderDepartment: firstAsset?.departmentName || 'Bộ phận QLTS',
         recipientName: '',
+        recipientType: 'PERSON',
+        recipientArea: '',
         recipientPosition: '',
         recipientDepartment: '',
         receiverDepartmentId: null,
@@ -684,6 +690,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         senderName: firstAsset?.currentUserName || 'Nhân viên QLTS',
         senderDepartment: firstAsset?.departmentName || 'Bộ phận QLTS',
         recipientName: 'Bộ phận QLTS / Kho',
+        recipientType: 'PERSON',
+        recipientArea: '',
         recipientPosition: 'Cán bộ quản lý tài sản',
         recipientDepartment: 'Bộ phận QLTS',
         receiverDepartmentId: departments.find(d => d.name.toLowerCase().includes('qlts') || d.name.toLowerCase().includes('hành chính'))?.id || null,
@@ -704,6 +712,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     setWizardAssets([]);
     setWizardForm({
       recipientName: '',
+      recipientType: 'PERSON',
+      recipientArea: '',
       recipientPosition: '',
       recipientDepartment: '',
       recipientPhone: '',
@@ -782,6 +792,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
       setWizardStep(2);
       setWizardForm({
         recipientName: detail.recipientName || '',
+        recipientType: detail.recipientType === 'AREA' ? 'AREA' : 'PERSON',
+        recipientArea: detail.recipientArea || '',
         recipientPosition: detail.recipientPosition || '',
         recipientDepartment: detail.recipientDepartment || '',
         recipientPhone: detail.recipientPhone || '',
@@ -966,8 +978,20 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
       toast.error('Vui lòng chọn ít nhất 1 tài sản.');
       return;
     }
-    if ((wizardType === 'HANDOVER' || wizardType === 'TRANSFER') && !wizardForm.recipientName.trim()) {
+    if (
+      (wizardType === 'HANDOVER' || wizardType === 'TRANSFER')
+      && wizardForm.recipientType === 'PERSON'
+      && !wizardForm.recipientName.trim()
+    ) {
       toast.error('Vui lòng điền thông tin người nhận.');
+      return;
+    }
+    if (
+      (wizardType === 'HANDOVER' || wizardType === 'TRANSFER')
+      && wizardForm.recipientType === 'AREA'
+      && !wizardForm.recipientArea.trim()
+    ) {
+      toast.error('Vui lòng nhập khu vực nhận hoặc nơi đặt tài sản.');
       return;
     }
     if (wizardType === 'RECALL' && !wizardForm.newLocation.trim()) {
@@ -981,6 +1005,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
       const payload = {
         type: wizardType,
         recipientName: wizardForm.recipientName,
+        recipientType: wizardForm.recipientType,
+        recipientArea: wizardForm.recipientArea,
         recipientPosition: wizardForm.recipientPosition,
         recipientDepartment: wizardForm.recipientDepartment,
         recipientPhone: wizardForm.recipientPhone,
@@ -1272,12 +1298,75 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                       </h4>
 
                       <div className="space-y-3 text-xs">
+                        {wizardType !== 'RECALL' && (
+                          <div className="space-y-1.5">
+                            <span className="font-bold text-slate-500">Bàn giao cho</span>
+                            <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="Loại bên nhận">
+                              {[
+                                { value: 'PERSON' as const, label: 'Cá nhân', icon: User },
+                                { value: 'AREA' as const, label: 'Khu vực / vị trí', icon: MapPin }
+                              ].map((option) => {
+                                const OptionIcon = option.icon;
+                                const active = wizardForm.recipientType === option.value;
+                                return (
+                                  <button
+                                    key={option.value}
+                                    type="button"
+                                    onClick={() => setWizardForm((current) => ({
+                                      ...current,
+                                      recipientType: option.value,
+                                      recipientArea: option.value === 'AREA' ? current.recipientArea : '',
+                                      recipientPosition: option.value === 'AREA' ? '' : current.recipientPosition,
+                                      receiverId: option.value === 'AREA' ? null : current.receiverId
+                                    }))}
+                                    className={`h-9 rounded-lg inline-flex items-center justify-center gap-1.5 text-[10px] font-black uppercase transition-colors ${
+                                      active
+                                        ? 'bg-white text-primary-700 shadow-sm'
+                                        : 'text-slate-500 hover:text-slate-700'
+                                    }`}
+                                    aria-pressed={active}
+                                  >
+                                    <OptionIcon className="h-3.5 w-3.5" />
+                                    {option.label}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {wizardForm.recipientType === 'AREA' && wizardType !== 'RECALL' && (
+                          <div className="space-y-1">
+                            <label htmlFor="handover-recipient-area" className="font-bold text-slate-500">
+                              Tên khu vực nhận / nơi đặt tài sản *
+                            </label>
+                            <input
+                              id="handover-recipient-area"
+                              name="recipientArea"
+                              type="text"
+                              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
+                              placeholder="VD: Bể bơi Danko City, Phòng họp VIP 1"
+                              value={wizardForm.recipientArea}
+                              onChange={(e) => setWizardForm({ ...wizardForm, recipientArea: e.target.value })}
+                            />
+                            <p className="text-[10px] text-slate-400 font-medium">
+                              Vị trí phân cấp bên phải sẽ được ghi nhận là vị trí hiện tại của tài sản.
+                            </p>
+                          </div>
+                        )}
+
                         <div className="space-y-1">
-                          <label className="font-bold text-slate-500">Họ tên người nhận *</label>
+                          <label htmlFor="handover-recipient-name" className="font-bold text-slate-500">
+                            {wizardForm.recipientType === 'AREA' && wizardType !== 'RECALL'
+                              ? 'Người phụ trách khu vực (nếu có)'
+                              : 'Họ tên người nhận *'}
+                          </label>
                           <input 
+                            id="handover-recipient-name"
+                            name="recipientName"
                             type="text"
                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                            placeholder="Nguyễn Văn A"
+                            placeholder={wizardForm.recipientType === 'AREA' ? 'Có thể để trống' : 'Nguyễn Văn A'}
                             disabled={wizardType === 'RECALL'}
                             value={wizardForm.recipientName}
                             onChange={(e) => setWizardForm({...wizardForm, recipientName: e.target.value})}
@@ -1285,7 +1374,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1">
+                          {wizardForm.recipientType !== 'AREA' && (
+                            <div className="space-y-1">
                             <label className="font-bold text-slate-500">Chức vụ</label>
                             <input 
                               type="text"
@@ -1295,8 +1385,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               value={wizardForm.recipientPosition}
                               onChange={(e) => setWizardForm({...wizardForm, recipientPosition: e.target.value})}
                             />
-                          </div>
-                          <div className="space-y-1">
+                            </div>
+                          )}
+                          <div className={`space-y-1 ${wizardForm.recipientType === 'AREA' ? 'col-span-2' : ''}`}>
                             <label className="font-bold text-slate-500">Số điện thoại</label>
                             <input 
                               type="text"
@@ -1682,7 +1773,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                     <ul className="list-disc pl-5 space-y-2 font-medium">
                       <li>Bên nhận đã thực hiện kiểm tra đầy đủ chủng loại, số lượng, quy cách và tình trạng thực tế của thiết bị.</li>
                       <li>Bên nhận chịu hoàn toàn trách nhiệm bảo quản, giữ gìn tài sản đúng mục đích công việc, không làm hư hại hoặc mất mát do cẩu thả.</li>
-                      <li>Hệ thống sẽ cập nhật trạng thái sở hữu tài sản sang cho người nhận ngay sau khi hoàn thành biên bản này.</li>
+                      <li>
+                        Hệ thống sẽ cập nhật tài sản cho {wizardForm.recipientType === 'AREA' ? 'khu vực sử dụng và vị trí đã chọn' : 'người nhận'} ngay sau khi hoàn thành biên bản này.
+                      </li>
                       <li>Bộ phận QLTS/HCNS có quyền kiểm kê định kỳ hoặc đột xuất tài sản được giao.</li>
                     </ul>
 
@@ -1710,7 +1803,11 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                     <div className="border border-slate-200 border-dashed rounded-2xl p-5 text-center bg-slate-50/50">
                       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">ĐẠI DIỆN BÊN NHẬN</p>
                       <div className="h-16 flex items-center justify-center italic text-slate-300 text-xs font-bold mt-2">Ký điện tử hoặc In ký tay</div>
-                      <p className="text-xs font-black text-slate-800 border-t pt-2">{wizardForm.recipientName || '---'}</p>
+                      <p className="text-xs font-black text-slate-800 border-t pt-2">
+                        {wizardForm.recipientType === 'AREA'
+                          ? (wizardForm.recipientName || wizardForm.recipientArea || '---')
+                          : (wizardForm.recipientName || '---')}
+                      </p>
                     </div>
                     <div className="border border-slate-200 border-dashed rounded-2xl p-5 text-center bg-slate-50/50">
                       <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">BỘ PHẬN QLTS / HCNS</p>
@@ -1743,8 +1840,15 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                           <p className="font-bold text-slate-200 mt-1">{wizardForm.senderName} - {wizardForm.senderPosition} ({wizardForm.senderDepartment})</p>
                         </div>
                         <div>
-                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Bên nhận</p>
-                          <p className="font-bold text-slate-200 mt-1">{wizardForm.recipientName} ({wizardForm.recipientDepartment})</p>
+                          <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                            {wizardForm.recipientType === 'AREA' ? 'Khu vực nhận' : 'Bên nhận'}
+                          </p>
+                          <p className="font-bold text-slate-200 mt-1">
+                            {wizardForm.recipientType === 'AREA'
+                              ? wizardForm.recipientArea
+                              : wizardForm.recipientName}
+                            {wizardForm.recipientDepartment ? ` (${wizardForm.recipientDepartment})` : ''}
+                          </p>
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Vị trí giao đến</p>
@@ -1816,7 +1920,14 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                 type="button"
                 disabled={
                   (wizardStep === 2 && wizardAssets.length === 0) ||
-                  (wizardStep === 3 && (wizardType === 'HANDOVER' || wizardType === 'TRANSFER') && !wizardForm.recipientName.trim()) ||
+                  (
+                    wizardStep === 3
+                    && (wizardType === 'HANDOVER' || wizardType === 'TRANSFER')
+                    && (
+                      (wizardForm.recipientType === 'PERSON' && !wizardForm.recipientName.trim())
+                      || (wizardForm.recipientType === 'AREA' && !wizardForm.recipientArea.trim())
+                    )
+                  ) ||
                   (wizardStep === 3 && (
                     !selectedCity || 
                     !selectedProject || 

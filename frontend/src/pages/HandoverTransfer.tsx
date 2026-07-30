@@ -721,7 +721,9 @@ export const HandoverTransfer: React.FC = () => {
                         <div className="text-xs font-semibold text-slate-800 leading-tight truncate">{doc.senderName || '---'}</div>
                       </td>
                       <td className="px-4">
-                        <div className="text-xs font-bold text-slate-850 leading-tight truncate">{doc.recipientName}</div>
+                        <div className="text-xs font-bold text-slate-850 leading-tight truncate">
+                          {doc.recipientType === 'AREA' ? (doc.recipientArea || doc.newLocation || '---') : doc.recipientName}
+                        </div>
                         <div className="text-[10px] font-medium text-slate-500 truncate">{doc.recipientDepartment}</div>
                       </td>
                       <td className="px-4">
@@ -1109,9 +1111,19 @@ export const HandoverTransfer: React.FC = () => {
 
                     {/* Bên nhận */}
                     <div className="p-4 border border-primary-100 rounded-xl space-y-3 bg-primary-50/20">
-                      <h4 className="text-xs font-black uppercase tracking-wider text-primary-700 flex items-center gap-1.5"><UserPlus className="h-4 w-4" /> Bên nhận (Nhận)</h4>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-primary-700 flex items-center gap-1.5">
+                        {viewingDoc.recipientType === 'AREA' ? <MapPin className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+                        {viewingDoc.recipientType === 'AREA' ? 'Khu vực nhận tài sản' : 'Bên nhận (Nhận)'}
+                      </h4>
                       <div className="text-xs space-y-2">
-                        <p><span className="text-slate-400 font-semibold">Họ tên:</span> <span className="font-extrabold text-slate-900">{viewingDoc.recipientName}</span></p>
+                        {viewingDoc.recipientType === 'AREA' ? (
+                          <>
+                            <p><span className="text-slate-400 font-semibold">Khu vực:</span> <span className="font-extrabold text-slate-900">{viewingDoc.recipientArea || viewingDoc.newLocation || '---'}</span></p>
+                            <p><span className="text-slate-400 font-semibold">Người phụ trách:</span> <span className="font-bold text-slate-800">{viewingDoc.recipientName || 'Không chỉ định'}</span></p>
+                          </>
+                        ) : (
+                          <p><span className="text-slate-400 font-semibold">Họ tên:</span> <span className="font-extrabold text-slate-900">{viewingDoc.recipientName}</span></p>
+                        )}
                         <p><span className="text-slate-400 font-semibold">Bộ phận:</span> <span className="font-bold text-slate-800">{viewingDoc.recipientDepartment || '---'}</span></p>
                         <p><span className="text-slate-400 font-semibold">Vị trí nhận:</span> <span className="font-bold text-slate-800">{viewingDoc.newLocation || '---'}</span></p>
                         <p><span className="text-slate-400 font-semibold">Thành phố:</span> <span className="font-bold text-slate-800">{viewingDoc.newCity || '---'}</span></p>
@@ -1150,7 +1162,11 @@ export const HandoverTransfer: React.FC = () => {
                         <path d="M10,25 Q25,5 30,20 T50,15 T70,30 T90,10" />
                         <path d="M25,22 L85,22" strokeDasharray="2,2" />
                       </svg>
-                      <span className="absolute bottom-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">Ký điện tử bởi {viewingDoc.recipientName}</span>
+                      <span className="absolute bottom-2 text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                        {viewingDoc.recipientType === 'AREA'
+                          ? `Đại diện ${viewingDoc.recipientArea || 'khu vực nhận'}`
+                          : `Ký điện tử bởi ${viewingDoc.recipientName}`}
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -1169,7 +1185,11 @@ export const HandoverTransfer: React.FC = () => {
                       </span>
                       <p className="font-extrabold text-slate-900">Khởi tạo hồ sơ</p>
                       <p className="text-[10px] text-slate-500 font-semibold">{format(new Date(viewingDoc.createdAt), 'HH:mm dd/MM/yyyy')} • QLTS System</p>
-                      <p className="text-slate-500 mt-1">Đã lập hồ sơ nháp ban đầu cho {viewingDoc.recipientName}.</p>
+                      <p className="text-slate-500 mt-1">
+                        Đã lập hồ sơ nháp ban đầu cho {viewingDoc.recipientType === 'AREA'
+                          ? (viewingDoc.recipientArea || viewingDoc.newLocation)
+                          : viewingDoc.recipientName}.
+                      </p>
                     </div>
 
                     {/* timeline item 2: Confirmed */}

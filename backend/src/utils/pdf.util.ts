@@ -96,6 +96,7 @@ export class PdfUtil {
     
     const location = nfc(document.newLocation) || '................................';
     const city = nfc(document.newCity) || 'Hà Nội';
+    const isAreaRecipient = document.recipientType === 'AREA';
 
     let titleText = nfc(options.templateName) || 'BIÊN BẢN BÀN GIAO TÀI SẢN';
     let senderRoleLabel = 'Đại diện bên giao';
@@ -219,7 +220,9 @@ export class PdfUtil {
       {
         columns: [
           { 
-            text: nfc(`Ông/Bà: ${document.type === 'RECALL' ? (nfc(document.senderName) || '................................') : (nfc(document.recipientName) || '................................')}`), 
+            text: nfc(isAreaRecipient
+              ? `Khu vực nhận: ${nfc(document.recipientArea) || nfc(document.newLocation) || '................................'}`
+              : `Ông/Bà: ${document.type === 'RECALL' ? (nfc(document.senderName) || '................................') : (nfc(document.recipientName) || '................................')}`),
             style: 'normalText', 
             width: '50%' 
           },
@@ -232,7 +235,9 @@ export class PdfUtil {
         margin: [0, 2, 0, 2]
       },
       { 
-        text: nfc(`Chức vụ: ${document.type === 'RECALL' ? 'Cán bộ Bộ phận QLTS' : (nfc(document.recipientPosition) || '................................')}`), 
+        text: nfc(isAreaRecipient
+          ? `Người phụ trách: ${nfc(document.recipientName) || 'Không chỉ định'}`
+          : `Chức vụ: ${document.type === 'RECALL' ? 'Cán bộ Bộ phận QLTS' : (nfc(document.recipientPosition) || '................................')}`),
         style: 'normalText',
         margin: [0, 2, 0, 15]
       },

@@ -850,6 +850,8 @@ model HandoverDocument {
   status               String         @default("DRAFT")    // DRAFT, PENDING_CONFIRMATION, COMPLETED, CANCELLED, REVERSED
   
   recipientName        String
+  recipientType        String         @default("PERSON") // PERSON, AREA
+  recipientArea        String?
   recipientPosition    String?
   recipientDepartment  String?
   recipientPhone       String?
