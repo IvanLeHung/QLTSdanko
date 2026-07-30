@@ -357,7 +357,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                               <div className="absolute right-0 top-11 z-40 w-56 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
                                 <MenuItem icon={<CheckSquare className="h-4 w-4" />} label={groupSelected ? 'Bỏ chọn nhóm' : 'Chọn cả nhóm'} onClick={() => { setOpenGroupMenuKey(null); toggleAssets(group.assets); }} />
                                 <MenuItem icon={<Printer className="h-4 w-4" />} label="In QR nhóm" onClick={() => runAssetsAction('print_label', group.assets)} />
-                                <MenuItem icon={<Download className="h-4 w-4" />} label="Xuất nhóm" onClick={() => runAssetsAction('export', group.assets)} />
+                                <MenuItem icon={<Download className="h-4 w-4" />} label="Xuất báo cáo Excel" onClick={() => runAssetsAction('export', group.assets)} />
                                 {hasPermission('TRANSFER_CREATE') && (
                                   <>
                                     <MenuItem icon={<ArrowRightLeft className="h-4 w-4" />} label="Bàn giao nhóm" onClick={() => runAssetsAction('handover', group.assets)} />

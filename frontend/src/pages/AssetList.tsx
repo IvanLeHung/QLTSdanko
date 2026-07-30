@@ -1130,63 +1130,31 @@ export const AssetList: React.FC = () => {
     toast.success("Xuất dữ liệu Excel tài sản được chọn thành công!");
   };
 
-  const exportGroupedAssetsCsv = (targetAssets: any[]) => {
-    const headers = [
-      'Mã tài sản',
-      'Số TT',
-      'Mã công ty',
-      'Tên tài sản',
-      'Số Serial',
-      'ĐVT',
-      'Mục đích',
-      'Trạng thái',
-      'Người sử dụng',
-      'Chức vụ',
-      'Phòng ban',
-      'Vị trí',
-      'Thành phố',
-      'Dự án',
-      ...(hasPermission('ASSET_VIEW_PRICE') ? ['Giá mua (VNĐ)'] : []),
-      'Nhà cung cấp',
-      'Ghi chú'
-    ];
-
-    const rows = targetAssets.map(a => [
-      a.assetCode || '',
-      a.runningNoText || '',
-      a.companyCode || '',
-      a.assetName || '',
-      a.serialNumber || '',
-      a.unit || 'Cái',
-      a.usagePurpose || '',
-      getStatusLabel(a.status).label,
-      a.currentUserName || '',
-      a.currentPosition || '',
-      a.departmentName || '',
-      cleanLocationName(a.cityName, a.locationName, a.projectName, a.departmentName) || a.locationName || '',
-      a.cityName || '',
-      a.projectName || '',
-      ...(hasPermission('ASSET_VIEW_PRICE') ? [a.purchasePriceExVat || 0] : []),
-      a.supplierName || '',
-      a.note || ''
-    ]);
-
-    const csvContent = '\uFEFF' + [
-      headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','),
-      ...rows.map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-    ].join('\n');
-
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `danh_sach_tai_san_nhom_${new Date().toISOString().slice(0, 10)}.csv`);
-    link.style.visibility = 'hidden';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success(`Xuất ${targetAssets.length} tài sản trong nhóm thành công!`);
+  const exportGroupedAssetsReport = async (targetAssets: any[]) => {
+    try {
+      const commonLevel4 = targetAssets.every((asset) => asset.level4Name === targetAssets[0]?.level4Name)
+        ? targetAssets[0]?.level4Name
+        : '';
+      const commonLocation = targetAssets.every((asset) => asset.locationName === targetAssets[0]?.locationName)
+        ? targetAssets[0]?.locationName
+        : '';
+      const reportName = commonLevel4 || commonLocation || `Nhóm ${targetAssets[0]?.assetCode || 'tài sản'}`;
+      toast.info(`Đang tạo báo cáo Excel cho ${targetAssets.length.toLocaleString('vi-VN')} tài sản...`);
+      const response = await api.post('/assets/group-report', {
+        assetIds: targetAssets.map((asset) => asset.id),
+        reportName
+      }, {
+        responseType: 'blob'
+      });
+      await downloadBlobResponse(
+        response,
+        `bao_cao_nhom_tai_san_${new Date().toISOString().slice(0, 10)}.xlsx`
+      );
+      toast.success('Đã tải báo cáo nhóm gồm Dashboard, chi tiết và lịch sử bàn giao.');
+    } catch (err: any) {
+      console.error(err);
+      toast.error(await getExportErrorMessage(err, 'Không thể xuất báo cáo Excel của nhóm.'));
+    }
   };
 
   const handleGroupedAssetsAction = (action: string, targetAssets: any[]) => {
@@ -1226,7 +1194,7 @@ export const AssetList: React.FC = () => {
         });
         break;
       case 'export':
-        exportGroupedAssetsCsv(actionAssets);
+        void exportGroupedAssetsReport(actionAssets);
         break;
       default:
         if (actionAssets.length === 1) handleAssetAction(action, actionAssets[0]);

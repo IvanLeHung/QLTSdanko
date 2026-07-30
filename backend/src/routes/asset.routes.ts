@@ -9,6 +9,7 @@ import fs from 'fs';
 import path from 'path';
 import { InvoiceParserService } from '../services/invoice-parser.service';
 import { InvoicePostService } from '../services/invoice-post.service';
+import { AssetGroupReportService } from '../services/asset-group-report.service';
 import { buildDataScopeWhere } from '../utils/data-scope.util';
 import ExcelJS from 'exceljs';
 import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
@@ -45,6 +46,65 @@ const addDays = (value: Date, days: number) => {
   date.setDate(date.getDate() + days);
   return date;
 };
+
+router.post('/group-report', authenticateToken, requirePermission('ASSET_VIEW'), async (req: AuthRequest, res) => {
+  try {
+    const rawIds = Array.isArray(req.body?.assetIds) ? req.body.assetIds : [];
+    const parsedIds = rawIds.map((value: unknown) => Number(value));
+    const assetIds = Array.from(new Set<number>(
+      parsedIds.filter((value: number): value is number => Number.isInteger(value) && value > 0)
+    )).slice(0, 10000);
+    if (assetIds.length === 0) {
+      return res.status(400).json({ message: 'Nhóm không có tài sản để xuất báo cáo.' });
+    }
+
+    const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+      company: 'companyCode',
+      department: 'departmentName',
+      warehouse: 'locationName',
+      user: 'currentUserName'
+    });
+    if (scopeWhere.id === -1) {
+      return res.status(403).json({ message: 'Bạn không có quyền xem dữ liệu của nhóm tài sản này.' });
+    }
+
+    const assetWhere: any = {
+      id: { in: assetIds },
+      isDeleted: false
+    };
+    if (Object.keys(scopeWhere).length > 0) assetWhere.AND = [scopeWhere];
+
+    const canViewPrice = Boolean(
+      req.user?.roles?.includes('SUPER_ADMIN')
+      || req.user?.permissions?.includes('ASSET_VIEW_PRICE')
+    );
+    const requestedBy = req.user?.fullName || req.user?.username || 'Admin';
+    const { workbook, assetCount } = await AssetGroupReportService.build({
+      assetIds,
+      assetWhere,
+      reportName: typeof req.body?.reportName === 'string' ? req.body.reportName : undefined,
+      requestedBy,
+      canViewPrice
+    });
+    if (assetCount === 0) {
+      return res.status(404).json({ message: 'Không tìm thấy tài sản phù hợp phạm vi quyền để xuất báo cáo.' });
+    }
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=BaoCaoNhomTaiSan_${date}.xlsx`);
+    res.setHeader('Cache-Control', 'no-store');
+    await workbook.xlsx.write(res);
+    return res.end();
+  } catch (error: any) {
+    console.error('Group asset report error:', error);
+    if (res.headersSent) {
+      res.destroy(error);
+      return;
+    }
+    return res.status(500).json({ message: 'Lỗi xuất báo cáo nhóm: ' + error.message });
+  }
+});
 
 const parseRequiredDate = (value: any, label: string) => {
   const date = new Date(String(value || ''));
