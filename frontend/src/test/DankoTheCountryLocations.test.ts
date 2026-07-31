@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
+  getLocationTreeLevels,
   getProjectLocationTree,
   isLocationPathComplete,
+  mergeProjectLocationNodes,
 } from '../components/TransferWizard';
 
 const expectedPlaces = [
@@ -39,5 +41,37 @@ describe('Danko The Country location hierarchy', () => {
     expect(isLocationPathComplete(tree, completePath.slice(0, 2))).toBe(false);
     expect(isLocationPathComplete(tree, completePath.slice(0, 3))).toBe(false);
     expect(isLocationPathComplete(tree, completePath)).toBe(true);
+  });
+
+  it('merges saved location levels for assignment editing', () => {
+    const baseTree = getProjectLocationTree('Bắc Ninh', 'Danko Riverside');
+    const nodes = [
+      {
+        id: 1,
+        cityName: 'Bắc Ninh',
+        projectName: 'Danko Riverside',
+        parentPath: 'PHÂN KHU MAJESTIC / Quảng trường Danko',
+        name: 'Khu vực Quảng trường',
+        level: 3,
+      },
+      {
+        id: 2,
+        cityName: 'Bắc Ninh',
+        projectName: 'Danko Riverside',
+        parentPath: 'PHÂN KHU MAJESTIC / Quảng trường Danko / Khu vực Quảng trường',
+        name: 'Khu vực ngoài trời',
+        level: 4,
+      },
+    ];
+    const mergedTree = mergeProjectLocationNodes(baseTree, nodes, 'Bắc Ninh', 'Danko Riverside');
+    const completePath = [
+      'PHÂN KHU MAJESTIC',
+      'Quảng trường Danko',
+      'Khu vực Quảng trường',
+      'Khu vực ngoài trời',
+    ];
+
+    expect(getLocationTreeLevels(mergedTree, completePath)).toHaveLength(4);
+    expect(isLocationPathComplete(mergedTree, completePath)).toBe(true);
   });
 });

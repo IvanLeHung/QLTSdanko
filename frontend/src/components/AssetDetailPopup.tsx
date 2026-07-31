@@ -63,10 +63,13 @@ import { BMFormDispatcher } from './forms/BMFormDispatcher';
 import { BaseModal } from './BaseModal';
 import {
   LOCATION_HIERARCHY,
+  PROJECT_LOCATION_LEVEL_LABELS,
   findLocationTreePath,
   getLocationTreeLevels,
   getProjectLocationTree,
-  isLocationPathComplete
+  isLocationPathComplete,
+  mergeProjectLocationNodes,
+  type ProjectLocationNode
 } from './TransferWizard';
 
 function cn(...inputs: ClassValue[]) {
@@ -154,6 +157,10 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     customProject: '',
     customLocation: ''
   });
+  const [assignProjectLocationNodes, setAssignProjectLocationNodes] = useState<ProjectLocationNode[]>([]);
+  const [assignAddingLocationDepth, setAssignAddingLocationDepth] = useState<number | null>(null);
+  const [assignNewLocationNodeName, setAssignNewLocationNodeName] = useState('');
+  const [isCreatingAssignLocationNode, setIsCreatingAssignLocationNode] = useState(false);
   const [showLinkInvoiceModal, setShowLinkInvoiceModal] = useState(false);
   const [showInvoiceDetailsModal, setShowInvoiceDetailsModal] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
@@ -163,6 +170,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       fetchAssetDetail();
       fetchCompanies();
       fetchCategories();
+      fetchProjectLocationNodes();
       setActiveTab(initialTab);
       setMode('view');
     } else {
@@ -243,6 +251,15 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     }
   };
 
+  const fetchProjectLocationNodes = async () => {
+    try {
+      const res = await api.get('/settings/project-location-nodes');
+      setAssignProjectLocationNodes(res.data);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
   const getInventoryResultLabel = (result?: string | null) => {
     switch (result) {
       case 'MATCH':
@@ -279,8 +296,29 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const latestHandover = asset?.latestHandoverDocument;
   const assigneeDisplay = getAssetAssigneeDisplay(asset);
   const currentAssignmentPhone = asset?.currentUserPhone || asset?.latestAssignmentPhone || latestHandover?.recipientPhone || latestAssignment?.recipientPhone;
-  const assignProjectLocationTree = getProjectLocationTree(assignLocationSelection.city, assignLocationSelection.project);
-  const assignProjectLocationLevels = getLocationTreeLevels(assignProjectLocationTree, assignLocationSelection.path);
+  const assignResolvedCity = assignLocationSelection.city === 'Khác'
+    ? assignLocationSelection.customCity.trim()
+    : assignLocationSelection.city;
+  const assignResolvedProject = assignLocationSelection.project === 'Khác'
+    ? assignLocationSelection.customProject.trim()
+    : assignLocationSelection.project;
+  const assignProjectLocationTree = mergeProjectLocationNodes(
+    getProjectLocationTree(assignLocationSelection.city, assignLocationSelection.project),
+    assignProjectLocationNodes,
+    assignResolvedCity,
+    assignResolvedProject
+  );
+  const assignBaseProjectLocationLevels = getLocationTreeLevels(assignProjectLocationTree, assignLocationSelection.path);
+  const assignCanAddChildToSelectedLeaf = Boolean(
+    assignProjectLocationTree
+    && assignLocationSelection.path.length > 0
+    && assignLocationSelection.path[0] !== 'Khác'
+    && assignLocationSelection.path.length < PROJECT_LOCATION_LEVEL_LABELS.length
+    && isLocationPathComplete(assignProjectLocationTree, assignLocationSelection.path)
+  );
+  const assignProjectLocationLevels = assignCanAddChildToSelectedLeaf
+    ? [...assignBaseProjectLocationLevels, []]
+    : assignBaseProjectLocationLevels;
   const emptyText = (value?: string | number | null) => {
     if (value === undefined || value === null || value === '') return '--';
     return String(value);
@@ -313,7 +351,12 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     const knownProject = knownCity && Object.prototype.hasOwnProperty.call(LOCATION_HIERARCHY[rawCity] || {}, resolvedProject);
     const project = knownProject ? resolvedProject : (resolvedProject ? 'Khác' : '');
     const detailLocation = stripLocationPrefix(locationWithoutCity, resolvedProject);
-    const tree = knownProject ? getProjectLocationTree(rawCity, resolvedProject) : null;
+    const tree = mergeProjectLocationNodes(
+      knownProject ? getProjectLocationTree(rawCity, resolvedProject) : null,
+      assignProjectLocationNodes,
+      rawCity,
+      resolvedProject
+    );
     const path = tree ? (findLocationTreePath(tree, detailLocation) || []) : [];
     const standardLocation = knownProject && !tree && (LOCATION_HIERARCHY[rawCity]?.[resolvedProject] || []).includes(detailLocation);
     const location = path.length > 0
@@ -340,6 +383,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       customProject: project === 'Khác' ? resolvedProject : '',
       customLocation: location === 'Khác' ? detailLocation : ''
     });
+    setAssignAddingLocationDepth(null);
+    setAssignNewLocationNodeName('');
     setShowAssignInfoModal(true);
     setIsAssignInfoEditing(true);
   };
@@ -366,6 +411,57 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       customProject: '',
       customLocation: ''
     });
+    setAssignAddingLocationDepth(null);
+    setAssignNewLocationNodeName('');
+  };
+
+  const handleCreateAssignProjectLocation = async (depth: number) => {
+    const name = assignNewLocationNodeName.trim();
+    const levelLabel = PROJECT_LOCATION_LEVEL_LABELS[depth] || `Phân cấp ${depth + 1}`;
+    if (!name) {
+      toast.error(`Vui lòng nhập tên ${levelLabel}`);
+      return;
+    }
+    if (!assignResolvedCity || !assignResolvedProject) {
+      toast.error('Vui lòng chọn Thành phố và Dự án trước');
+      return;
+    }
+    if (depth > 0 && assignLocationSelection.path.slice(0, depth).filter(Boolean).length !== depth) {
+      const parentLabel = PROJECT_LOCATION_LEVEL_LABELS[depth - 1] || `phân cấp ${depth}`;
+      toast.error(`Vui lòng chọn ${parentLabel} trước`);
+      return;
+    }
+
+    setIsCreatingAssignLocationNode(true);
+    try {
+      const parentPath = depth === 0 ? '' : assignLocationSelection.path.slice(0, depth).join(' / ');
+      const res = await api.post('/settings/project-location-nodes', {
+        cityName: assignResolvedCity,
+        projectName: assignResolvedProject,
+        parentPath,
+        name,
+        level: depth + 1
+      });
+      const created = res.data as ProjectLocationNode;
+      setAssignProjectLocationNodes((current) => [
+        ...current.filter((node) => node.id !== created.id),
+        created
+      ]);
+      const nextPath = [...assignLocationSelection.path.slice(0, depth), created.name];
+      setAssignLocationSelection((current) => ({
+        ...current,
+        path: nextPath,
+        location: nextPath.join(' / '),
+        customLocation: ''
+      }));
+      setAssignAddingLocationDepth(null);
+      setAssignNewLocationNodeName('');
+      toast.success(`Đã thêm và chọn ${created.name}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể thêm vị trí mới');
+    } finally {
+      setIsCreatingAssignLocationNode(false);
+    }
   };
 
   const handleSaveAssignInfo = async () => {
@@ -1794,15 +1890,19 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                             id="asset-assignment-city"
                             name="cityName"
                             value={assignLocationSelection.city}
-                            onChange={(e) => setAssignLocationSelection({
-                              city: e.target.value,
-                              project: '',
-                              location: '',
-                              path: [],
-                              customCity: '',
-                              customProject: '',
-                              customLocation: ''
-                            })}
+                            onChange={(e) => {
+                              setAssignLocationSelection({
+                                city: e.target.value,
+                                project: '',
+                                location: '',
+                                path: [],
+                                customCity: '',
+                                customProject: '',
+                                customLocation: ''
+                              });
+                              setAssignAddingLocationDepth(null);
+                              setAssignNewLocationNodeName('');
+                            }}
                             className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
                           >
                             <option value="">-- Chọn thành phố --</option>
@@ -1831,14 +1931,18 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                               id="asset-assignment-project"
                               name="projectName"
                               value={assignLocationSelection.project}
-                              onChange={(e) => setAssignLocationSelection((prev) => ({
-                                ...prev,
-                                project: e.target.value,
-                                location: '',
-                                path: [],
-                                customProject: '',
-                                customLocation: ''
-                              }))}
+                              onChange={(e) => {
+                                setAssignLocationSelection((prev) => ({
+                                  ...prev,
+                                  project: e.target.value,
+                                  location: '',
+                                  path: [],
+                                  customProject: '',
+                                  customLocation: ''
+                                }));
+                                setAssignAddingLocationDepth(null);
+                                setAssignNewLocationNodeName('');
+                              }}
                               className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
                             >
                               <option value="">-- Chọn dự án --</option>
@@ -1868,7 +1972,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         assignProjectLocationTree ? (
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             {assignProjectLocationLevels.map((options, depth) => {
-                              const labels = ['Khu vực', 'Địa điểm / công trình', 'Tầng / khu chức năng', 'Vị trí chi tiết'];
+                              const labels = PROJECT_LOCATION_LEVEL_LABELS;
                               return (
                                 <div key={depth} className="space-y-1.5">
                                   <label htmlFor={`asset-assignment-location-${depth}`} className="text-[10px] font-black uppercase tracking-widest text-slate-500">
@@ -1886,6 +1990,10 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                                       }
                                       const path = [...assignLocationSelection.path.slice(0, depth), value];
                                       setAssignLocationSelection((prev) => ({ ...prev, path, location: path.join(' / '), customLocation: '' }));
+                                      if (assignAddingLocationDepth !== null && assignAddingLocationDepth > depth) {
+                                        setAssignAddingLocationDepth(null);
+                                        setAssignNewLocationNodeName('');
+                                      }
                                     }}
                                     className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-xs font-bold text-slate-800 outline-none focus:border-primary-500"
                                   >
@@ -1893,6 +2001,69 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                                     {options.map((location) => <option key={location} value={location}>{location}</option>)}
                                     {depth === 0 && <option value="Khác">Khác</option>}
                                   </select>
+                                  {depth < PROJECT_LOCATION_LEVEL_LABELS.length && hasPermission('PERMISSION_MANAGE') && (
+                                    <div className="pt-1">
+                                      {assignAddingLocationDepth !== depth ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            setAssignAddingLocationDepth(depth);
+                                            setAssignNewLocationNodeName('');
+                                          }}
+                                          className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary-600 hover:text-primary-700"
+                                        >
+                                          <Plus className="h-3.5 w-3.5" />
+                                          Thêm {(labels[depth] || `phân cấp ${depth + 1}`).toLowerCase()}
+                                        </button>
+                                      ) : (
+                                        <div className="space-y-2 border-l-2 border-primary-200 pl-3 pt-1">
+                                          <label
+                                            htmlFor={`new-asset-assignment-location-${depth}`}
+                                            className="block text-[10px] font-black uppercase tracking-widest text-slate-500"
+                                          >
+                                            Tên {labels[depth]?.toLowerCase() || `phân cấp ${depth + 1}`} *
+                                          </label>
+                                          <input
+                                            id={`new-asset-assignment-location-${depth}`}
+                                            name={`newAssignmentLocationLevel${depth + 1}`}
+                                            value={assignNewLocationNodeName}
+                                            onChange={(e) => setAssignNewLocationNodeName(e.target.value)}
+                                            onKeyDown={(e) => {
+                                              if (e.key === 'Enter') {
+                                                e.preventDefault();
+                                                handleCreateAssignProjectLocation(depth);
+                                              }
+                                            }}
+                                            placeholder={`Nhập tên ${labels[depth]?.toLowerCase() || `phân cấp ${depth + 1}`}`}
+                                            maxLength={200}
+                                            autoFocus
+                                            className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-primary-500 outline-none"
+                                          />
+                                          <div className="flex items-center gap-2">
+                                            <button
+                                              type="button"
+                                              onClick={() => handleCreateAssignProjectLocation(depth)}
+                                              disabled={isCreatingAssignLocationNode}
+                                              className="h-8 px-3 rounded-lg bg-primary-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-primary-700 disabled:opacity-50"
+                                            >
+                                              {isCreatingAssignLocationNode ? 'Đang thêm...' : 'Thêm và chọn'}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              onClick={() => {
+                                                setAssignAddingLocationDepth(null);
+                                                setAssignNewLocationNodeName('');
+                                              }}
+                                              disabled={isCreatingAssignLocationNode}
+                                              className="h-8 px-3 rounded-lg border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 disabled:opacity-50"
+                                            >
+                                              Hủy
+                                            </button>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}

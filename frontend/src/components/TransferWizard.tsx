@@ -292,7 +292,7 @@ const PROJECT_LOCATION_TREES: Record<string, LocationTree> = {
 
 export const getProjectLocationTree = (city: string, project: string) => PROJECT_LOCATION_TREES[`${city}::${project}`] || null;
 
-const PROJECT_LOCATION_LEVEL_LABELS = [
+export const PROJECT_LOCATION_LEVEL_LABELS = [
   'Khu vực',
   'Địa điểm / công trình',
   'Tầng / khu chức năng',
@@ -350,7 +350,7 @@ export const findLocationTreePath = (tree: LocationTree, location: string): stri
   return match;
 };
 
-interface ProjectLocationNode {
+export interface ProjectLocationNode {
   id: number;
   cityName: string;
   projectName: string;
@@ -366,7 +366,7 @@ const cloneLocationTree = (tree: LocationTree): LocationTree => Object.fromEntri
   ])
 );
 
-const mergeProjectLocationNodes = (
+export const mergeProjectLocationNodes = (
   tree: LocationTree | null,
   nodes: ProjectLocationNode[],
   city: string,
