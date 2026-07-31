@@ -122,6 +122,34 @@ async function repairLegacyAssetData() {
     WHERE "projectName" IN ('Du an khac', 'Du án khác');
   `);
 
+  const normalizedLevel4Names = await prisma.$executeRawUnsafe(`
+    UPDATE "Asset"
+    SET "level4Name" = CASE
+      WHEN "level3Code" = '01' AND "level4Code" = '25' THEN 'Bàn sân vườn'
+      WHEN "level3Code" = '02' AND "level4Code" = '18' THEN 'Ghế sân vườn'
+      WHEN trim(COALESCE("level4Name", '')) ILIKE ANY (
+        ARRAY['Bàn đá/ bê tông sân vườn', 'Bàn đá / bê tông sân vườn']
+      ) THEN 'Bàn sân vườn'
+      WHEN trim(COALESCE("level4Name", '')) ILIKE ANY (
+        ARRAY['Ghế đá/ bê tông sân vườn', 'Ghế đá / bê tông sân vườn']
+      ) THEN 'Ghế sân vườn'
+      ELSE "level4Name"
+    END
+    WHERE
+      ("level3Code" = '01' AND "level4Code" = '25')
+      OR ("level3Code" = '02' AND "level4Code" = '18')
+      OR trim(COALESCE("level4Name", '')) ILIKE ANY (
+        ARRAY[
+          'Bàn đá/ bê tông sân vườn',
+          'Bàn đá / bê tông sân vườn',
+          'Bàn sân vườn',
+          'Ghế đá/ bê tông sân vườn',
+          'Ghế đá / bê tông sân vườn',
+          'Ghế sân vườn'
+        ]
+      );
+  `);
+
   const normalizedLocations = await prisma.$executeRawUnsafe(`
     UPDATE "Asset"
     SET "locationName" = REPLACE(
@@ -385,6 +413,7 @@ async function repairLegacyAssetData() {
     normalizedCurrentUsers,
     normalizedUnits,
     normalizedProjects,
+    normalizedLevel4Names,
     normalizedLocations,
     normalizedHanoiLocations,
     normalizedHanoiBlocks,

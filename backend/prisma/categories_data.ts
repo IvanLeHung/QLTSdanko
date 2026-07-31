@@ -291,7 +291,7 @@ export const rawCategoriesText = `🌳 1 - Nhà cửa, vật kiến trúc
          └─ 22 - Bàn ăn inox / nhựa
          └─ 23 - Bàn gập
          └─ 24 - Bàn dài sinh hoạt
-         └─ 25 - Bàn đá/ bê tông sân vườn
+         └─ 25 - Bàn sân vườn
          └─ 26 - Bàn đào tạo / training
          └─ 27 - Bàn máy tính
          └─ 28 - Bàn sắt
@@ -312,7 +312,7 @@ export const rawCategoriesText = `🌳 1 - Nhà cửa, vật kiến trúc
          └─ 15 - Ghế training có bàn viết
          └─ 16 - Ghế hội trường xếp lớp
          └─ 17 - Ghế bể bơi
-         └─ 18 - Ghế đá / bê tông sân vườn
+         └─ 18 - Ghế sân vườn
          └─ 19 - Ghế băng công cộng
          └─ 2 - Ghế xoay bọc da
          └─ 20 - Ghế sắt (ngoài trời)
