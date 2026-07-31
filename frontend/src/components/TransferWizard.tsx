@@ -253,10 +253,41 @@ const DANKO_CENTER_LOCATION_TREE: LocationTree = {
   }
 };
 
+const DANKO_THE_COUNTRY_LOCATION_TREE: LocationTree = {
+  'KHU ĐIỀU HÀNH': {
+    'Văn phòng Bán hàng': { 'Khu văn phòng': { 'Khu vực sử dụng chung': null } },
+    'Văn phòng BQLDA': { 'Khu văn phòng': { 'Khu vực sử dụng chung': null } },
+    'Kho': { 'Khu kho': { 'Khu vực lưu trữ chung': null } }
+  },
+  'KHU CỔNG CHÀO': {
+    'Cổng chào The Heritage Gate': { 'Khu vực cổng chào': { 'Toàn bộ cổng chào': null } }
+  },
+  'KHU QUẢNG TRƯỜNG - BIỂU TƯỢNG': {
+    'Quảng trường Elysium Square': { 'Khu vực quảng trường': { 'Khu vực ngoài trời': null } },
+    'Tháp biểu tượng The Royal Pavilion': { 'Khu vực tháp biểu tượng': { 'Khu vực ngoài trời': null } }
+  },
+  'KHU CÔNG VIÊN - CẢNH QUAN': {
+    'Công viên Eden Park': { 'Khuôn viên công viên': { 'Khu vực ngoài trời': null } },
+    'Công viên Felix Park': { 'Khuôn viên công viên': { 'Khu vực ngoài trời': null } },
+    'Công viên Rainbow Park': { 'Khuôn viên công viên': { 'Khu vực ngoài trời': null } },
+    'Công viên Amare Park': { 'Khuôn viên công viên': { 'Khu vực ngoài trời': null } },
+    'Vườn Sunflower': { 'Khuôn viên vườn': { 'Khu vực ngoài trời': null } }
+  },
+  'KHU THƯƠNG MẠI - DỊCH VỤ': {
+    'Dịch vụ thương mại – khách sạn': { 'Khối dịch vụ - khách sạn': { 'Khu vực sử dụng chung': null } },
+    'Phố đi bộ Sky Avenue': { 'Tuyến phố đi bộ': { 'Khu vực ngoài trời': null } },
+    'Nhà dịch vụ': { 'Khối nhà dịch vụ': { 'Khu vực sử dụng chung': null } }
+  },
+  'KHU TIỆN ÍCH': {
+    'Bể bơi Danko The Country': { 'Khuôn viên bể bơi': { 'Khu vực bể bơi': null } }
+  }
+};
+
 const PROJECT_LOCATION_TREES: Record<string, LocationTree> = {
   'Thái Nguyên::Danko City': DANKO_CITY_LOCATION_TREE,
   'Bắc Ninh::Danko Riverside': DANKO_RIVERSIDE_LOCATION_TREE,
-  'Tuyên Quang::Danko Center': DANKO_CENTER_LOCATION_TREE
+  'Tuyên Quang::Danko Center': DANKO_CENTER_LOCATION_TREE,
+  'Thanh Hóa::Danko The Country': DANKO_THE_COUNTRY_LOCATION_TREE
 };
 
 export const getProjectLocationTree = (city: string, project: string) => PROJECT_LOCATION_TREES[`${city}::${project}`] || null;
