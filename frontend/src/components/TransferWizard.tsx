@@ -283,8 +283,30 @@ const DANKO_THE_COUNTRY_LOCATION_TREE: LocationTree = {
   }
 };
 
+const DANKO_AVENUE_LOCATION_TREE: LocationTree = {
+  'KHU ĐIỀU HÀNH': {
+    'Văn phòng Bán hàng': { 'Khu văn phòng': { 'Khu vực sử dụng chung': null } },
+    'Văn phòng BQLDA': { 'Khu văn phòng': { 'Khu vực sử dụng chung': null } },
+    'Kho': { 'Khu kho': { 'Khu vực lưu trữ chung': null } }
+  },
+  'TIỆN ÍCH NỘI KHU': {
+    'Phân khu Milano': { 'Khuôn viên phân khu': { 'Khu vực sử dụng chung': null } },
+    'Công viên Bốn Mùa': { 'Khuôn viên công viên': { 'Khu vực ngoài trời': null } },
+    'Đại lộ Thắng Lợi rộng 60 m': { 'Tuyến đại lộ': { 'Khu vực ngoài trời': null } },
+    'Phân khu Manhattan': { 'Khuôn viên phân khu': { 'Khu vực sử dụng chung': null } },
+    'Bể bơi Địa Trung Hải': { 'Khuôn viên bể bơi': { 'Khu vực bể bơi': null } },
+    'Đảo lộ Tự Do': { 'Tuyến đảo lộ': { 'Khu vực ngoài trời': null } },
+    'Kênh Venice': { 'Khu vực kênh': { 'Khu vực ngoài trời': null } },
+    'Đường dạo bộ và thể thao ngoài trời': { 'Tuyến đường dạo bộ': { 'Khu vực ngoài trời': null } },
+    'Phân khu Times Square': { 'Khuôn viên phân khu': { 'Khu vực sử dụng chung': null } },
+    'Club House': { 'Khối Club House': { 'Khu vực sử dụng chung': null } },
+    'Vườn cảnh quan': { 'Khuôn viên vườn': { 'Khu vực ngoài trời': null } }
+  }
+};
+
 const PROJECT_LOCATION_TREES: Record<string, LocationTree> = {
   'Thái Nguyên::Danko City': DANKO_CITY_LOCATION_TREE,
+  'Thái Nguyên::Danko Avenue': DANKO_AVENUE_LOCATION_TREE,
   'Bắc Ninh::Danko Riverside': DANKO_RIVERSIDE_LOCATION_TREE,
   'Tuyên Quang::Danko Center': DANKO_CENTER_LOCATION_TREE,
   'Thanh Hóa::Danko The Country': DANKO_THE_COUNTRY_LOCATION_TREE
