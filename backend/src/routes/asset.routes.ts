@@ -2393,6 +2393,8 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
   const id = Number(req.params.id);
   const performedBy = req.user?.username || req.user?.fullName || 'system';
   const {
+    recipientType,
+    recipientArea,
     currentUserName,
     currentPosition,
     currentUserPhone,
@@ -2408,6 +2410,15 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
     const result = await prisma.$transaction(async (tx) => {
       const oldAsset = await tx.asset.findUnique({ where: { id } });
       if (!oldAsset) throw new Error('Asset not found');
+      const normalizedRecipientType = recipientType === 'AREA' ? 'AREA' : 'PERSON';
+      const normalizedRecipientArea = String(recipientArea || '').trim();
+      const normalizedUserName = String(currentUserName || '').trim();
+      if (normalizedRecipientType === 'AREA' && !normalizedRecipientArea) {
+        throw new Error('Vui lòng nhập tên khu vực / nơi đặt tài sản');
+      }
+      if (normalizedRecipientType === 'PERSON' && !normalizedUserName) {
+        throw new Error('Vui lòng nhập họ tên người nhận');
+      }
 
       const normalizedLocation = normalizeAssetLocation(
         locationName,
@@ -2416,15 +2427,16 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
         departmentName || oldAsset.departmentName
       );
       const parsedLocation = parseAndNormalizeLocation(normalizedLocation);
+      const normalizedDepartment = normalizeDepartmentName(
+        departmentName,
+        cityName || parsedLocation.city || oldAsset.cityName,
+        projectName || parsedLocation.project || oldAsset.projectName
+      ) || null;
       const assetUpdates: any = {
-        currentUserName: currentUserName || null,
-        currentUserPhone: currentUserPhone || null,
-        currentPosition: currentPosition || null,
-        departmentName: normalizeDepartmentName(
-          departmentName,
-          cityName || parsedLocation.city || oldAsset.cityName,
-          projectName || parsedLocation.project || oldAsset.projectName
-        ) || null,
+        currentUserName: normalizedRecipientType === 'AREA' ? null : normalizedUserName,
+        currentUserPhone: normalizedRecipientType === 'AREA' ? null : (currentUserPhone || null),
+        currentPosition: normalizedRecipientType === 'AREA' ? null : (currentPosition || null),
+        departmentName: normalizedDepartment,
         locationName: normalizedLocation || null,
         cityName: cityName || parsedLocation.city || null,
         projectName: normalizeProjectName(projectName || parsedLocation.project) || null
@@ -2447,6 +2459,8 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
         ],
         select: {
           id: true,
+          recipientType: true,
+          recipientArea: true,
           recipientPhone: true,
           recipientName: true,
           recipientPosition: true,
@@ -2461,16 +2475,22 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
         updatedHandoverDocument = await tx.handoverDocument.update({
           where: { id: latestHandoverDocument.id },
           data: {
-            recipientName: currentUserName || null,
-            recipientPosition: currentPosition || null,
-            recipientDepartment: departmentName || null,
-            recipientPhone: currentUserPhone || null,
-            newLocation: locationName || null,
-            newCity: cityName || null,
+            recipientType: normalizedRecipientType,
+            recipientArea: normalizedRecipientType === 'AREA' ? normalizedRecipientArea : null,
+            recipientName: normalizedRecipientType === 'AREA'
+              ? (latestHandoverDocument.recipientName || normalizedRecipientArea)
+              : normalizedUserName,
+            recipientPosition: normalizedRecipientType === 'AREA' ? null : (currentPosition || null),
+            recipientDepartment: normalizedDepartment,
+            recipientPhone: normalizedRecipientType === 'AREA' ? null : (currentUserPhone || null),
+            newLocation: normalizedLocation || null,
+            newCity: cityName || parsedLocation.city || null,
             note: note || undefined
           },
           select: {
             id: true,
+            recipientType: true,
+            recipientArea: true,
             recipientPhone: true,
             recipientName: true,
             recipientPosition: true,
@@ -2481,6 +2501,23 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
         });
       }
 
+      await tx.assetAssignment.create({
+        data: {
+          assetId: id,
+          previousUserName: oldAsset.currentUserName,
+          newUserName: normalizedRecipientType === 'AREA'
+            ? `KHU VỰC: ${normalizedRecipientArea}`
+            : normalizedUserName,
+          newPosition: normalizedRecipientType === 'AREA' ? null : (currentPosition || null),
+          newDepartmentName: normalizedDepartment,
+          newLocationName: normalizedLocation || null,
+          newCityName: cityName || parsedLocation.city || null,
+          newStatus: oldAsset.status,
+          effectiveAt: new Date(),
+          note: reason || note || 'Cập nhật thông tin cấp phát'
+        }
+      });
+
       await AuditService.logAssetChange(
         id,
         oldAsset,
@@ -2490,7 +2527,7 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
         reason || note || 'Bổ sung/chỉnh sửa thông tin cấp phát'
       );
 
-      const phoneChanged = (latestHandoverDocument?.recipientPhone || '') !== (currentUserPhone || '');
+      const phoneChanged = (latestHandoverDocument?.recipientPhone || '') !== (normalizedRecipientType === 'AREA' ? '' : (currentUserPhone || ''));
       if (phoneChanged || note) {
         await AuditService.log({
           entityType: 'ASSET',
@@ -2498,7 +2535,7 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
           action: 'UPDATE',
           details: {
             changes: {
-              ...(phoneChanged ? { currentUserPhone: { old: latestHandoverDocument?.recipientPhone || null, new: currentUserPhone || null } } : {}),
+              ...(phoneChanged ? { currentUserPhone: { old: latestHandoverDocument?.recipientPhone || null, new: normalizedRecipientType === 'AREA' ? null : (currentUserPhone || null) } } : {}),
               ...(note ? { assignmentNote: { old: null, new: note } } : {})
             },
             reason: reason || note || 'Bổ sung/chỉnh sửa thông tin cấp phát'
@@ -2517,7 +2554,9 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
 
     res.json(result);
   } catch (error: any) {
-    res.status(error.message === 'Asset not found' ? 404 : 500).json({ message: error.message });
+    const validationError = error.message === 'Vui lòng nhập tên khu vực / nơi đặt tài sản'
+      || error.message === 'Vui lòng nhập họ tên người nhận';
+    res.status(error.message === 'Asset not found' ? 404 : validationError ? 400 : 500).json({ message: error.message });
   }
 });
 

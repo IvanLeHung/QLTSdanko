@@ -134,8 +134,10 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [isCompanyRevealed, setIsCompanyRevealed] = useState(false);
   const [showAssignInfoModal, setShowAssignInfoModal] = useState(false);
   const [isAssignInfoEditing, setIsAssignInfoEditing] = useState(false);
+  const [assignRecipientType, setAssignRecipientType] = useState<'PERSON' | 'AREA'>('PERSON');
   const [assignInfoForm, setAssignInfoForm] = useState<any>({
     currentUserName: '',
+    assignedAreaName: '',
     currentPosition: '',
     currentUserPhone: '',
     departmentName: '',
@@ -319,7 +321,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       : (standardLocation ? detailLocation : (detailLocation ? 'Khác' : ''));
 
     setAssignInfoForm({
-      currentUserName: asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName || '',
+      currentUserName: assigneeDisplay.isArea ? '' : (asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName || ''),
+      assignedAreaName: assigneeDisplay.isArea ? assigneeDisplay.name : '',
       currentPosition: asset.currentPosition || latestAssignment?.newPosition || latestHandover?.recipientPosition || '',
       currentUserPhone: currentAssignmentPhone || '',
       departmentName: asset.departmentName || latestAssignment?.newDepartmentName || latestHandover?.recipientDepartment || '',
@@ -327,6 +330,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       cityName: asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity || '',
       note: ''
     });
+    setAssignRecipientType(assigneeDisplay.isArea ? 'AREA' : 'PERSON');
     setAssignLocationSelection({
       city,
       project,
@@ -342,8 +346,10 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
 
   const cancelAssignInfoEditor = () => {
     setIsAssignInfoEditing(false);
+    setAssignRecipientType('PERSON');
     setAssignInfoForm({
       currentUserName: '',
+      assignedAreaName: '',
       currentPosition: '',
       currentUserPhone: '',
       departmentName: '',
@@ -385,15 +391,26 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     }
 
     const updates: any = {
-      currentUserName: assignInfoForm.currentUserName.trim() || null,
-      currentPosition: assignInfoForm.currentPosition.trim() || null,
-      currentUserPhone: assignInfoForm.currentUserPhone.trim() || null,
+      recipientType: assignRecipientType,
+      recipientArea: assignRecipientType === 'AREA' ? assignInfoForm.assignedAreaName.trim() : null,
+      currentUserName: assignRecipientType === 'PERSON' ? (assignInfoForm.currentUserName.trim() || null) : null,
+      currentPosition: assignRecipientType === 'PERSON' ? (assignInfoForm.currentPosition.trim() || null) : null,
+      currentUserPhone: assignRecipientType === 'PERSON' ? (assignInfoForm.currentUserPhone.trim() || null) : null,
       departmentName: assignInfoForm.departmentName.trim() || null,
       locationName,
       cityName,
       projectName,
       reason: assignInfoForm.note.trim() || 'Bổ sung/chỉnh sửa thông tin cấp phát từ popup người đang sử dụng'
     };
+
+    if (assignRecipientType === 'PERSON' && !assignInfoForm.currentUserName.trim()) {
+      toast.error('Vui lòng nhập họ tên người nhận');
+      return;
+    }
+    if (assignRecipientType === 'AREA' && !assignInfoForm.assignedAreaName.trim()) {
+      toast.error('Vui lòng nhập tên khu vực / nơi đặt tài sản');
+      return;
+    }
 
     setIsSaving(true);
     try {
@@ -1650,7 +1667,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                 </div>
                 <div>
                   <p className="text-[10px] font-black text-primary-600 uppercase tracking-widest">Thông tin cấp phát</p>
-                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Người đang sử dụng tài sản</h3>
+                  <h3 className="text-xl font-black text-slate-900 tracking-tight">Người dùng / khu vực sử dụng</h3>
                   <p className="text-xs font-bold text-slate-400 mt-1">{asset.assetCode} • {asset.assetName}</p>
                 </div>
               </div>
@@ -1677,36 +1694,95 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
             <div className="p-7 space-y-6">
               <section className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Người nhận / người đang sử dụng</h4>
+                  <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Phân bổ tài sản hiện tại</h4>
                   <span className="text-[10px] font-black uppercase tracking-widest text-blue-600 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-full">
                     Hiện tại
                   </span>
                 </div>
                 {isAssignInfoEditing ? (
                   <div className="space-y-4">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="Loại người nhận tài sản">
                       {[
-                        { key: 'currentUserName', label: 'Họ tên người nhận', icon: User },
-                        { key: 'currentPosition', label: 'Chức vụ', icon: Tag },
-                        { key: 'currentUserPhone', label: 'Số điện thoại', icon: Info },
-                        { key: 'departmentName', label: 'Phòng ban', icon: Building2 }
-                      ].map(({ key, label, icon: Icon }) => (
-                        <div key={key} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                          <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
-                            <Icon className="mr-2 h-3.5 w-3.5" />
-                            {label}
+                        { value: 'PERSON' as const, label: 'Cá nhân', icon: User },
+                        { value: 'AREA' as const, label: 'Khu vực / vị trí', icon: MapPin }
+                      ].map((option) => {
+                        const OptionIcon = option.icon;
+                        const active = assignRecipientType === option.value;
+                        return (
+                          <button
+                            key={option.value}
+                            type="button"
+                            onClick={() => setAssignRecipientType(option.value)}
+                            aria-pressed={active}
+                            className={cn(
+                              "h-10 rounded-lg inline-flex items-center justify-center gap-2 text-[10px] font-black uppercase transition-colors",
+                              active ? "bg-white text-primary-700 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                            )}
+                          >
+                            <OptionIcon className="h-4 w-4" />
+                            {option.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    {assignRecipientType === 'PERSON' ? (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        {[
+                          { key: 'currentUserName', label: 'Họ tên người nhận *', icon: User },
+                          { key: 'currentPosition', label: 'Chức vụ', icon: Tag },
+                          { key: 'currentUserPhone', label: 'Số điện thoại', icon: Info },
+                          { key: 'departmentName', label: 'Phòng ban', icon: Building2 }
+                        ].map(({ key, label, icon: Icon }) => (
+                          <div key={key} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                            <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
+                              <Icon className="mr-2 h-3.5 w-3.5" />
+                              {label}
+                            </label>
+                            <input
+                              id={`asset-assignment-${key}`}
+                              name={key}
+                              type={key === 'currentUserPhone' ? 'tel' : 'text'}
+                              value={assignInfoForm[key] || ''}
+                              onChange={(e) => setAssignInfoForm({ ...assignInfoForm, [key]: e.target.value })}
+                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="p-4 rounded-2xl bg-primary-50/50 border border-primary-100">
+                          <label htmlFor="asset-assignment-area" className="text-[10px] font-black uppercase tracking-widest text-primary-700 flex items-center mb-1.5">
+                            <MapPin className="mr-2 h-3.5 w-3.5" />
+                            Tên khu vực / nơi đặt tài sản *
                           </label>
                           <input
-                            id={`asset-assignment-${key}`}
-                            name={key}
-                            type={key === 'currentUserPhone' ? 'tel' : 'text'}
-                            value={assignInfoForm[key] || ''}
-                            onChange={(e) => setAssignInfoForm({ ...assignInfoForm, [key]: e.target.value })}
+                            id="asset-assignment-area"
+                            name="assignedAreaName"
+                            type="text"
+                            value={assignInfoForm.assignedAreaName || ''}
+                            onChange={(e) => setAssignInfoForm({ ...assignInfoForm, assignedAreaName: e.target.value })}
+                            placeholder="VD: Sảnh khánh tiết, Bể bơi Danko City"
+                            className="w-full bg-white border border-primary-150 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50"
+                          />
+                        </div>
+                        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                          <label htmlFor="asset-assignment-departmentName" className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
+                            <Building2 className="mr-2 h-3.5 w-3.5" />
+                            Phòng ban quản lý
+                          </label>
+                          <input
+                            id="asset-assignment-departmentName"
+                            name="departmentName"
+                            type="text"
+                            value={assignInfoForm.departmentName || ''}
+                            onChange={(e) => setAssignInfoForm({ ...assignInfoForm, departmentName: e.target.value })}
                             className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50"
                           />
                         </div>
-                      ))}
-                    </div>
+                      </div>
+                    )}
                     <div className="p-4 rounded-2xl bg-blue-50/50 border border-blue-100 space-y-3">
                       <p className="text-[10px] font-black uppercase tracking-widest text-blue-700 flex items-center">
                         <MapPin className="mr-2 h-3.5 w-3.5" /> Vị trí hiện tại
