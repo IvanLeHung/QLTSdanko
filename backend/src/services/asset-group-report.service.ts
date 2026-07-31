@@ -369,7 +369,7 @@ export class AssetGroupReportService {
       const row = history.addRow([
         index + 1,
         doc.documentNo,
-        doc.type === 'HANDOVER' ? 'Bàn giao' : doc.type === 'TRANSFER' ? 'Điều chuyển' : 'Thu hồi',
+        doc.type === 'HANDOVER' ? 'Bàn giao' : doc.type === 'TRANSFER' ? 'Điều chuyển' : doc.type === 'LOCATION_TRANSFER' ? 'Điều chuyển vị trí' : 'Thu hồi',
         doc.status === 'COMPLETED' ? 'Hoàn tất' : doc.status === 'REVERSED' ? 'Đã hoàn tác' : doc.status === 'CANCELLED' ? 'Đã hủy' : doc.status === 'DRAFT' ? 'Nháp' : 'Chờ xác nhận',
         formatDate(doc.documentDate),
         item.assetCode,

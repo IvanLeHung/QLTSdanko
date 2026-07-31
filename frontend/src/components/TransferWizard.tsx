@@ -377,7 +377,7 @@ interface TransferWizardProps {
   onClose: () => void;
   onComplete: () => void;
   initialAssetIds?: number[];
-  defaultType?: 'HANDOVER' | 'TRANSFER' | 'RECALL';
+  defaultType?: 'HANDOVER' | 'TRANSFER' | 'LOCATION_TRANSFER' | 'RECALL';
   source?: 'ASSET_DETAIL' | 'TRANSFER_LIST';
   editingDocId?: number | null;
 }
@@ -393,7 +393,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
 }) => {
   const { hasPermission } = useAuth();
   const [wizardStep, setWizardStep] = useState(1);
-  const [wizardType, setWizardType] = useState<'HANDOVER' | 'TRANSFER' | 'RECALL'>('HANDOVER');
+  const [wizardType, setWizardType] = useState<'HANDOVER' | 'TRANSFER' | 'LOCATION_TRANSFER' | 'RECALL'>('HANDOVER');
   const [wizardAssets, setWizardAssets] = useState<any[]>([]);
   const [loadingAssets, setLoadingAssets] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -680,6 +680,23 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
         newLocation: '',
         targetLocationId: null,
         senderPosition: firstAsset?.currentPosition || 'Nhân viên'
+      }));
+    } else if (wizardType === 'LOCATION_TRANSFER') {
+      const firstAsset = wizardAssets[0];
+      setWizardForm(prev => ({
+        ...prev,
+        senderName: firstAsset?.currentUserName || 'Nhân viên QLTS',
+        senderDepartment: firstAsset?.departmentName || 'Bộ phận QLTS',
+        senderPosition: firstAsset?.currentPosition || 'Nhân viên',
+        recipientName: firstAsset?.currentUserName || 'GIỮ NGUYÊN PHÂN BỔ HIỆN TẠI',
+        recipientType: 'PERSON',
+        recipientArea: '',
+        recipientPosition: firstAsset?.currentPosition || '',
+        recipientDepartment: firstAsset?.departmentName || '',
+        recipientPhone: firstAsset?.currentUserPhone || '',
+        receiverDepartmentId: null,
+        newLocation: '',
+        targetLocationId: null
       }));
     } else if (wizardType === 'RECALL') {
       const firstAsset = wizardAssets[0];
@@ -1087,6 +1104,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
               <CheckCircle2 className="h-5 w-5 text-emerald-400" />
               {wizardType === 'HANDOVER' ? 'Lập biên bản bàn giao' : 
                wizardType === 'TRANSFER' ? 'Lập biên bản điều chuyển' : 
+               wizardType === 'LOCATION_TRANSFER' ? 'Lập biên bản điều chuyển vị trí' :
                'Lập biên bản thu hồi'}
             </h2>
             <p className="text-slate-400 text-[10px] uppercase font-bold tracking-widest mt-0.5">
@@ -1139,10 +1157,10 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                 <div className="space-y-6 animate-fade-in">
                   <div className="text-center max-w-xl mx-auto space-y-1">
                     <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">BƯỚC 1: CHỌN LOẠI NGHIỆP VỤ LUÂN CHUYỂN</h3>
-                    <p className="text-xs text-slate-400 font-medium">Hệ thống hỗ trợ 3 quy trình chính. Trạng thái của tài sản sẽ được cập nhật tự động sau khi hồ sơ được xác nhận.</p>
+                    <p className="text-xs text-slate-400 font-medium">Hệ thống hỗ trợ 4 quy trình chính. Trạng thái của tài sản sẽ được cập nhật tự động sau khi hồ sơ được xác nhận.</p>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 max-w-3xl mx-auto">
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 max-w-5xl mx-auto">
                     {/* Bàn giao cấp phát */}
                     <button 
                       onClick={() => { setWizardType('HANDOVER'); setWizardStep(2); }}
@@ -1175,6 +1193,22 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                       </div>
                     </button>
 
+                    {/* Điều chuyển vị trí */}
+                    <button
+                      onClick={() => { setWizardType('LOCATION_TRANSFER'); setWizardStep(2); }}
+                      className={`p-6 border-2 rounded-2xl text-left transition-all hover:shadow-xl flex flex-col justify-between h-48 ${
+                        wizardType === 'LOCATION_TRANSFER' ? 'border-sky-500 bg-sky-50/20' : 'border-slate-100 bg-white'
+                      }`}
+                    >
+                      <span className="h-10 w-10 bg-sky-500 text-white rounded-xl flex items-center justify-center shrink-0 shadow-md">
+                        <MapPin className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <h4 className="text-xs font-black text-sky-600 uppercase tracking-wider">3. Điều chuyển vị trí</h4>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-1">Chỉ thay đổi vị trí tài sản; giữ nguyên người dùng, chức vụ, số điện thoại, phòng ban và trạng thái.</p>
+                      </div>
+                    </button>
+
                     {/* Thu hồi về kho */}
                     <button 
                       onClick={() => { setWizardType('RECALL'); setWizardStep(2); }}
@@ -1186,7 +1220,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                         <RotateCcw className="h-5 w-5" />
                       </span>
                       <div>
-                        <h4 className="text-xs font-black text-rose-600 uppercase tracking-wider">3. Thu hồi về kho</h4>
+                        <h4 className="text-xs font-black text-rose-600 uppercase tracking-wider">4. Thu hồi về kho</h4>
                         <p className="text-[10px] text-slate-400 font-bold uppercase tracking-tight mt-1">Thu hồi thiết bị từ nhân viên thôi việc, hết nhu cầu về kho lưu giữ.</p>
                       </div>
                     </button>
@@ -1294,11 +1328,20 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                     <div className="space-y-4 p-5 border border-slate-200 rounded-2xl bg-white shadow-sm">
                       <h4 className="text-xs font-black uppercase tracking-widest text-slate-900 flex items-center gap-1.5 border-b pb-2">
                         <User className="h-4 w-4 text-slate-500" />
-                        {wizardType === 'RECALL' ? 'ĐƠN VỊ THU HỒI (BÊN NHẬN)' : 'BÊN NHẬN TÀI SẢN'}
+                        {wizardType === 'RECALL'
+                          ? 'ĐƠN VỊ THU HỒI (BÊN NHẬN)'
+                          : wizardType === 'LOCATION_TRANSFER'
+                            ? 'PHÂN BỔ ĐƯỢC GIỮ NGUYÊN'
+                            : 'BÊN NHẬN TÀI SẢN'}
                       </h4>
 
                       <div className="space-y-3 text-xs">
-                        {wizardType !== 'RECALL' && (
+                        {wizardType === 'LOCATION_TRANSFER' && (
+                          <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-[11px] font-bold leading-relaxed text-sky-800">
+                            Người sử dụng, số điện thoại, chức vụ, phòng ban và trạng thái của từng tài sản được giữ nguyên. Hồ sơ này chỉ cập nhật vị trí mới.
+                          </div>
+                        )}
+                        {wizardType !== 'RECALL' && wizardType !== 'LOCATION_TRANSFER' && (
                           <div className="space-y-1.5">
                             <span className="font-bold text-slate-500">Bàn giao cho</span>
                             <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1" role="group" aria-label="Loại bên nhận">
@@ -1367,7 +1410,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                             type="text"
                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                             placeholder={wizardForm.recipientType === 'AREA' ? 'Có thể để trống' : 'Nguyễn Văn A'}
-                            disabled={wizardType === 'RECALL'}
+                            disabled={wizardType === 'RECALL' || wizardType === 'LOCATION_TRANSFER'}
                             value={wizardForm.recipientName}
                             onChange={(e) => setWizardForm({...wizardForm, recipientName: e.target.value})}
                           />
@@ -1381,7 +1424,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               type="text"
                               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                               placeholder="Nhân viên"
-                              disabled={wizardType === 'RECALL'}
+                              disabled={wizardType === 'RECALL' || wizardType === 'LOCATION_TRANSFER'}
                               value={wizardForm.recipientPosition}
                               onChange={(e) => setWizardForm({...wizardForm, recipientPosition: e.target.value})}
                             />
@@ -1393,7 +1436,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               type="text"
                               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                               placeholder="0901234567"
-                              disabled={wizardType === 'RECALL'}
+                              disabled={wizardType === 'RECALL' || wizardType === 'LOCATION_TRANSFER'}
                               value={wizardForm.recipientPhone}
                               onChange={(e) => setWizardForm({...wizardForm, recipientPhone: e.target.value})}
                             />
@@ -1403,7 +1446,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                         <div className="space-y-1">
                           <label className="font-bold text-slate-500">Phòng ban nhận (Chọn danh mục) *</label>
                           <select
-                            disabled={wizardType === 'RECALL'}
+                            disabled={wizardType === 'RECALL' || wizardType === 'LOCATION_TRANSFER'}
                             value={wizardForm.receiverDepartmentId || ''}
                             onChange={(e) => handleDepartmentSelect(Number(e.target.value))}
                             className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
@@ -1413,7 +1456,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                           </select>
-                          {wizardType !== 'RECALL' && hasPermission('PERMISSION_MANAGE') && (
+                          {wizardType !== 'RECALL' && wizardType !== 'LOCATION_TRANSFER' && hasPermission('PERMISSION_MANAGE') && (
                             <div className="pt-1.5">
                               {!isAddingDepartment ? (
                                 <button
@@ -1774,7 +1817,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                       <li>Bên nhận đã thực hiện kiểm tra đầy đủ chủng loại, số lượng, quy cách và tình trạng thực tế của thiết bị.</li>
                       <li>Bên nhận chịu hoàn toàn trách nhiệm bảo quản, giữ gìn tài sản đúng mục đích công việc, không làm hư hại hoặc mất mát do cẩu thả.</li>
                       <li>
-                        Hệ thống sẽ cập nhật tài sản cho {wizardForm.recipientType === 'AREA' ? 'khu vực sử dụng và vị trí đã chọn' : 'người nhận'} ngay sau khi hoàn thành biên bản này.
+                        {wizardType === 'LOCATION_TRANSFER'
+                          ? 'Hệ thống chỉ cập nhật vị trí mới; toàn bộ thông tin phân bổ và trạng thái hiện tại được giữ nguyên.'
+                          : `Hệ thống sẽ cập nhật tài sản cho ${wizardForm.recipientType === 'AREA' ? 'khu vực sử dụng và vị trí đã chọn' : 'người nhận'} ngay sau khi hoàn thành biên bản này.`}
                       </li>
                       <li>Bộ phận QLTS/HCNS có quyền kiểm kê định kỳ hoặc đột xuất tài sản được giao.</li>
                     </ul>
@@ -1832,7 +1877,13 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                         <div className="border-b border-slate-800 pb-2">
                           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">Loại nghiệp vụ</p>
                           <p className="text-sm font-black text-emerald-400 uppercase tracking-widest mt-1">
-                            {wizardType === 'HANDOVER' ? 'Bàn giao' : (wizardType === 'TRANSFER' ? 'Điều chuyển' : 'Thu hồi')}
+                            {wizardType === 'HANDOVER'
+                              ? 'Bàn giao'
+                              : wizardType === 'TRANSFER'
+                                ? 'Điều chuyển phòng ban'
+                                : wizardType === 'LOCATION_TRANSFER'
+                                  ? 'Điều chuyển vị trí'
+                                  : 'Thu hồi'}
                           </p>
                         </div>
                         <div>
@@ -1841,13 +1892,17 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                         </div>
                         <div>
                           <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                            {wizardForm.recipientType === 'AREA' ? 'Khu vực nhận' : 'Bên nhận'}
+                            {wizardType === 'LOCATION_TRANSFER'
+                              ? 'Phân bổ'
+                              : (wizardForm.recipientType === 'AREA' ? 'Khu vực nhận' : 'Bên nhận')}
                           </p>
                           <p className="font-bold text-slate-200 mt-1">
-                            {wizardForm.recipientType === 'AREA'
+                            {wizardType === 'LOCATION_TRANSFER'
+                              ? 'Giữ nguyên người dùng / phòng ban hiện tại'
+                              : wizardForm.recipientType === 'AREA'
                               ? wizardForm.recipientArea
                               : wizardForm.recipientName}
-                            {wizardForm.recipientDepartment ? ` (${wizardForm.recipientDepartment})` : ''}
+                            {wizardType !== 'LOCATION_TRANSFER' && wizardForm.recipientDepartment ? ` (${wizardForm.recipientDepartment})` : ''}
                           </p>
                         </div>
                         <div>

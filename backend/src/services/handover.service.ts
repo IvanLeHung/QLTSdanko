@@ -3,13 +3,15 @@ import { AuditService } from './audit.service';
 import { generateDocumentNo } from '../utils/document';
 import { normalizeDepartmentName, parseAndNormalizeLocation } from '../utils/location.util';
 
-type HandoverType = 'HANDOVER' | 'TRANSFER' | 'RECALL';
+type HandoverType = 'HANDOVER' | 'TRANSFER' | 'LOCATION_TRANSFER' | 'RECALL';
 type HandoverRecipientType = 'PERSON' | 'AREA';
 
 const RECALLABLE_ASSET_STATUSES = new Set(['ASSIGNED', 'RETIRED', 'IN_STOCK', 'DAMAGED']);
 const TRANSFERABLE_ASSET_STATUSES = new Set(['ASSIGNED', 'IN_STOCK', 'DAMAGED']);
+const LOCATION_TRANSFERABLE_ASSET_STATUSES = new Set(['ASSIGNED', 'RETIRED', 'IN_STOCK', 'DAMAGED']);
 
 const getHandoverItemNewStatus = (type: HandoverType, currentStatus: string) => {
+  if (type === 'LOCATION_TRANSFER') return currentStatus;
   if (type === 'RECALL') {
     return currentStatus === 'DAMAGED' ? 'DAMAGED' : 'IN_STOCK';
   }
@@ -20,7 +22,7 @@ const getHandoverItemNewStatus = (type: HandoverType, currentStatus: string) => 
 
 export class HandoverService {
   static async createHandover(data: {
-    type: 'HANDOVER' | 'TRANSFER' | 'RECALL';
+    type: HandoverType;
     recipientName?: string;
     recipientType?: HandoverRecipientType;
     recipientArea?: string;
@@ -59,7 +61,8 @@ export class HandoverService {
           const recipientType: HandoverRecipientType =
             data.type !== 'RECALL' && data.recipientType === 'AREA' ? 'AREA' : 'PERSON';
           const recipientArea = recipientType === 'AREA' ? data.recipientArea?.trim() : undefined;
-          const recipientName = data.recipientName?.trim() || '';
+          const recipientName = data.recipientName?.trim()
+            || (data.type === 'LOCATION_TRANSFER' ? 'GIỮ NGUYÊN PHÂN BỔ HIỆN TẠI' : '');
 
           if (!data.assetIds || data.assetIds.length === 0) {
             throw new Error('Vui lòng chọn ít nhất 1 tài sản.');
@@ -108,6 +111,9 @@ export class HandoverService {
             }
             if (data.type === 'TRANSFER' && !TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không thuộc trạng thái được phép luân chuyển.`);
+            }
+            if (data.type === 'LOCATION_TRANSFER' && !LOCATION_TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
+              throw new Error(`Tài sản ${asset.assetCode} không thuộc trạng thái được phép điều chuyển vị trí.`);
             }
             if (data.type === 'RECALL' && !RECALLABLE_ASSET_STATUSES.has(asset.status)) {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không thuộc trạng thái được phép thu hồi.`);
@@ -172,11 +178,22 @@ export class HandoverService {
               if (!oldAsset) continue;
 
               const isRecall = data.type === 'RECALL';
+              const isLocationTransfer = data.type === 'LOCATION_TRANSFER';
               const isWarehouseReturn = isRecall || item.newStatus === 'IN_STOCK';
               const isAreaAssignment = recipientType === 'AREA' && !isWarehouseReturn;
+              const previousAssignment = isLocationTransfer
+                ? await tx.assetAssignment.findFirst({
+                    where: { assetId: item.assetId },
+                    orderBy: [{ effectiveAt: 'desc' }, { id: 'desc' }]
+                  })
+                : null;
               const updatedAsset = await tx.asset.update({
                 where: { id: item.assetId },
-                data: {
+                data: isLocationTransfer ? {
+                  locationName: normalizedLoc.fullFormatted || data.newLocation,
+                  cityName: normalizedLoc.city || data.newCity,
+                  projectName: normalizedLoc.project || undefined,
+                } : {
                   status: item.newStatus || 'ASSIGNED',
                   currentUserName: isWarehouseReturn || isAreaAssignment ? null : recipientName,
                   currentUserPhone: isWarehouseReturn || isAreaAssignment ? null : data.recipientPhone,
@@ -194,16 +211,22 @@ export class HandoverService {
                 data: {
                   assetId: item.assetId,
                   previousUserName: oldAsset.currentUserName,
-                  newUserName: isWarehouseReturn
+                  newUserName: isLocationTransfer
+                    ? (oldAsset.currentUserName || previousAssignment?.newUserName || 'CHƯA CẤP PHÁT')
+                    : isWarehouseReturn
                     ? 'KHO QLTS'
                     : (isAreaAssignment ? `KHU VỰC: ${recipientArea}` : recipientName),
-                  newPosition: isWarehouseReturn || isAreaAssignment ? null : data.recipientPosition,
-                  newDepartmentName: normalizedRecipientDepartment || null,
+                  newPosition: isLocationTransfer
+                    ? (oldAsset.currentPosition || previousAssignment?.newPosition)
+                    : (isWarehouseReturn || isAreaAssignment ? null : data.recipientPosition),
+                  newDepartmentName: isLocationTransfer
+                    ? (oldAsset.departmentName || previousAssignment?.newDepartmentName)
+                    : (normalizedRecipientDepartment || null),
                   newLocationName: normalizedLoc.fullFormatted || data.newLocation,
                   newCityName: normalizedLoc.city || data.newCity,
                   newStatus: item.newStatus || 'ASSIGNED',
                   effectiveAt: new Date(),
-                  note: `Hồ sơ ${documentNo} (${data.type === 'RECALL' ? 'Thu hồi' : (data.type === 'TRANSFER' ? 'Luân chuyển' : 'Bàn giao')})`
+                  note: `Hồ sơ ${documentNo} (${data.type === 'RECALL' ? 'Thu hồi' : (data.type === 'LOCATION_TRANSFER' ? 'Điều chuyển vị trí' : (data.type === 'TRANSFER' ? 'Luân chuyển' : 'Bàn giao'))})`
                 }
               });
 
@@ -211,11 +234,11 @@ export class HandoverService {
             }
 
             // Create GeneratedDocument record for each asset involved
-            const templateCode = data.type === 'TRANSFER' ? 'BM06' : (data.type === 'RECALL' ? 'BM04' : 'BM02');
+            const templateCode = data.type === 'TRANSFER' || data.type === 'LOCATION_TRANSFER' ? 'BM06' : (data.type === 'RECALL' ? 'BM04' : 'BM02');
             const template = await tx.documentTemplate.findUnique({ where: { templateCode } });
             
             if (template) {
-              const documentType = data.type === 'TRANSFER' ? 'ASSET_TRANSFER' : (data.type === 'RECALL' ? 'ASSET_RECALL' : 'ASSET_HANDOVER');
+              const documentType = data.type === 'TRANSFER' || data.type === 'LOCATION_TRANSFER' ? 'ASSET_TRANSFER' : (data.type === 'RECALL' ? 'ASSET_RECALL' : 'ASSET_HANDOVER');
               
               for (const assetId of data.assetIds) {
                 const docNo = await generateDocumentNo(tx, templateCode);
@@ -264,7 +287,7 @@ export class HandoverService {
   }
 
   static async updateHandover(id: number, data: {
-    type?: 'HANDOVER' | 'TRANSFER' | 'RECALL';
+    type?: HandoverType;
     recipientName?: string;
     recipientType?: HandoverRecipientType;
     recipientArea?: string;
@@ -327,6 +350,9 @@ export class HandoverService {
           }
           if (nextType === 'TRANSFER' && !TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
             throw new Error(`Tài sản ${asset.assetCode} đang ở trạng thái ${asset.status}, không thuộc trạng thái được phép luân chuyển.`);
+          }
+          if (nextType === 'LOCATION_TRANSFER' && !LOCATION_TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
+            throw new Error(`Tài sản ${asset.assetCode} không thuộc trạng thái được phép điều chuyển vị trí.`);
           }
           if (nextType === 'RECALL' && !RECALLABLE_ASSET_STATUSES.has(asset.status)) {
             throw new Error(`Tài sản ${asset.assetCode} đang ở trạng thái ${asset.status}, không thuộc trạng thái được phép thu hồi.`);
@@ -445,6 +471,9 @@ export class HandoverService {
         if (doc.type === 'TRANSFER' && !TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
           throw new Error(`Tài sản ${item.assetCode} đang ở trạng thái ${asset.status}, không thuộc trạng thái được phép luân chuyển.`);
         }
+        if (doc.type === 'LOCATION_TRANSFER' && !LOCATION_TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
+          throw new Error(`Tài sản ${item.assetCode} không thuộc trạng thái được phép điều chuyển vị trí.`);
+        }
         if (doc.type === 'RECALL' && !RECALLABLE_ASSET_STATUSES.has(asset.status)) {
           throw new Error(`Tài sản ${item.assetCode} đang ở trạng thái ${asset.status}, không thuộc trạng thái được phép thu hồi.`);
         }
@@ -463,8 +492,15 @@ export class HandoverService {
 
         const finalStatus = getHandoverItemNewStatus(doc.type as HandoverType, oldAsset.status);
         const isRecall = doc.type === 'RECALL';
+        const isLocationTransfer = doc.type === 'LOCATION_TRANSFER';
         const isWarehouseReturn = isRecall || finalStatus === 'IN_STOCK';
         const isAreaAssignment = doc.recipientType === 'AREA' && !isWarehouseReturn;
+        const previousAssignment = isLocationTransfer
+          ? await tx.assetAssignment.findFirst({
+              where: { assetId: item.assetId },
+              orderBy: [{ effectiveAt: 'desc' }, { id: 'desc' }]
+            })
+          : null;
         await tx.handoverItem.update({
           where: { id: item.id },
           data: {
@@ -483,7 +519,11 @@ export class HandoverService {
         });
         const updatedAsset = await tx.asset.update({
           where: { id: item.assetId },
-          data: {
+          data: isLocationTransfer ? {
+            locationName: normalizedLoc.fullFormatted || doc.newLocation,
+            cityName: normalizedLoc.city || doc.newCity,
+            projectName: normalizedLoc.project || undefined,
+          } : {
             status: finalStatus,
             currentUserName: isWarehouseReturn || isAreaAssignment ? null : doc.recipientName,
             currentUserPhone: isWarehouseReturn || isAreaAssignment ? null : doc.recipientPhone,
@@ -501,11 +541,17 @@ export class HandoverService {
           data: {
             assetId: item.assetId,
             previousUserName: oldAsset.currentUserName,
-            newUserName: isWarehouseReturn
+            newUserName: isLocationTransfer
+              ? (oldAsset.currentUserName || previousAssignment?.newUserName || 'CHƯA CẤP PHÁT')
+              : isWarehouseReturn
               ? 'KHO QLTS'
               : (isAreaAssignment ? `KHU VỰC: ${doc.recipientArea || doc.newLocation || doc.recipientName}` : doc.recipientName),
-            newPosition: isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition,
-            newDepartmentName: normalizedRecipientDepartment || null,
+            newPosition: isLocationTransfer
+              ? (oldAsset.currentPosition || previousAssignment?.newPosition)
+              : (isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition),
+            newDepartmentName: isLocationTransfer
+              ? (oldAsset.departmentName || previousAssignment?.newDepartmentName)
+              : (normalizedRecipientDepartment || null),
             newLocationName: normalizedLoc.fullFormatted || doc.newLocation,
             newCityName: normalizedLoc.city || doc.newCity,
             newStatus: finalStatus,
@@ -527,11 +573,11 @@ export class HandoverService {
       });
 
       // Create GeneratedDocument record for each asset involved
-      const templateCode = doc.type === 'TRANSFER' ? 'BM06' : (doc.type === 'RECALL' ? 'BM04' : 'BM02');
+      const templateCode = doc.type === 'TRANSFER' || doc.type === 'LOCATION_TRANSFER' ? 'BM06' : (doc.type === 'RECALL' ? 'BM04' : 'BM02');
       const template = await tx.documentTemplate.findUnique({ where: { templateCode } });
       
       if (template) {
-        const documentType = doc.type === 'TRANSFER' ? 'ASSET_TRANSFER' : (doc.type === 'RECALL' ? 'ASSET_RECALL' : 'ASSET_HANDOVER');
+        const documentType = doc.type === 'TRANSFER' || doc.type === 'LOCATION_TRANSFER' ? 'ASSET_TRANSFER' : (doc.type === 'RECALL' ? 'ASSET_RECALL' : 'ASSET_HANDOVER');
         
         for (const item of doc.items) {
           const docNo = await generateDocumentNo(tx, templateCode);
@@ -583,7 +629,9 @@ export class HandoverService {
       const confirmedAt = doc.confirmedAt || doc.createdAt;
       const normalizedLocation = parseAndNormalizeLocation(doc.newLocation);
       const expectedLocation = normalizedLocation.fullFormatted || doc.newLocation || null;
-      const expectedDepartment = doc.type === 'RECALL'
+      const expectedDepartment = doc.type === 'LOCATION_TRANSFER'
+        ? undefined
+        : doc.type === 'RECALL'
         ? null
         : normalizeDepartmentName(
             doc.recipientDepartment,
@@ -612,9 +660,10 @@ export class HandoverService {
 
         const isWarehouseReturn = doc.type === 'RECALL' || item.newStatus === 'IN_STOCK';
         const isAreaAssignment = doc.recipientType === 'AREA' && !isWarehouseReturn;
-        const expectedUser = isWarehouseReturn || isAreaAssignment ? null : doc.recipientName;
-        const expectedPhone = isWarehouseReturn || isAreaAssignment ? null : doc.recipientPhone;
-        const expectedPosition = isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition;
+        const isLocationTransfer = doc.type === 'LOCATION_TRANSFER';
+        const expectedUser = isLocationTransfer ? item.oldUserName : (isWarehouseReturn || isAreaAssignment ? null : doc.recipientName);
+        const expectedPhone = isLocationTransfer ? item.oldUserPhone : (isWarehouseReturn || isAreaAssignment ? null : doc.recipientPhone);
+        const expectedPosition = isLocationTransfer ? item.oldPosition : (isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition);
         const expectedCity = normalizedLocation.city || doc.newCity || null;
         const expectedProject = normalizedLocation.project || item.oldProjectName || null;
         const sameText = (left: unknown, right: unknown) => String(left || '').trim() === String(right || '').trim();
@@ -623,7 +672,9 @@ export class HandoverService {
           || !sameText(asset.currentUserName, expectedUser)
           || !sameText(asset.currentUserPhone, expectedPhone)
           || !sameText(asset.currentPosition, expectedPosition)
-          || !sameText(asset.departmentName, expectedDepartment)
+          || (isLocationTransfer
+            ? !sameText(asset.departmentName, item.oldDepartmentName)
+            : !sameText(asset.departmentName, expectedDepartment))
           || !sameText(asset.locationName, expectedLocation)
           || !sameText(asset.cityName, expectedCity)
           || (expectedProject !== null && !sameText(asset.projectName, expectedProject))
@@ -978,7 +1029,13 @@ export class HandoverService {
     ];
 
     for (const doc of documents) {
-      const typeText = doc.type === 'HANDOVER' ? 'Bàn giao' : (doc.type === 'TRANSFER' ? 'Điều chuyển' : 'Thu hồi');
+      const typeText = doc.type === 'HANDOVER'
+        ? 'Bàn giao'
+        : doc.type === 'TRANSFER'
+          ? 'Điều chuyển'
+          : doc.type === 'LOCATION_TRANSFER'
+            ? 'Điều chuyển vị trí'
+            : 'Thu hồi';
       const statusText = doc.status === 'COMPLETED'
         ? 'Hoàn tất'
         : doc.status === 'REVERSED'

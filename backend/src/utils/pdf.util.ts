@@ -105,6 +105,8 @@ export class PdfUtil {
     if (!options.templateName) {
       if (document.type === 'TRANSFER') {
         titleText = 'BIÊN BẢN ĐIỀU CHUYỂN TÀI SẢN';
+      } else if (document.type === 'LOCATION_TRANSFER') {
+        titleText = 'BIÊN BẢN ĐIỀU CHUYỂN VỊ TRÍ TÀI SẢN';
       } else if (document.type === 'RECALL') {
         titleText = 'BIÊN BẢN THU HỒI TÀI SẢN';
         senderRoleLabel = 'Đại diện bên bàn giao';

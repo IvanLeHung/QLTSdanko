@@ -524,7 +524,8 @@ export const HandoverTransfer: React.FC = () => {
               >
                 <option value="ALL">Tất cả loại hồ sơ</option>
                 <option value="HANDOVER">Bàn giao / cấp phát</option>
-                <option value="TRANSFER">Điều chuyển</option>
+                <option value="TRANSFER">Điều chuyển phòng ban</option>
+                <option value="LOCATION_TRANSFER">Điều chuyển vị trí</option>
                 <option value="RECALL">Thu hồi</option>
               </select>
             </div>
@@ -712,7 +713,13 @@ export const HandoverTransfer: React.FC = () => {
                           <div>
                             <div className="text-sm font-black text-slate-900 leading-tight">{doc.documentNo}</div>
                             <div className="text-[9px] font-bold uppercase tracking-widest text-slate-400">
-                              {doc.type === 'HANDOVER' ? 'Bàn giao' : (doc.type === 'RECALL' ? 'Thu hồi' : 'Điều chuyển')}
+                              {doc.type === 'HANDOVER'
+                                ? 'Bàn giao'
+                                : doc.type === 'RECALL'
+                                  ? 'Thu hồi'
+                                  : doc.type === 'LOCATION_TRANSFER'
+                                    ? 'Điều chuyển vị trí'
+                                    : 'Điều chuyển'}
                             </div>
                           </div>
                         </div>
@@ -1031,7 +1038,15 @@ export const HandoverTransfer: React.FC = () => {
                       <div className="text-slate-400 font-medium">Mã biên bản:</div>
                       <div className="font-extrabold text-slate-900">{viewingDoc.documentNo}</div>
                       <div className="text-slate-400 font-medium">Loại nghiệp vụ:</div>
-                      <div className="font-extrabold text-primary-750">{viewingDoc.type === 'HANDOVER' ? 'Bàn giao / cấp phát' : (viewingDoc.type === 'RECALL' ? 'Thu hồi' : 'Điều chuyển')}</div>
+                      <div className="font-extrabold text-primary-750">
+                        {viewingDoc.type === 'HANDOVER'
+                          ? 'Bàn giao / cấp phát'
+                          : viewingDoc.type === 'RECALL'
+                            ? 'Thu hồi'
+                            : viewingDoc.type === 'LOCATION_TRANSFER'
+                              ? 'Điều chuyển vị trí'
+                              : 'Điều chuyển'}
+                      </div>
                       <div className="text-slate-400 font-medium">Trạng thái hiện tại:</div>
                       <div className="font-extrabold text-slate-900 uppercase">{viewingDoc.status}</div>
                       <div className="text-slate-400 font-medium">Ngày lập:</div>

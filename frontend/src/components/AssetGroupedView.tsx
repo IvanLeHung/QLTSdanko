@@ -261,6 +261,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
             {hasPermission('TRANSFER_CREATE') && (
               <>
                 <ToolbarButton icon={<ArrowRightLeft className="h-4 w-4" />} label="Bàn giao" onClick={() => runAssetsAction('handover', selectedAssets)} />
+                <ToolbarButton icon={<MapPin className="h-4 w-4" />} label="Chuyển vị trí" onClick={() => runAssetsAction('location_transfer', selectedAssets)} />
                 <ToolbarButton icon={<RotateCcw className="h-4 w-4" />} label="Thu hồi" onClick={() => runAssetsAction('revoke', selectedAssets)} />
               </>
             )}
@@ -407,6 +408,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                                 {hasPermission('TRANSFER_CREATE') && (
                                   <>
                                     <MenuItem icon={<ArrowRightLeft className="h-4 w-4" />} label="Bàn giao nhóm" onClick={() => runAssetsAction('handover', group.assets)} />
+                                    <MenuItem icon={<MapPin className="h-4 w-4" />} label="Điều chuyển vị trí nhóm" onClick={() => runAssetsAction('location_transfer', group.assets)} />
                                     <MenuItem icon={<RotateCcw className="h-4 w-4" />} label="Thu hồi nhóm" onClick={() => runAssetsAction('revoke', group.assets)} />
                                   </>
                                 )}
@@ -642,6 +644,9 @@ const AssetRow = ({
               <button className="fixed inset-0 z-30 cursor-default" type="button" aria-label="Đóng menu tác vụ" onClick={onCloseMenu} />
               <div className="absolute right-0 top-11 z-40 w-64 rounded-2xl border border-slate-200 bg-white p-2 text-left shadow-2xl">
                 {canView && <MenuItem icon={<Eye className="h-4 w-4" />} label="Xem chi tiết" onClick={() => onAction('view', asset)} />}
+                {canTransfer && asset.status !== 'LIQUIDATED' && asset.status !== 'LOST' && (
+                  <MenuItem icon={<MapPin className="h-4 w-4" />} label="Điều chuyển vị trí" onClick={() => onAction('location_transfer', asset)} />
+                )}
                 {canTransfer && asset.status === 'ASSIGNED' && (
                   <>
                     <MenuItem icon={<ArrowRightLeft className="h-4 w-4" />} label="Điều chuyển tài sản" onClick={() => onAction('handover', asset)} />

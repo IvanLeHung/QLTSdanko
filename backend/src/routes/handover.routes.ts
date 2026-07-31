@@ -194,7 +194,7 @@ router.get('/:id/pdf', authenticateToken, requirePermission('TRANSFER_PRINT_PDF'
 
     // Fetch dynamic template if any
     let moduleKey = 'HANDOVER';
-    if (detail.type === 'TRANSFER') moduleKey = 'TRANSFER';
+    if (detail.type === 'TRANSFER' || detail.type === 'LOCATION_TRANSFER') moduleKey = 'TRANSFER';
     if (detail.type === 'REVOKE' || detail.type === 'RECALL') moduleKey = 'RECALL';
 
     const prismaInstance = require('../utils/prisma').default;
@@ -291,6 +291,7 @@ router.get('/export-by-time', authenticateToken, requirePermission('TRANSFER_VIE
     documents.forEach(doc => {
       const docType = doc.type === 'HANDOVER' ? 'Bàn giao' :
                       doc.type === 'TRANSFER' ? 'Điều chuyển' :
+                      doc.type === 'LOCATION_TRANSFER' ? 'Điều chuyển vị trí' :
                       doc.type === 'REVOKE' || doc.type === 'RECALL' ? 'Thu hồi' : doc.type;
 
       const docStatus = doc.status === 'DRAFT' ? 'Nháp' :

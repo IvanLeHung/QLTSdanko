@@ -18,7 +18,7 @@ function cn(...inputs: ClassValue[]) {
 }
 
 interface AppliedFormsBlockProps {
-  action: 'CREATION' | 'HANDOVER' | 'TRANSFER' | 'RECALL' | 'DAMAGE' | 'REPAIR' | 'INVENTORY' | 'LIQUIDATION' | 'DISPOSAL' | 'LOST';
+  action: 'CREATION' | 'HANDOVER' | 'TRANSFER' | 'LOCATION_TRANSFER' | 'RECALL' | 'DAMAGE' | 'REPAIR' | 'INVENTORY' | 'LIQUIDATION' | 'DISPOSAL' | 'LOST';
   entityId?: number;
   entityType?: string;
   isProcessing?: boolean;

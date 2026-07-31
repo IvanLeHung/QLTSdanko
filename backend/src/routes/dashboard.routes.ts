@@ -829,7 +829,7 @@ router.get('/activity-daily-stats', authenticateToken, async (req: any, res) => 
         where: {
           assetId: { in: assetIds },
           handoverDocument: {
-            type: { in: ['HANDOVER', 'TRANSFER', 'RECALL'] },
+            type: { in: ['HANDOVER', 'TRANSFER', 'LOCATION_TRANSFER', 'RECALL'] },
             status: 'COMPLETED',
             confirmedAt: { gte: fromDate, lte: toDate }
           }
@@ -877,7 +877,7 @@ router.get('/activity-daily-stats', authenticateToken, async (req: any, res) => 
     handoverItems.forEach(item => {
       const doc = item.handoverDocument;
       if (doc.type === 'HANDOVER') addActivityCount(bucket, doc.confirmedAt, 'handedOverAssets');
-      if (doc.type === 'TRANSFER') addActivityCount(bucket, doc.confirmedAt, 'transferredAssets');
+      if (doc.type === 'TRANSFER' || doc.type === 'LOCATION_TRANSFER') addActivityCount(bucket, doc.confirmedAt, 'transferredAssets');
       if (doc.type === 'RECALL') addActivityCount(bucket, doc.confirmedAt, 'recalledAssets');
     });
     repairTickets.forEach(ticket => addActivityCount(bucket, ticket.reportedDate, 'brokenReportedAssets'));
@@ -1750,7 +1750,7 @@ router.get('/ccdc/activity-daily-stats', authenticateToken, async (req: any, res
         where: {
           toolId: { in: toolIds },
           handoverDocument: {
-            type: { in: ['HANDOVER', 'TRANSFER', 'RECALL'] },
+            type: { in: ['HANDOVER', 'TRANSFER', 'LOCATION_TRANSFER', 'RECALL'] },
             status: 'COMPLETED',
             confirmedAt: { gte: fromDate, lte: toDate }
           }
@@ -1798,7 +1798,7 @@ router.get('/ccdc/activity-daily-stats', authenticateToken, async (req: any, res
     handoverItems.forEach(item => {
       const doc = item.handoverDocument;
       if (doc.type === 'HANDOVER') addActivityCount(bucket, doc.confirmedAt, 'handedOverAssets');
-      if (doc.type === 'TRANSFER') addActivityCount(bucket, doc.confirmedAt, 'transferredAssets');
+      if (doc.type === 'TRANSFER' || doc.type === 'LOCATION_TRANSFER') addActivityCount(bucket, doc.confirmedAt, 'transferredAssets');
       if (doc.type === 'RECALL') addActivityCount(bucket, doc.confirmedAt, 'recalledAssets');
     });
     repairTickets.forEach(ticket => addActivityCount(bucket, ticket.reportedDate, 'brokenReportedAssets'));

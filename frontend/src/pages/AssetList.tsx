@@ -937,6 +937,14 @@ export const AssetList: React.FC = () => {
           onComplete: completeGroupedAction
         });
         break;
+      case 'location_transfer':
+        openModal("TRANSFER_WIZARD", {
+          initialAssetIds: [asset.id],
+          defaultType: 'LOCATION_TRANSFER',
+          source: 'ASSET_DETAIL',
+          onComplete: completeGroupedAction
+        });
+        break;
       case 'inventory':
         openModal("INVENTORY_WIZARD", {
           initialAssetIds: [asset.id],
@@ -1199,6 +1207,14 @@ export const AssetList: React.FC = () => {
         openModal("TRANSFER_WIZARD", {
           initialAssetIds: actionAssetIds,
           defaultType: 'RECALL',
+          source: 'ASSET_DETAIL',
+          onComplete: completeGroupedAction
+        });
+        break;
+      case 'location_transfer':
+        openModal("TRANSFER_WIZARD", {
+          initialAssetIds: actionAssetIds,
+          defaultType: 'LOCATION_TRANSFER',
           source: 'ASSET_DETAIL',
           onComplete: completeGroupedAction
         });
@@ -2897,6 +2913,9 @@ export const AssetList: React.FC = () => {
                               <div className="fixed inset-0 z-30" onClick={() => setActiveMenuId(null)}></div>
                               <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-[#E2E8F0] z-40 p-2 animate-in fade-in zoom-in duration-150 text-left">
                                  <Can permission="ASSET_VIEW"><ActionItem label="Xem chi tiết" icon={<Eye className="h-4 w-4" />} onClick={() => handleAssetAction('view', asset)} /></Can>
+                                 {asset.status !== 'LIQUIDATED' && asset.status !== 'LOST' && (
+                                   <Can permission="TRANSFER_CREATE"><ActionItem label="Điều chuyển vị trí" icon={<MapPin className="h-4 w-4" />} onClick={() => handleAssetAction('location_transfer', asset)} /></Can>
+                                 )}
                                  
                                  {asset.status === 'ASSIGNED' && (
                                    <>

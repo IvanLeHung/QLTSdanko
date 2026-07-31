@@ -188,6 +188,7 @@ export class AuditParser {
     if ((log.entityType === 'HANDOVER' || log.entityType === 'ASSET_TRANSFERS') && parsed.documentNo) {
       let typeLabel = parsed.type || 'bàn giao';
       if (parsed.type === 'TRANSFER') typeLabel = 'điều chuyển';
+      if (parsed.type === 'LOCATION_TRANSFER') typeLabel = 'điều chuyển vị trí';
       if (parsed.type === 'RECALL') typeLabel = 'thu hồi';
       
       const assetCount = parsed.assetCount ? ` gồm ${parsed.assetCount} tài sản` : '';
