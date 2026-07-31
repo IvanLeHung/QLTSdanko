@@ -1190,7 +1190,7 @@ export const AssetList: React.FC = () => {
       case 'handover':
         openModal("TRANSFER_WIZARD", {
           initialAssetIds: actionAssetIds,
-          defaultType: actionAssets.some((asset: any) => asset.status === 'IN_STOCK') ? 'HANDOVER' : 'TRANSFER',
+          defaultType: actionAssets.every((asset: any) => asset.status === 'IN_STOCK') ? 'HANDOVER' : 'TRANSFER',
           source: 'ASSET_DETAIL',
           onComplete: completeGroupedAction
         });
@@ -2537,10 +2537,10 @@ export const AssetList: React.FC = () => {
               <button onClick={clearSelection} className="h-11 px-3 hover:bg-[#1E293B] rounded-lg text-xs font-bold transition-colors text-slate-400 whitespace-nowrap">Bỏ chọn</button>
               <button 
                 onClick={() => {
-                  const hasInStock = selectedAssets.some(a => a.status === 'IN_STOCK');
+                  const onlyInStock = selectedAssets.every(a => a.status === 'IN_STOCK');
                   openModal("TRANSFER_WIZARD", {
                     initialAssetIds: selectedIds,
-                    defaultType: hasInStock ? 'HANDOVER' : 'TRANSFER',
+                    defaultType: onlyInStock ? 'HANDOVER' : 'TRANSFER',
                     source: 'ASSET_DETAIL',
                     onComplete: () => { clearSelection(); refreshAssetData(); }
                   });
@@ -2905,13 +2905,24 @@ export const AssetList: React.FC = () => {
                                    </>
                                  )}
                                  {(asset.status === 'RETIRED' || asset.status === 'DAMAGED') && (
-                                   <Can permission="TRANSFER_CREATE">
-                                     <ActionItem
-                                       label={asset.status === 'DAMAGED' ? 'Thu hồi tài sản hỏng về Hà Nội' : 'Thu hồi về kho'}
-                                       icon={<RotateCcw className="h-4 w-4" />}
-                                       onClick={() => handleAssetAction('revoke', asset)}
-                                     />
-                                   </Can>
+                                   <>
+                                     {asset.status === 'DAMAGED' && (
+                                       <Can permission="TRANSFER_CREATE">
+                                         <ActionItem
+                                           label="Điều chuyển tài sản hỏng"
+                                           icon={<ArrowRightLeft className="h-4 w-4" />}
+                                           onClick={() => handleAssetAction('handover', asset)}
+                                         />
+                                       </Can>
+                                     )}
+                                     <Can permission="TRANSFER_CREATE">
+                                       <ActionItem
+                                         label={asset.status === 'DAMAGED' ? 'Thu hồi tài sản hỏng về Hà Nội' : 'Thu hồi về kho'}
+                                         icon={<RotateCcw className="h-4 w-4" />}
+                                         onClick={() => handleAssetAction('revoke', asset)}
+                                       />
+                                     </Can>
+                                   </>
                                  )}
                                  {asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && asset.status !== 'DAMAGED' && (
                                    <Can permission="TRANSFER_CREATE"><ActionItem label="Cấp phát / Bàn giao" icon={<UserPlus className="h-4 w-4" />} onClick={() => handleAssetAction('handover', asset)} /></Can>

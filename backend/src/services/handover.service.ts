@@ -7,11 +7,13 @@ type HandoverType = 'HANDOVER' | 'TRANSFER' | 'RECALL';
 type HandoverRecipientType = 'PERSON' | 'AREA';
 
 const RECALLABLE_ASSET_STATUSES = new Set(['ASSIGNED', 'RETIRED', 'IN_STOCK', 'DAMAGED']);
+const TRANSFERABLE_ASSET_STATUSES = new Set(['ASSIGNED', 'IN_STOCK', 'DAMAGED']);
 
 const getHandoverItemNewStatus = (type: HandoverType, currentStatus: string) => {
   if (type === 'RECALL') {
     return currentStatus === 'DAMAGED' ? 'DAMAGED' : 'IN_STOCK';
   }
+  if (type === 'TRANSFER' && currentStatus === 'DAMAGED') return 'DAMAGED';
   if (type === 'TRANSFER' && currentStatus === 'IN_STOCK') return 'IN_STOCK';
   return 'ASSIGNED';
 };
@@ -104,8 +106,8 @@ export class HandoverService {
             if (data.type === 'HANDOVER' && asset.status !== 'IN_STOCK') {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không còn ở trong kho để bàn giao.`);
             }
-            if (data.type === 'TRANSFER' && asset.status !== 'ASSIGNED' && asset.status !== 'IN_STOCK') {
-              throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không ở trạng thái đang sử dụng hoặc trong kho để luân chuyển.`);
+            if (data.type === 'TRANSFER' && !TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
+              throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không thuộc trạng thái được phép luân chuyển.`);
             }
             if (data.type === 'RECALL' && !RECALLABLE_ASSET_STATUSES.has(asset.status)) {
               throw new Error(`Tài sản ${asset.assetCode} đã thay đổi trạng thái (Trạng thái hiện tại: ${asset.status}), không thuộc trạng thái được phép thu hồi.`);
@@ -320,6 +322,12 @@ export class HandoverService {
             throw new Error(`Tài sản ${asset.assetCode} đang nằm trong hồ sơ chờ xác nhận khác.`);
           }
           const nextType = (data.type || doc.type) as HandoverType;
+          if (nextType === 'HANDOVER' && asset.status !== 'IN_STOCK') {
+            throw new Error(`Tài sản ${asset.assetCode} đang ở trạng thái ${asset.status}, không còn trong kho để bàn giao.`);
+          }
+          if (nextType === 'TRANSFER' && !TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
+            throw new Error(`Tài sản ${asset.assetCode} đang ở trạng thái ${asset.status}, không thuộc trạng thái được phép luân chuyển.`);
+          }
           if (nextType === 'RECALL' && !RECALLABLE_ASSET_STATUSES.has(asset.status)) {
             throw new Error(`Tài sản ${asset.assetCode} đang ở trạng thái ${asset.status}, không thuộc trạng thái được phép thu hồi.`);
           }
@@ -430,6 +438,12 @@ export class HandoverService {
         }
         if (lockedAssetIds.has(item.assetId)) {
           throw new Error(`Tài sản ${item.assetCode} đang nằm trong hồ sơ chờ xác nhận khác.`);
+        }
+        if (doc.type === 'HANDOVER' && asset.status !== 'IN_STOCK') {
+          throw new Error(`Tài sản ${item.assetCode} đang ở trạng thái ${asset.status}, không còn trong kho để bàn giao.`);
+        }
+        if (doc.type === 'TRANSFER' && !TRANSFERABLE_ASSET_STATUSES.has(asset.status)) {
+          throw new Error(`Tài sản ${item.assetCode} đang ở trạng thái ${asset.status}, không thuộc trạng thái được phép luân chuyển.`);
         }
         if (doc.type === 'RECALL' && !RECALLABLE_ASSET_STATUSES.has(asset.status)) {
           throw new Error(`Tài sản ${item.assetCode} đang ở trạng thái ${asset.status}, không thuộc trạng thái được phép thu hồi.`);

@@ -649,11 +649,20 @@ const AssetRow = ({
                   </>
                 )}
                 {canTransfer && (asset.status === 'RETIRED' || asset.status === 'DAMAGED') && (
-                  <MenuItem
-                    icon={<RotateCcw className="h-4 w-4" />}
-                    label={asset.status === 'DAMAGED' ? 'Thu hồi tài sản hỏng về Hà Nội' : 'Thu hồi về kho'}
-                    onClick={() => onAction('revoke', asset)}
-                  />
+                  <>
+                    {asset.status === 'DAMAGED' && (
+                      <MenuItem
+                        icon={<ArrowRightLeft className="h-4 w-4" />}
+                        label="Điều chuyển tài sản hỏng"
+                        onClick={() => onAction('handover', asset)}
+                      />
+                    )}
+                    <MenuItem
+                      icon={<RotateCcw className="h-4 w-4" />}
+                      label={asset.status === 'DAMAGED' ? 'Thu hồi tài sản hỏng về Hà Nội' : 'Thu hồi về kho'}
+                      onClick={() => onAction('revoke', asset)}
+                    />
+                  </>
                 )}
                 {canTransfer && asset.status !== 'ASSIGNED' && asset.status !== 'RETIRED' && asset.status !== 'DAMAGED' && (
                   <MenuItem icon={<UserPlus className="h-4 w-4" />} label="Cấp phát / Bàn giao" onClick={() => onAction('handover', asset)} />

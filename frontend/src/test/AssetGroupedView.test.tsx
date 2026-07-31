@@ -29,6 +29,15 @@ const assets = [
     cityName: 'Hà Nội',
     locationName: 'Kho C6',
   },
+  {
+    id: 3,
+    assetCode: 'TS-003',
+    assetName: 'Tài sản hỏng',
+    status: 'DAMAGED',
+    currentUserName: 'Người dùng 3',
+    cityName: 'Thái Nguyên',
+    locationName: 'Danko City',
+  },
 ];
 
 const groups: AssetGroupedBook[] = [{
@@ -41,7 +50,7 @@ const groups: AssetGroupedBook[] = [{
   statusSummary: {
     assigned: 2,
     inStock: 0,
-    needsAction: 0,
+    needsAction: 1,
   },
 }];
 
@@ -111,5 +120,14 @@ describe('AssetGroupedView', () => {
 
     expect(screen.getByText('Bể bơi Danko City')).toBeInTheDocument();
     expect(screen.getByText('Khu vực sử dụng')).toBeInTheDocument();
+  });
+
+  it('allows a damaged asset to start a transfer', () => {
+    render(<AssetGroupedView {...baseProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mở tác vụ cho TS-003' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Điều chuyển tài sản hỏng' }));
+
+    expect(baseProps.onAssetAction).toHaveBeenCalledWith('handover', assets[2]);
   });
 });
