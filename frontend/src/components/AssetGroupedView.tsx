@@ -5,6 +5,7 @@ import {
   Box,
   CheckSquare,
   CheckCircle2,
+  Check,
   ChevronDown,
   ChevronRight,
   ChevronsDownUp,
@@ -16,6 +17,7 @@ import {
   Loader2,
   MapPin,
   MoreVertical,
+  Minus,
   Printer,
   RotateCcw,
   Square,
@@ -455,7 +457,36 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
                           {visibleLocations.map((locationGroup) => (
                             <React.Fragment key={locationGroup.key}>
                               <tr className="h-9 bg-white">
-                                <td className="px-3" />
+                                <td className="px-3">
+                                  {(() => {
+                                    const locationSelected = locationGroup.assets.length > 0
+                                      && locationGroup.assets.every((asset) => selectedIds.has(asset.id));
+                                    const locationPartiallySelected = !locationSelected
+                                      && locationGroup.assets.some((asset) => selectedIds.has(asset.id));
+                                    return (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleAssets(locationGroup.assets)}
+                                        className={cn(
+                                          "mx-auto inline-flex h-6 w-6 items-center justify-center rounded-full border-2 transition-colors focus:outline-none focus:ring-2 focus:ring-primary-100",
+                                          locationSelected
+                                            ? "border-primary-600 bg-primary-600 text-white"
+                                            : locationPartiallySelected
+                                              ? "border-primary-500 bg-primary-50 text-primary-600"
+                                              : "border-slate-300 bg-white text-transparent hover:border-primary-400"
+                                        )}
+                                        aria-label={locationSelected ? `Bỏ chọn nhóm tài sản ${locationGroup.key}` : `Chọn nhóm tài sản ${locationGroup.key}`}
+                                        title={locationSelected ? 'Bỏ chọn nhóm tài sản' : 'Chọn nhóm tài sản'}
+                                      >
+                                        {locationSelected
+                                          ? <Check className="h-3.5 w-3.5" strokeWidth={3} />
+                                          : locationPartiallySelected
+                                            ? <Minus className="h-3.5 w-3.5" strokeWidth={3} />
+                                            : null}
+                                      </button>
+                                    );
+                                  })()}
+                                </td>
                                 <td colSpan={6} className="px-3 text-[11px] font-black text-slate-500">
                                   {locationGroup.key}
                                   <span className="ml-2 rounded-full bg-primary-50 px-2 py-0.5 text-[10px] text-primary-700">

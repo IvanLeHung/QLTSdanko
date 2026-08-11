@@ -115,6 +115,18 @@ describe('AssetGroupedView', () => {
     expect(baseProps.onAssetsAction).toHaveBeenCalledWith('liquidation', assets);
   });
 
+  it('uses a separate group selector to select all assets in a category', () => {
+    render(<AssetGroupedView {...baseProps} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Chọn nhóm tài sản Hà Nội' }));
+
+    expect(screen.getByTitle('Đi tới tài sản cuối cùng đã chọn')).toHaveTextContent('3 tài sản');
+    expect(screen.getByRole('button', { name: 'Bỏ chọn nhóm tài sản Hà Nội' })).toBeInTheDocument();
+    expect(screen.getByLabelText('Bỏ chọn TS-001')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bỏ chọn TS-002')).toBeInTheDocument();
+    expect(screen.getByLabelText('Bỏ chọn TS-003')).toBeInTheDocument();
+  });
+
   it('shows an assigned area instead of marking the asset as unassigned', () => {
     render(<AssetGroupedView {...baseProps} />);
 
