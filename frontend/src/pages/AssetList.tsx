@@ -43,6 +43,7 @@ import { useAuth } from '../context/AuthContext';
 import { NormalizationModal } from '../components/NormalizationModal';
 import { useModal } from '../context/ModalContext';
 import { AssetGroupedView, type AssetGroupedBook } from '../components/AssetGroupedView';
+import { AssetLocationHierarchyView } from '../components/AssetLocationHierarchyView';
 import { getAssetStatusConfig } from '../constants/assetStatus';
 import { getAssetAssigneeDisplay } from '../utils/assetAssignee';
 
@@ -1664,7 +1665,7 @@ export const AssetList: React.FC = () => {
         asset.departmentName
       );
       const parts = String(fullLocation || '')
-        .split(/\s+-\s+/)
+        .split(/\s+(?:-|\/)\s+/)
         .map((part) => part.trim())
         .filter(Boolean);
 
@@ -1674,14 +1675,15 @@ export const AssetList: React.FC = () => {
       if (project && normalize(parts[0]) === normalize(project)) parts.shift();
       if (!project && parts.length > 1) project = parts.shift() || '';
 
-      const location = parts.join(' - ')
-        || String(asset.locationName || '').trim()
-        || 'Chưa có vị trí';
+      const fallbackLocation = String(asset.locationName || '').trim();
+      const location = parts.shift() || fallbackLocation || 'Chưa có vị trí';
+      const locationDetail = parts.join(' - ') || 'Chưa có vị trí chi tiết';
 
       return {
         city: city || 'Chưa có thành phố',
         project: project || 'Chưa có dự án',
         location,
+        locationDetail,
         department,
       };
     };
@@ -1701,7 +1703,7 @@ export const AssetList: React.FC = () => {
     const groupMap = new Map<string, any>();
     groupedViewAssets.forEach((asset) => {
       const hierarchy = getLocationHierarchy(asset);
-      const key = [hierarchy.city, hierarchy.project, hierarchy.location, hierarchy.department]
+      const key = [hierarchy.city, hierarchy.project, hierarchy.location, hierarchy.locationDetail, hierarchy.department]
         .map(normalize)
         .join('|');
 
@@ -1727,12 +1729,17 @@ export const AssetList: React.FC = () => {
               filterValue: asset.locationName || undefined,
             },
             {
+              label: hierarchy.locationDetail,
+              filterKey: asset.locationName ? 'locationQuery' : undefined,
+              filterValue: asset.locationName || undefined,
+            },
+            {
               label: hierarchy.department,
               filterKey: asset.departmentName ? 'departmentName' : undefined,
               filterValue: asset.departmentName || undefined,
             },
           ],
-          sortPath: [hierarchy.city, hierarchy.project, hierarchy.location, hierarchy.department].join(' - '),
+          sortPath: [hierarchy.city, hierarchy.project, hierarchy.location, hierarchy.locationDetail, hierarchy.department].join(' - '),
           assets: [],
           locations: new Map<string, any>(),
           statusSummary: {
@@ -2667,13 +2674,26 @@ export const AssetList: React.FC = () => {
 
       {/* ASSET TABLE — fills remaining space */}
       <main className="asset-table-section flex-1 min-h-0 p-2 sm:p-3">
-        {assetViewMode !== 'table' ? (
-          <AssetGroupedView
-            groups={assetViewMode === 'location' ? locationAssetBooks : groupedAssetBooks}
+        {assetViewMode === 'location' ? (
+          <AssetLocationHierarchyView
+            groups={locationAssetBooks}
             assetCount={groupedViewAssets.length}
             loading={groupedViewLoading}
-            viewLabel={assetViewMode === 'location' ? 'View tài sản theo vị trí' : 'View theo nhóm tài sản'}
-            groupLabel={assetViewMode === 'location' ? 'vị trí / phòng ban' : 'nhóm'}
+            selectedAssetId={selectedAssetId}
+            isDetailOpen={isDetailOpen}
+            onOpenAsset={openAssetDetail}
+            onAssetAction={handleAssetAction}
+            onAssetsAction={handleGroupedAssetsAction}
+            onApplyFilter={updateParam}
+            selectionResetKey={groupSelectionResetKey}
+          />
+        ) : assetViewMode === 'grouped' ? (
+          <AssetGroupedView
+            groups={groupedAssetBooks}
+            assetCount={groupedViewAssets.length}
+            loading={groupedViewLoading}
+            viewLabel="View theo nhóm tài sản"
+            groupLabel="nhóm"
             selectedAssetId={selectedAssetId}
             isDetailOpen={isDetailOpen}
             onOpenAsset={openAssetDetail}

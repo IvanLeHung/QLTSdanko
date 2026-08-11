@@ -75,6 +75,7 @@ interface AssetGroupedViewProps {
   onAssetsAction?: (action: string, assets: any[]) => void;
   onApplyFilter: (key: string, value: string) => void;
   selectionResetKey?: number;
+  embedded?: boolean;
 }
 
 export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
@@ -90,6 +91,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
   onAssetsAction,
   onApplyFilter,
   selectionResetKey = 0,
+  embedded = false,
 }) => {
   const { hasPermission } = useAuth();
   const [openAssetMenuId, setOpenAssetMenuId] = useState<number | null>(null);
@@ -226,8 +228,8 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
   const selectedLabel = `${selectedAssets.length.toLocaleString('vi-VN')} tài sản`;
 
   return (
-    <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
-      <div className="min-h-14 shrink-0 px-4 border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3 bg-[#F8FAFC]">
+    <div className={cn("h-full bg-white overflow-hidden flex flex-col", !embedded && "rounded-xl border shadow-sm")}>
+      {!embedded && <div className="min-h-14 shrink-0 px-4 border-b border-[#E2E8F0] flex flex-wrap items-center justify-between gap-3 bg-[#F8FAFC]">
         <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{viewLabel}</p>
           <p className="text-[12px] font-bold text-slate-700 truncate">
@@ -245,7 +247,7 @@ export const AssetGroupedView: React.FC<AssetGroupedViewProps> = ({
           </button>
           {loading && <Loader2 className="h-5 w-5 animate-spin text-primary-500 shrink-0" />}
         </div>
-      </div>
+      </div>}
 
       {selectedAssets.length > 0 && (
         <div className="shrink-0 border-b border-slate-200 bg-slate-900 px-4 py-2 text-white flex flex-wrap items-center justify-between gap-2">
