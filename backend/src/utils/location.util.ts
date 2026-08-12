@@ -22,7 +22,16 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
     .trim();
 
   // Shorthand rule checks
-  if (cleanStr.includes('mat truoc c6 i') || cleanStr.includes('mat truoc c6 1')) {
+  if (/\bmat truoc c6 (?:ii|2)\b/.test(cleanStr)) {
+    return {
+      city: 'Hà Nội',
+      project: 'Văn phòng C6',
+      location: 'Mặt trước C6-II',
+      fullFormatted: 'Hà Nội - Văn phòng C6 - Mặt trước C6-II'
+    };
+  }
+
+  if (/\bmat truoc c6 (?:i|1)\b/.test(cleanStr)) {
     return {
       city: 'Hà Nội',
       project: 'Văn phòng C6',
@@ -31,7 +40,16 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
     };
   }
 
-  if (cleanStr.includes('mat sau c6 i') || cleanStr.includes('mat sau c6 1')) {
+  if (/\bmat sau c6 (?:ii|2)\b/.test(cleanStr)) {
+    return {
+      city: 'Hà Nội',
+      project: 'Văn phòng C6',
+      location: 'Mặt sau C6-II',
+      fullFormatted: 'Hà Nội - Văn phòng C6 - Mặt sau C6-II'
+    };
+  }
+
+  if (/\bmat sau c6 (?:i|1)\b/.test(cleanStr)) {
     return {
       city: 'Hà Nội',
       project: 'Văn phòng C6',
@@ -50,7 +68,7 @@ export function parseAndNormalizeLocation(location: string | null | undefined): 
   }
 
   // Parsing formats like "City - Project - Location" or "City / Project / Location" or "City-Project-Location"
-  const parts = trimmed.split(/[-/\\]/).map(p => p.trim());
+  const parts = trimmed.split(/\s+(?:-|\/)\s+/).map(p => p.trim());
   if (parts.length >= 3) {
     const city = parts[0];
     const project = parts[1];

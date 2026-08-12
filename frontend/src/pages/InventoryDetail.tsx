@@ -60,13 +60,13 @@ type DepartmentRepresentativeForm = {
 const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {
     'Văn phòng C6': [
-      'Mặt trước Khối I',
-      'Mặt sau Khối I',
+      'Mặt trước C6-I',
+      'Mặt sau C6-I',
       'Kho',
-      'Mặt trước Khối II',
-      'Mặt sau Khối II',
-      'Tầng 9 Khối I',
-      'Tầng 2 Khối II'
+      'Mặt trước C6-II',
+      'Mặt sau C6-II',
+      'Tầng 9 C6-I',
+      'Tầng 2 C6-II'
     ],
     'Vân Canh': ['Kho']
   },

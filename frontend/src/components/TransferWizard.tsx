@@ -13,13 +13,13 @@ import { useAuth } from '../context/AuthContext';
 export const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {
     'Văn phòng C6': [
-      'Mặt trước Khối I',
-      'Mặt sau Khối I',
+      'Mặt trước C6-I',
+      'Mặt sau C6-I',
       'Kho',
-      'Mặt trước Khối II',
-      'Mặt sau Khối II',
-      'Tầng 9 Khối I',
-      'Tầng 2 Khối II'
+      'Mặt trước C6-II',
+      'Mặt sau C6-II',
+      'Tầng 9 C6-I',
+      'Tầng 2 C6-II'
     ],
     'Vân Canh': ['Kho']
   },
@@ -607,16 +607,24 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     let resolvedProject = '';
     let resolvedLocation = '';
     
-    if (cleanStr.includes('mat truoc c6 i') || cleanStr.includes('mat truoc c6 1')) {
+    if (/\bmat truoc c6 (?:ii|2)\b/.test(cleanStr)) {
       resolvedCity = 'Hà Nội';
       resolvedProject = 'Văn phòng C6';
-      resolvedLocation = 'Mặt trước Khối I';
-    } else if (cleanStr.includes('mat sau c6 i') || cleanStr.includes('mat sau c6 1') || cleanStr.includes('mat sau c6 ii') || cleanStr.includes('mat sau c6 2')) {
+      resolvedLocation = 'Mặt trước C6-II';
+    } else if (/\bmat truoc c6 (?:i|1)\b/.test(cleanStr)) {
       resolvedCity = 'Hà Nội';
       resolvedProject = 'Văn phòng C6';
-      resolvedLocation = 'Mặt sau Khối II';
+      resolvedLocation = 'Mặt trước C6-I';
+    } else if (/\bmat sau c6 (?:ii|2)\b/.test(cleanStr)) {
+      resolvedCity = 'Hà Nội';
+      resolvedProject = 'Văn phòng C6';
+      resolvedLocation = 'Mặt sau C6-II';
+    } else if (/\bmat sau c6 (?:i|1)\b/.test(cleanStr)) {
+      resolvedCity = 'Hà Nội';
+      resolvedProject = 'Văn phòng C6';
+      resolvedLocation = 'Mặt sau C6-I';
     } else {
-      const parts = trimmed.split(/[-/\\]/).map(p => p.trim());
+      const parts = trimmed.split(/\s+(?:-|\/)\s+/).map(p => p.trim());
       if (parts.length >= 3) {
         resolvedCity = parts[0];
         resolvedProject = parts[1];

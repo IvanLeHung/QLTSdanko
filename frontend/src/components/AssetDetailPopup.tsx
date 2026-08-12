@@ -510,7 +510,8 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
 
     setIsSaving(true);
     try {
-      await api.patch(`/assets/${asset.id}/assignment-info`, updates);
+      const response = await api.patch(`/assets/${asset.id}/assignment-info`, updates);
+      setAsset((current: any) => ({ ...current, ...response.data }));
       toast.success('Đã lưu thông tin cấp phát và ghi log');
       cancelAssignInfoEditor();
       await fetchAssetDetail();
