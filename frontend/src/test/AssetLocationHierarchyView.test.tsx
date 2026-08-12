@@ -1,6 +1,12 @@
-import { describe, expect, it } from 'vitest';
-import { buildLocationHierarchyLevel } from '../components/AssetLocationHierarchyView';
+import React from 'react';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { describe, expect, it, vi } from 'vitest';
+import { AssetLocationHierarchyView, buildLocationHierarchyLevel } from '../components/AssetLocationHierarchyView';
 import type { AssetGroupedBook } from '../components/AssetGroupedView';
+
+vi.mock('../context/AuthContext', () => ({
+  useAuth: () => ({ hasPermission: () => true }),
+}));
 
 const createGroup = (
   key: string,
@@ -59,5 +65,32 @@ describe('asset location hierarchy summaries', () => {
       'Sảnh',
     ]);
     expect(departments.map((node) => node.label)).toEqual(['B. Hành chính Nhân sự']);
+  });
+
+  it('expands children inline while keeping sibling provinces visible', () => {
+    render(
+      <AssetLocationHierarchyView
+        groups={groups}
+        assetCount={4}
+        loading={false}
+        isDetailOpen={false}
+        onOpenAsset={vi.fn()}
+        onAssetAction={vi.fn()}
+        onAssetsAction={vi.fn()}
+        onApplyFilter={vi.fn()}
+      />
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: /Hà Nội/ }));
+    expect(screen.getByText('Văn phòng C6')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Thái Nguyên/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Thái Nguyên/ }));
+    expect(screen.getByText('Danko City')).toBeInTheDocument();
+    expect(screen.getByText('Văn phòng C6')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Hà Nội/ }));
+    expect(screen.queryByText('Văn phòng C6')).not.toBeInTheDocument();
+    expect(screen.getByText('Danko City')).toBeInTheDocument();
   });
 });

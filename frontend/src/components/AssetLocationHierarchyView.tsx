@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   Building2,
-  ChevronLeft,
+  ChevronDown,
   ChevronRight,
+  ChevronsDownUp,
   FolderTree,
   Loader2,
   MapPin,
@@ -98,29 +99,106 @@ export const AssetLocationHierarchyView: React.FC<AssetLocationHierarchyViewProp
   onApplyFilter,
   selectionResetKey = 0,
 }) => {
-  const [path, setPath] = useState<string[]>([]);
+  const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
 
   useEffect(() => {
-    setPath((current) => {
-      if (current.length === 0) return current;
-      return groups.some((group) => matchesPath(group, current)) ? current : [];
+    setExpandedPaths((current) => {
+      const validPaths = new Set<string>();
+      current.forEach((key) => {
+        const path = key.split('\u001f');
+        if (groups.some((group) => matchesPath(group, path))) validPaths.add(key);
+      });
+      return validPaths;
     });
   }, [groups]);
 
-  const currentNodes = useMemo(
-    () => buildLocationHierarchyLevel(groups, path),
-    [groups, path]
-  );
-  const leafGroups = useMemo(
-    () => groups.filter((group) => matchesPath(group, path)),
-    [groups, path]
-  );
   const provinceCount = useMemo(
     () => new Set(groups.map((group) => group.breadcrumb[0]?.label).filter(Boolean)).size,
     [groups]
   );
-  const atLeaf = path.length >= LEVEL_LABELS.length;
-  const currentLevelLabel = LEVEL_LABELS[path.length] || LEVEL_LABELS.at(-1)!;
+
+  const pathKey = (path: string[]) => path.join('\u001f');
+
+  const togglePath = (path: string[]) => {
+    const key = pathKey(path);
+    setExpandedPaths((current) => {
+      const next = new Set(current);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  };
+
+  const renderLevel = (parentPath: string[]): React.ReactNode => {
+    const nodes = buildLocationHierarchyLevel(groups, parentPath);
+    return nodes.map((node) => {
+      const key = pathKey(node.path);
+      const expanded = expandedPaths.has(key);
+      const atDepartment = node.path.length >= LEVEL_LABELS.length;
+      const leafGroups = atDepartment
+        ? groups.filter((group) => matchesPath(group, node.path))
+        : [];
+
+      return (
+        <div key={key} className="border-b border-slate-100 last:border-b-0">
+          <button
+            type="button"
+            onClick={() => togglePath(node.path)}
+            aria-expanded={expanded}
+            className="grid min-h-16 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 text-left hover:bg-primary-50/50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-200"
+          >
+            <span className="flex min-w-0 items-center gap-2.5">
+              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-500">
+                {expanded ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+              </span>
+              <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
+                <LevelIcon depth={parentPath.length} />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-[9px] font-black uppercase tracking-widest text-slate-400">
+                  {LEVEL_LABELS[parentPath.length]}
+                </span>
+                <span className="block truncate text-[13px] font-black text-slate-800" title={node.label}>{node.label}</span>
+                <span className="mt-0.5 block text-[10px] font-semibold text-slate-400">
+                  {node.childCount > 0
+                    ? `${node.childCount.toLocaleString('vi-VN')} ${LEVEL_LABELS[parentPath.length + 1].toLowerCase()}`
+                    : 'Danh sách tài sản trong nhóm'}
+                </span>
+              </span>
+            </span>
+            <span className="flex flex-wrap items-center justify-end gap-1.5">
+              <span className="rounded-full bg-slate-900 px-2.5 py-1.5 text-[10px] font-black uppercase text-white">{node.assets.length.toLocaleString('vi-VN')} tài sản</span>
+              <span className="rounded-full bg-blue-50 px-2.5 py-1.5 text-[10px] font-black uppercase text-blue-700">{node.assigned.toLocaleString('vi-VN')} đang dùng</span>
+              <span className="rounded-full bg-emerald-50 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-700">{node.inStock.toLocaleString('vi-VN')} trong kho</span>
+              {node.needsAction > 0 && <span className="rounded-full bg-rose-50 px-2.5 py-1.5 text-[10px] font-black uppercase text-rose-700">{node.needsAction.toLocaleString('vi-VN')} cần xử lý</span>}
+            </span>
+          </button>
+
+          {expanded && (
+            <div className="ml-5 border-l-2 border-primary-100 bg-slate-50/60 pl-2 sm:ml-8 sm:pl-3">
+              {atDepartment ? (
+                <div className="min-h-64 py-2 pr-2">
+                  <AssetGroupedView
+                    groups={leafGroups}
+                    assetCount={uniqueAssets(leafGroups).length}
+                    loading={false}
+                    selectedAssetId={selectedAssetId}
+                    isDetailOpen={isDetailOpen}
+                    onOpenAsset={onOpenAsset}
+                    onAssetAction={onAssetAction}
+                    onAssetsAction={onAssetsAction}
+                    onApplyFilter={onApplyFilter}
+                    selectionResetKey={selectionResetKey}
+                    embedded
+                  />
+                </div>
+              ) : renderLevel(node.path)}
+            </div>
+          )}
+        </div>
+      );
+    });
+  };
 
   return (
     <div className="h-full rounded-xl border border-slate-200 bg-white overflow-hidden shadow-sm flex flex-col">
@@ -132,38 +210,15 @@ export const AssetLocationHierarchyView: React.FC<AssetLocationHierarchyViewProp
               {assetCount.toLocaleString('vi-VN')} tài sản trong {provinceCount.toLocaleString('vi-VN')} tỉnh
             </p>
           </div>
-          {path.length > 0 && (
+          {expandedPaths.size > 0 && (
             <button
               type="button"
-              onClick={() => setPath((current) => current.slice(0, -1))}
+              onClick={() => setExpandedPaths(new Set())}
               className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-[11px] font-black text-slate-600 hover:bg-slate-100"
             >
-              <ChevronLeft className="h-4 w-4" /> Về cấp trên
+              <ChevronsDownUp className="h-4 w-4" /> Thu gọn tất cả
             </button>
           )}
-        </div>
-
-        <div className="mt-3 flex min-h-9 flex-wrap items-center gap-1.5">
-          <button
-            type="button"
-            onClick={() => setPath([])}
-            className="rounded-lg bg-slate-900 px-2.5 py-2 text-[10px] font-black uppercase tracking-wide text-white"
-          >
-            Tất cả tỉnh
-          </button>
-          {path.map((label, index) => (
-            <React.Fragment key={`${label}-${index}`}>
-              <ChevronRight className="h-3.5 w-3.5 text-slate-300" />
-              <button
-                type="button"
-                onClick={() => setPath(path.slice(0, index + 1))}
-                className="max-w-[220px] truncate rounded-lg bg-primary-50 px-2.5 py-2 text-[10px] font-black text-primary-700 hover:bg-primary-100"
-                title={label}
-              >
-                {label}
-              </button>
-            </React.Fragment>
-          ))}
         </div>
       </div>
 
@@ -171,58 +226,14 @@ export const AssetLocationHierarchyView: React.FC<AssetLocationHierarchyViewProp
         <div className="flex flex-1 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-primary-500" /></div>
       ) : groups.length === 0 ? (
         <div className="flex flex-1 items-center justify-center text-sm font-bold text-slate-500">Không có tài sản phù hợp bộ lọc</div>
-      ) : atLeaf ? (
-        <div className="flex-1 min-h-0">
-          <AssetGroupedView
-            groups={leafGroups}
-            assetCount={uniqueAssets(leafGroups).length}
-            loading={false}
-            selectedAssetId={selectedAssetId}
-            isDetailOpen={isDetailOpen}
-            onOpenAsset={onOpenAsset}
-            onAssetAction={onAssetAction}
-            onAssetsAction={onAssetsAction}
-            onApplyFilter={onApplyFilter}
-            selectionResetKey={selectionResetKey}
-            embedded
-          />
-        </div>
       ) : (
         <div className="flex-1 min-h-0 overflow-auto bg-slate-50/60 p-3 custom-scrollbar">
           <div className="mb-2 grid grid-cols-[minmax(0,1fr)_auto] gap-3 px-3 text-[10px] font-black uppercase tracking-widest text-slate-400">
-            <span>{currentLevelLabel}</span>
+            <span>Tỉnh / Thành phố</span>
             <span className="pr-10">Tổng hợp</span>
           </div>
           <div className="divide-y divide-slate-100 overflow-hidden rounded-lg border border-slate-200 bg-white">
-            {currentNodes.map((node) => (
-              <button
-                key={node.path.join('|')}
-                type="button"
-                onClick={() => setPath(node.path)}
-                className="grid min-h-16 w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-3 text-left hover:bg-primary-50/50 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-primary-200"
-              >
-                <span className="flex min-w-0 items-center gap-3">
-                  <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary-50 text-primary-600">
-                    <LevelIcon depth={path.length} />
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-black text-slate-800" title={node.label}>{node.label}</span>
-                    <span className="mt-0.5 block text-[10px] font-semibold text-slate-400">
-                      {node.childCount > 0
-                        ? `${node.childCount.toLocaleString('vi-VN')} ${LEVEL_LABELS[path.length + 1].toLowerCase()}`
-                        : 'Mở danh sách tài sản'}
-                    </span>
-                  </span>
-                </span>
-                <span className="flex flex-wrap items-center justify-end gap-1.5">
-                  <span className="rounded-full bg-slate-900 px-2.5 py-1.5 text-[10px] font-black uppercase text-white">{node.assets.length.toLocaleString('vi-VN')} tài sản</span>
-                  <span className="rounded-full bg-blue-50 px-2.5 py-1.5 text-[10px] font-black uppercase text-blue-700">{node.assigned.toLocaleString('vi-VN')} đang dùng</span>
-                  <span className="rounded-full bg-emerald-50 px-2.5 py-1.5 text-[10px] font-black uppercase text-emerald-700">{node.inStock.toLocaleString('vi-VN')} trong kho</span>
-                  {node.needsAction > 0 && <span className="rounded-full bg-rose-50 px-2.5 py-1.5 text-[10px] font-black uppercase text-rose-700">{node.needsAction.toLocaleString('vi-VN')} cần xử lý</span>}
-                  <ChevronRight className="ml-1 h-5 w-5 text-slate-400" />
-                </span>
-              </button>
-            ))}
+            {renderLevel([])}
           </div>
         </div>
       )}
