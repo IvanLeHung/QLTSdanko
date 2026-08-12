@@ -1829,7 +1829,10 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     createdFrom,
     createdTo,
     isAssigned,
-    invoiceBatchId
+    invoiceBatchId,
+    selectedDate,
+    reportType,
+    compareMode
   } = req.query;
 
   const where: any = { isDeleted: false };
@@ -2032,7 +2035,8 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
         handoverDate: true,
         supplierName: true,
         depreciationEndDate: true,
-        documentNote: true
+        documentNote: true,
+        createdAt: true
       }
     });
 
@@ -2046,6 +2050,56 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     ];
 
     const userStr = req.user?.fullName || req.user?.username || 'Admin';
+    const reportDate = selectedDate ? new Date(String(selectedDate)) : new Date();
+    reportDate.setHours(23, 59, 59, 999);
+    const currentDate = new Date();
+    const selectedAssets = assets.filter((asset) => new Date(asset.createdAt) <= reportDate);
+    const selectedCodes = new Set(selectedAssets.map((asset) => asset.assetCode));
+    const increasedAssets = assets.filter((asset) => !selectedCodes.has(asset.assetCode));
+    const abnormalAssets = assets.filter((asset) => ['UNDER_REPAIR', 'DAMAGED', 'LOST', 'LIQUIDATED', 'DISPOSED', 'PENDING_DISPOSAL'].includes(asset.status));
+    const selectedByCode = new Map(selectedAssets.map((asset) => [asset.assetCode, asset]));
+    const compareRows = assets.map((asset) => {
+      const before = selectedByCode.get(asset.assetCode);
+      const changes: string[] = [];
+      if (!before) changes.push('Tăng mới');
+      if (before && before.currentUserName !== asset.currentUserName) changes.push('Đổi NSD');
+      if (before && before.locationName !== asset.locationName) changes.push('Đổi vị trí');
+      if (before && before.departmentName !== asset.departmentName) changes.push('Điều chuyển');
+      if (before && before.status !== asset.status) changes.push('Đổi trạng thái');
+      if (changes.length === 0) changes.push('Không thay đổi');
+      return [
+        asset.assetCode,
+        asset.assetName,
+        before?.departmentName || '',
+        asset.departmentName || '',
+        before?.locationName || '',
+        asset.locationName || '',
+        before?.currentUserName || '',
+        asset.currentUserName || '',
+        before?.status || '',
+        asset.status || '',
+        changes.join(', ')
+      ];
+    });
+    const statusCount = (items: typeof assets, statuses: string[]) => items.filter((asset) => statuses.includes(asset.status)).length;
+    const valueSum = (items: typeof assets) => items.reduce((sum, asset) => sum + Number(asset.purchasePriceExVat || 0), 0);
+    const summaryRows = [
+      ['Chỉ tiêu', formatDate(reportDate), 'Hiện tại', 'Chênh lệch'],
+      ['Tổng tài sản', selectedAssets.length, assets.length, assets.length - selectedAssets.length],
+      ['Đang sử dụng', statusCount(selectedAssets, ['ASSIGNED']), statusCount(assets, ['ASSIGNED']), statusCount(assets, ['ASSIGNED']) - statusCount(selectedAssets, ['ASSIGNED'])],
+      ['Tồn kho', statusCount(selectedAssets, ['IN_STOCK']), statusCount(assets, ['IN_STOCK']), statusCount(assets, ['IN_STOCK']) - statusCount(selectedAssets, ['IN_STOCK'])],
+      ['Hỏng / sửa chữa', statusCount(selectedAssets, ['DAMAGED', 'UNDER_REPAIR']), statusCount(assets, ['DAMAGED', 'UNDER_REPAIR']), statusCount(assets, ['DAMAGED', 'UNDER_REPAIR']) - statusCount(selectedAssets, ['DAMAGED', 'UNDER_REPAIR'])],
+      ['Mất / thất thoát', statusCount(selectedAssets, ['LOST']), statusCount(assets, ['LOST']), statusCount(assets, ['LOST']) - statusCount(selectedAssets, ['LOST'])],
+      ['Thanh lý', statusCount(selectedAssets, ['LIQUIDATED', 'DISPOSED']), statusCount(assets, ['LIQUIDATED', 'DISPOSED']), statusCount(assets, ['LIQUIDATED', 'DISPOSED']) - statusCount(selectedAssets, ['LIQUIDATED', 'DISPOSED'])],
+      ['Tổng nguyên giá', valueSum(selectedAssets), valueSum(assets), valueSum(assets) - valueSum(selectedAssets)],
+      [],
+      ['Biến động', 'Số lượng', '', ''],
+      ['Tăng mới', increasedAssets.length, '', ''],
+      ['Giảm / không còn trong phạm vi', 0, '', ''],
+      ['Thay đổi người sử dụng', compareRows.filter((row) => String(row[10]).includes('Đổi NSD')).length, '', ''],
+      ['Thay đổi vị trí', compareRows.filter((row) => String(row[10]).includes('Đổi vị trí')).length, '', ''],
+      ['Thay đổi trạng thái', compareRows.filter((row) => String(row[10]).includes('Đổi trạng thái')).length, '', '']
+    ];
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoSoTaiSan.xlsx');
     res.setHeader('Cache-Control', 'no-store');
@@ -2055,6 +2109,73 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
       useStyles: true,
       useSharedStrings: false
     });
+    const writeSimpleSheet = (name: string, sheetHeaders: string[], sheetRows: any[][]) => {
+      const reportSheet = workbook.addWorksheet(name);
+      sheetHeaders.forEach((header, index) => {
+        reportSheet.getColumn(index + 1).width = Math.max(String(header).length + 4, 16);
+      });
+      const reportHeaderRow = reportSheet.addRow(sheetHeaders);
+      reportHeaderRow.eachCell((cell) => {
+        cell.font = { name: 'Arial', size: 11, bold: true };
+        cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'D9EAF7' } };
+        cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      });
+      reportHeaderRow.commit();
+      for (const rowData of sheetRows) {
+        const row = reportSheet.addRow(rowData);
+        row.eachCell((cell) => {
+          cell.font = { name: 'Arial', size: 10 };
+          cell.alignment = { vertical: 'middle' };
+        });
+        row.commit();
+      }
+      reportSheet.commit();
+    };
+    const toAssetRow = (asset: any) => [
+      asset.assetCode,
+      asset.assetName,
+      asset.assetNameShort || '',
+      asset.serialNumber || '',
+      asset.companyCode,
+      asset.companyName,
+      asset.projectName || '',
+      asset.level1Name,
+      asset.level2Name,
+      asset.level3Name,
+      asset.level4Name,
+      asset.status === 'IN_STOCK' ? 'Trong kho' :
+      asset.status === 'ASSIGNED' ? 'Đã cấp phát' :
+      asset.status === 'UNDER_REPAIR' ? 'Đang sửa chữa' :
+      asset.status === 'DAMAGED' ? 'Bị hỏng' :
+      asset.status === 'LOST' ? 'Bị mất' :
+      asset.status === 'LIQUIDATED' ? 'Đã thanh lý' : asset.status,
+      asset.unit || 'Cái',
+      ...(hasPricePermission ? [asset.purchasePriceExVat] : []),
+      formatDate(asset.purchaseDate),
+      asset.currentUserName || '',
+      asset.currentPosition || '',
+      asset.departmentName || '',
+      asset.locationName || '',
+      asset.cityName || '',
+      formatDate(asset.handoverDate),
+      asset.supplierName || '',
+      formatDate(asset.depreciationEndDate),
+      asset.documentNote || ''
+    ];
+    writeSimpleSheet('01_Tổng hợp', ['Chỉ tiêu', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'], summaryRows.slice(1));
+    writeSimpleSheet('02_TS tại thời điểm chọn', headers, selectedAssets.map(toAssetRow));
+    writeSimpleSheet('03_TS hiện tại', headers, assets.map(toAssetRow));
+    writeSimpleSheet('04_TS tăng', headers, increasedAssets.map(toAssetRow));
+    writeSimpleSheet('05_TS giảm', headers, []);
+    writeSimpleSheet('06_TS điều chuyển đến', headers, []);
+    writeSimpleSheet('07_TS điều chuyển đi', headers, []);
+    writeSimpleSheet('08_TS thay đổi NSD', ['Mã TS', 'Tên TS', 'NSD tại mốc chọn', 'NSD hiện tại', 'Phòng ban hiện tại', 'Vị trí hiện tại'], compareRows.filter((row) => String(row[10]).includes('Đổi NSD')).map((row) => [row[0], row[1], row[6], row[7], row[3], row[5]]));
+    writeSimpleSheet('09_TS thay đổi vị trí', ['Mã TS', 'Tên TS', 'Vị trí tại mốc chọn', 'Vị trí hiện tại', 'Phòng ban tại mốc chọn', 'Phòng ban hiện tại'], compareRows.filter((row) => String(row[10]).includes('Đổi vị trí')).map((row) => [row[0], row[1], row[4], row[5], row[2], row[3]]));
+    writeSimpleSheet('10_TS đổi trạng thái', ['Mã TS', 'Tên TS', 'Trạng thái tại mốc chọn', 'Trạng thái hiện tại', 'Kết quả'], compareRows.filter((row) => String(row[10]).includes('Đổi trạng thái')).map((row) => [row[0], row[1], row[8], row[9], row[10]]));
+    writeSimpleSheet('11_TS hỏng-mất-thanh lý', headers, abnormalAssets.map(toAssetRow));
+    writeSimpleSheet('12_Lịch sử biến động', ['Mã TS', 'Tên TS', 'Mốc chọn', 'Hiện tại', 'Ghi chú'], compareRows.filter((row) => row[10] !== 'Không thay đổi').map((row) => [row[0], row[1], formatDate(reportDate), formatDate(currentDate), row[10]]));
+    writeSimpleSheet('13_Đối chiếu', ['Mã TS', 'Tên TS', 'Đơn vị tại mốc chọn', 'Đơn vị hiện tại', 'Vị trí tại mốc chọn', 'Vị trí hiện tại', 'NSD tại mốc chọn', 'NSD hiện tại', 'Trạng thái tại mốc chọn', 'Trạng thái hiện tại', 'Kết quả'], compareRows);
+
     const sheet = workbook.addWorksheet('Sổ tài sản');
 
     const columnWidths = [22, 38, 24, 20, 14, 24, 24, 24, 24, 24, 24, 18, 14];
@@ -2074,7 +2195,7 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
 
     sheet.mergeCells(2, 1, 2, headers.length);
     const subCell = sheet.getCell(2, 1);
-    subCell.value = `Thời gian xuất: ${new Date().toLocaleString('vi-VN')} | Người xuất: ${userStr}`;
+    subCell.value = `Loại báo cáo: ${reportType || 'detail'} | So sánh với: ${compareMode || 'current'} | Mốc chọn: ${formatDate(reportDate)} | Thời gian xuất: ${currentDate.toLocaleString('vi-VN')} | Người xuất: ${userStr}`;
     subCell.font = { name: 'Arial', size: 10, italic: true };
     subCell.alignment = { horizontal: 'center' };
     sheet.addRow([]);

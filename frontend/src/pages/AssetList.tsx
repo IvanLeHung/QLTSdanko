@@ -134,6 +134,22 @@ export const AssetList: React.FC = () => {
   // Drawer advanced filters
   const [tempCompanyCode, setTempCompanyCode] = useState('');
   const [isNormalizationOpen, setIsNormalizationOpen] = useState(false);
+  const [isAssetReportOpen, setIsAssetReportOpen] = useState(false);
+  const [reportLoading, setReportLoading] = useState(false);
+  const [reportPreview, setReportPreview] = useState<any>(null);
+  const [reportForm, setReportForm] = useState({
+    reportType: 'summary',
+    selectedDate: new Date().toISOString().slice(0, 10),
+    compareMode: 'current',
+    status: '',
+    companyCode: '',
+    departmentName: '',
+    cityName: '',
+    projectName: '',
+    locationQuery: '',
+    level4Code: '',
+    currentUserName: ''
+  });
   const [tempPriceMin, setTempPriceMin] = useState('');
   const [tempPriceMax, setTempPriceMax] = useState('');
   const [tempPurchaseFrom, setTempPurchaseFrom] = useState('');
@@ -1090,6 +1106,55 @@ export const AssetList: React.FC = () => {
     } catch (err: any) {
       console.error(err);
       toast.error(await getExportErrorMessage(err, "Lỗi khi tải báo cáo sổ tài sản"));
+    }
+  };
+
+  const buildReportParams = () => {
+    const params: Record<string, string> = {
+      reportType: reportForm.reportType,
+      selectedDate: reportForm.selectedDate,
+      compareMode: reportForm.compareMode
+    };
+    Object.entries(reportForm).forEach(([key, value]) => {
+      if (['reportType', 'selectedDate', 'compareMode'].includes(key)) return;
+      if (value) params[key] = value;
+    });
+    return params;
+  };
+
+  const handlePreviewAssetReport = async () => {
+    setReportLoading(true);
+    try {
+      const res = await api.get('/assets/stats', { params: buildReportParams() });
+      setReportPreview(res.data);
+    } catch (err) {
+      console.error(err);
+      toast.error("Không thể xem báo cáo tài sản");
+    } finally {
+      setReportLoading(false);
+    }
+  };
+
+  const handleExportAssetReport = async () => {
+    setReportLoading(true);
+    try {
+      const response = await api.get('/assets/export-excel', {
+        params: buildReportParams(),
+        responseType: 'blob'
+      });
+      const url = window.URL.createObjectURL(new Blob([response.data]));
+      const link = document.createElement('a');
+      link.href = url;
+      link.setAttribute('download', `bao_cao_tai_san_${reportForm.selectedDate}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success("Xuất báo cáo tài sản thành công!");
+    } catch (err) {
+      console.error(err);
+      toast.error("Lỗi khi xuất báo cáo tài sản");
+    } finally {
+      setReportLoading(false);
     }
   };
 
@@ -2399,8 +2464,8 @@ export const AssetList: React.FC = () => {
                         </button>
                       </Can>
                       <Can permission="ASSET_VIEW">
-                        <button onClick={() => { setIsAssetActionMenuOpen(false); handleExportExcel(); }} className="w-full h-11 px-3 rounded-xl flex items-center text-left text-xs font-black text-slate-700 hover:bg-slate-50">
-                          <Download className="mr-2 h-4 w-4 text-slate-500" /> Tải báo cáo
+                        <button onClick={() => { setIsAssetActionMenuOpen(false); setIsAssetReportOpen(true); }} className="w-full h-11 px-3 rounded-xl flex items-center text-left text-xs font-black text-slate-700 hover:bg-slate-50">
+                          <Download className="mr-2 h-4 w-4 text-slate-500" /> Báo cáo tài sản
                         </button>
                       </Can>
                       <button onClick={() => { setIsAssetActionMenuOpen(false); setIsNormalizationOpen(true); }} className="w-full h-11 px-3 rounded-xl flex items-center text-left text-xs font-black text-slate-700 hover:bg-slate-50">
@@ -2422,10 +2487,10 @@ export const AssetList: React.FC = () => {
               <Can permission="ASSET_VIEW">
                 <button 
                   type="button"
-                  onClick={handleExportExcel}
+                  onClick={() => setIsAssetReportOpen(true)}
                   className="hidden xl:flex h-[36px] px-4 items-center text-[12px] font-bold bg-white border border-slate-200 rounded-full hover:bg-slate-50 transition-all text-slate-600 whitespace-nowrap shadow-xs"
                 >
-                  <Download className="mr-1.5 h-4 w-4 text-slate-500" /> Tải báo cáo
+                  <Download className="mr-1.5 h-4 w-4 text-slate-500" /> Báo cáo tài sản
                 </button>
               </Can>
               
@@ -3352,6 +3417,146 @@ export const AssetList: React.FC = () => {
         </div>
       </div>
     )}
+
+      {isAssetReportOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/45 backdrop-blur-sm p-4">
+          <div className="w-full max-w-5xl max-h-[90vh] overflow-hidden rounded-3xl bg-white shadow-2xl border border-slate-200 flex flex-col">
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-lg font-black uppercase tracking-widest text-slate-900">Báo cáo tài sản</h2>
+                <p className="text-[11px] font-bold text-slate-400 mt-1">Dashboard nhanh - báo cáo mẫu - xuất Excel snapshot/biến động</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsAssetReportOpen(false)}
+                className="w-10 h-10 rounded-full border border-slate-200 flex items-center justify-center text-slate-400 hover:text-slate-700 hover:bg-slate-50"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto custom-scrollbar space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Loại báo cáo</label>
+                  <select
+                    value={reportForm.reportType}
+                    onChange={(e) => setReportForm({ ...reportForm, reportType: e.target.value })}
+                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-800"
+                  >
+                    <option value="summary">Tổng hợp tài sản</option>
+                    <option value="detail">Chi tiết tài sản</option>
+                    <option value="by_unit">Tài sản theo đơn vị</option>
+                    <option value="by_user">Tài sản theo người sử dụng</option>
+                    <option value="by_location">Tài sản theo địa điểm</option>
+                    <option value="increase">Tài sản tăng trong kỳ</option>
+                    <option value="decrease">Tài sản giảm trong kỳ</option>
+                    <option value="transfer">Điều chuyển / thu hồi tài sản</option>
+                    <option value="abnormal">Tài sản hỏng / mất / chờ thanh lý</option>
+                    <option value="inventory">Báo cáo kiểm kê</option>
+                    <option value="history">Lịch sử biến động tài sản</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Thời điểm chọn</label>
+                  <input
+                    type="date"
+                    value={reportForm.selectedDate}
+                    onChange={(e) => setReportForm({ ...reportForm, selectedDate: e.target.value })}
+                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-800"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">So sánh với</label>
+                  <select
+                    value={reportForm.compareMode}
+                    onChange={(e) => setReportForm({ ...reportForm, compareMode: e.target.value })}
+                    className="w-full h-11 px-3 rounded-xl border border-slate-200 bg-white text-sm font-bold text-slate-800"
+                  >
+                    <option value="current">Hiện tại</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Mã công ty</label>
+                  <input value={reportForm.companyCode} onChange={(e) => setReportForm({ ...reportForm, companyCode: e.target.value })} placeholder="Toàn tập đoàn" className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Ban phòng</label>
+                  <input value={reportForm.departmentName} onChange={(e) => setReportForm({ ...reportForm, departmentName: e.target.value })} placeholder="Tất cả" className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Thành phố</label>
+                  <input value={reportForm.cityName} onChange={(e) => setReportForm({ ...reportForm, cityName: e.target.value })} placeholder="Tất cả" className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Dự án</label>
+                  <input value={reportForm.projectName} onChange={(e) => setReportForm({ ...reportForm, projectName: e.target.value })} placeholder="Tất cả" className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí / tầng / khu vực</label>
+                  <input value={reportForm.locationQuery} onChange={(e) => setReportForm({ ...reportForm, locationQuery: e.target.value })} placeholder="Tất cả" className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nhóm tài sản</label>
+                  <input value={reportForm.level4Code} onChange={(e) => setReportForm({ ...reportForm, level4Code: e.target.value })} placeholder="Mã nhóm LV4 hoặc để trống" className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Trạng thái</label>
+                  <select value={reportForm.status} onChange={(e) => setReportForm({ ...reportForm, status: e.target.value })} className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm font-semibold bg-white">
+                    <option value="">Tất cả</option>
+                    <option value="ASSIGNED">Đang sử dụng</option>
+                    <option value="IN_STOCK">Tồn kho</option>
+                    <option value="UNDER_REPAIR">Sửa chữa</option>
+                    <option value="DAMAGED">Hỏng</option>
+                    <option value="LOST">Mất</option>
+                    <option value="LIQUIDATED">Thanh lý</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Người sử dụng</label>
+                  <input value={reportForm.currentUserName} onChange={(e) => setReportForm({ ...reportForm, currentUserName: e.target.value })} placeholder="Tất cả" className="w-full h-10 px-3 rounded-xl border border-slate-200 text-sm font-semibold" />
+                </div>
+              </div>
+
+              {reportPreview && (
+                <div className="rounded-2xl border border-slate-200 overflow-hidden">
+                  <div className="px-4 py-3 bg-slate-50 border-b border-slate-200 text-xs font-black uppercase tracking-widest text-slate-500">Xem nhanh chỉ tiêu</div>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-px bg-slate-200">
+                    {[
+                      ['Tổng tài sản', reportPreview.totalAssets],
+                      ['Đang sử dụng', reportPreview.assigned],
+                      ['Tồn kho', reportPreview.inStock],
+                      ['Hỏng / sửa chữa', (reportPreview.damaged || 0) + (reportPreview.underRepair || 0)],
+                      ['Mất / thất thoát', reportPreview.lost],
+                      ['Đã thanh lý', reportPreview.liquidated],
+                      ['Tổng nguyên giá', `${Number(reportPreview.totalValue || 0).toLocaleString('vi-VN')}đ`],
+                      ['Thời điểm chọn', reportForm.selectedDate]
+                    ].map(([label, value]) => (
+                      <div key={String(label)} className="bg-white p-4">
+                        <p className="text-[10px] font-black uppercase tracking-widest text-slate-400">{label}</p>
+                        <p className="text-lg font-black text-slate-900 mt-1">{value as any}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-5 bg-slate-50 border-t border-slate-100 flex flex-wrap justify-end gap-3">
+              <button type="button" onClick={() => setIsAssetReportOpen(false)} className="px-5 py-3 rounded-xl bg-white border border-slate-200 text-slate-600 font-black text-xs uppercase tracking-widest">Đóng</button>
+              <button type="button" onClick={handlePreviewAssetReport} disabled={reportLoading} className="px-5 py-3 rounded-xl bg-slate-900 text-white font-black text-xs uppercase tracking-widest disabled:opacity-60">
+                {reportLoading ? 'Đang xử lý...' : 'Xem báo cáo'}
+              </button>
+              <button type="button" onClick={handleExportAssetReport} disabled={reportLoading} className="px-5 py-3 rounded-xl bg-primary-600 text-white font-black text-xs uppercase tracking-widest disabled:opacity-60">
+                Xuất Excel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {isNormalizationOpen && (
         <NormalizationModal
