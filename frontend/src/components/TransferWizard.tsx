@@ -50,6 +50,20 @@ export interface LocationTree {
   [key: string]: LocationTree | null;
 }
 
+const HANOI_C6_LOCATION_TREE: LocationTree = {
+  'Mặt trước C6-I': null,
+  'Mặt sau C6-I': null,
+  'Kho': null,
+  'Mặt trước C6-II': null,
+  'Mặt sau C6-II': null,
+  'Tầng 9 C6-I': null,
+  'Tầng 2 C6-II': null
+};
+
+const HANOI_VAN_CANH_LOCATION_TREE: LocationTree = {
+  'Kho': null
+};
+
 const DANKO_CITY_LOCATION_TREE: LocationTree = {
   'Ban Quản lý dự án': null,
   'Ban Cây Xanh': null,
@@ -305,6 +319,8 @@ const DANKO_AVENUE_LOCATION_TREE: LocationTree = {
 };
 
 const PROJECT_LOCATION_TREES: Record<string, LocationTree> = {
+  'Hà Nội::Văn phòng C6': HANOI_C6_LOCATION_TREE,
+  'Hà Nội::Vân Canh': HANOI_VAN_CANH_LOCATION_TREE,
   'Thái Nguyên::Danko City': DANKO_CITY_LOCATION_TREE,
   'Thái Nguyên::Danko Avenue': DANKO_AVENUE_LOCATION_TREE,
   'Bắc Ninh::Danko Riverside': DANKO_RIVERSIDE_LOCATION_TREE,
