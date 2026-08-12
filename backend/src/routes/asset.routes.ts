@@ -2083,22 +2083,57 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     });
     const statusCount = (items: typeof assets, statuses: string[]) => items.filter((asset) => statuses.includes(asset.status)).length;
     const valueSum = (items: typeof assets) => items.reduce((sum, asset) => sum + Number(asset.purchasePriceExVat || 0), 0);
+    const blankLabel = '--';
+    const getBucketLabel = (value?: string | null) => {
+      const label = String(value || '').trim();
+      return label || blankLabel;
+    };
+    const buildLv4QuantityRows = (
+      selectedItems: typeof assets,
+      currentItems: typeof assets,
+      field: 'departmentName' | 'locationName' | 'cityName'
+    ) => {
+      const totals = new Map<string, { lv4: string; value: string; selected: number; current: number }>();
+      const add = (asset: typeof assets[number], target: 'selected' | 'current') => {
+        const lv4 = getBucketLabel(asset.level4Name);
+        const value = getBucketLabel(asset[field]);
+        const key = `${lv4}|||${value}`;
+        const row = totals.get(key) || { lv4, value, selected: 0, current: 0 };
+        row[target] += 1;
+        totals.set(key, row);
+      };
+      selectedItems.forEach((asset) => add(asset, 'selected'));
+      currentItems.forEach((asset) => add(asset, 'current'));
+      return Array.from(totals.values())
+        .sort((a, b) => a.lv4.localeCompare(b.lv4, 'vi') || a.value.localeCompare(b.value, 'vi'))
+        .map((row) => [row.lv4, row.value, row.selected, row.current, row.current - row.selected]);
+    };
+    const lv4ByDepartmentRows = buildLv4QuantityRows(selectedAssets, assets, 'departmentName');
+    const lv4ByLocationRows = buildLv4QuantityRows(selectedAssets, assets, 'locationName');
+    const lv4ByCityRows = buildLv4QuantityRows(selectedAssets, assets, 'cityName');
     const summaryRows = [
-      ['Chỉ tiêu', formatDate(reportDate), 'Hiện tại', 'Chênh lệch'],
-      ['Tổng tài sản', selectedAssets.length, assets.length, assets.length - selectedAssets.length],
-      ['Đang sử dụng', statusCount(selectedAssets, ['ASSIGNED']), statusCount(assets, ['ASSIGNED']), statusCount(assets, ['ASSIGNED']) - statusCount(selectedAssets, ['ASSIGNED'])],
-      ['Tồn kho', statusCount(selectedAssets, ['IN_STOCK']), statusCount(assets, ['IN_STOCK']), statusCount(assets, ['IN_STOCK']) - statusCount(selectedAssets, ['IN_STOCK'])],
-      ['Hỏng / sửa chữa', statusCount(selectedAssets, ['DAMAGED', 'UNDER_REPAIR']), statusCount(assets, ['DAMAGED', 'UNDER_REPAIR']), statusCount(assets, ['DAMAGED', 'UNDER_REPAIR']) - statusCount(selectedAssets, ['DAMAGED', 'UNDER_REPAIR'])],
-      ['Mất / thất thoát', statusCount(selectedAssets, ['LOST']), statusCount(assets, ['LOST']), statusCount(assets, ['LOST']) - statusCount(selectedAssets, ['LOST'])],
-      ['Thanh lý', statusCount(selectedAssets, ['LIQUIDATED', 'DISPOSED']), statusCount(assets, ['LIQUIDATED', 'DISPOSED']), statusCount(assets, ['LIQUIDATED', 'DISPOSED']) - statusCount(selectedAssets, ['LIQUIDATED', 'DISPOSED'])],
-      ['Tổng nguyên giá', valueSum(selectedAssets), valueSum(assets), valueSum(assets) - valueSum(selectedAssets)],
+      ['Tổng quan', 'Tổng tài sản', selectedAssets.length, assets.length, assets.length - selectedAssets.length],
+      ['Tổng quan', 'Đang sử dụng', statusCount(selectedAssets, ['ASSIGNED']), statusCount(assets, ['ASSIGNED']), statusCount(assets, ['ASSIGNED']) - statusCount(selectedAssets, ['ASSIGNED'])],
+      ['Tổng quan', 'Tồn kho', statusCount(selectedAssets, ['IN_STOCK']), statusCount(assets, ['IN_STOCK']), statusCount(assets, ['IN_STOCK']) - statusCount(selectedAssets, ['IN_STOCK'])],
+      ['Tổng quan', 'Hỏng / sửa chữa', statusCount(selectedAssets, ['DAMAGED', 'UNDER_REPAIR']), statusCount(assets, ['DAMAGED', 'UNDER_REPAIR']), statusCount(assets, ['DAMAGED', 'UNDER_REPAIR']) - statusCount(selectedAssets, ['DAMAGED', 'UNDER_REPAIR'])],
+      ['Tổng quan', 'Mất / thất thoát', statusCount(selectedAssets, ['LOST']), statusCount(assets, ['LOST']), statusCount(assets, ['LOST']) - statusCount(selectedAssets, ['LOST'])],
+      ['Tổng quan', 'Thanh lý', statusCount(selectedAssets, ['LIQUIDATED', 'DISPOSED']), statusCount(assets, ['LIQUIDATED', 'DISPOSED']), statusCount(assets, ['LIQUIDATED', 'DISPOSED']) - statusCount(selectedAssets, ['LIQUIDATED', 'DISPOSED'])],
+      ['Tổng quan', 'Tổng nguyên giá', valueSum(selectedAssets), valueSum(assets), valueSum(assets) - valueSum(selectedAssets)],
       [],
-      ['Biến động', 'Số lượng', '', ''],
-      ['Tăng mới', increasedAssets.length, '', ''],
-      ['Giảm / không còn trong phạm vi', 0, '', ''],
-      ['Thay đổi người sử dụng', compareRows.filter((row) => String(row[10]).includes('Đổi NSD')).length, '', ''],
-      ['Thay đổi vị trí', compareRows.filter((row) => String(row[10]).includes('Đổi vị trí')).length, '', ''],
-      ['Thay đổi trạng thái', compareRows.filter((row) => String(row[10]).includes('Đổi trạng thái')).length, '', '']
+      ['Biến động', 'Tăng mới', increasedAssets.length, '', ''],
+      ['Biến động', 'Giảm / không còn trong phạm vi', 0, '', ''],
+      ['Biến động', 'Thay đổi người sử dụng', compareRows.filter((row) => String(row[10]).includes('Đổi NSD')).length, '', ''],
+      ['Biến động', 'Thay đổi vị trí', compareRows.filter((row) => String(row[10]).includes('Đổi vị trí')).length, '', ''],
+      ['Biến động', 'Thay đổi trạng thái', compareRows.filter((row) => String(row[10]).includes('Đổi trạng thái')).length, '', ''],
+      [],
+      ['Theo nhóm LV4 + Bộ phận', 'Nhóm LV4', 'Bộ phận', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'],
+      ...lv4ByDepartmentRows.map((row) => ['Theo nhóm LV4 + Bộ phận', row[0], row[1], row[2], row[3], row[4]]),
+      [],
+      ['Theo nhóm LV4 + Vị trí', 'Nhóm LV4', 'Vị trí', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'],
+      ...lv4ByLocationRows.map((row) => ['Theo nhóm LV4 + Vị trí', row[0], row[1], row[2], row[3], row[4]]),
+      [],
+      ['Theo nhóm LV4 + Tỉnh/Thành phố', 'Nhóm LV4', 'Tỉnh/Thành phố', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'],
+      ...lv4ByCityRows.map((row) => ['Theo nhóm LV4 + Tỉnh/Thành phố', row[0], row[1], row[2], row[3], row[4]])
     ];
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', 'attachment; filename=BaoCaoSoTaiSan.xlsx');
@@ -2162,7 +2197,7 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
       formatDate(asset.depreciationEndDate),
       asset.documentNote || ''
     ];
-    writeSimpleSheet('01_Tổng hợp', ['Chỉ tiêu', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'], summaryRows.slice(1));
+    writeSimpleSheet('01_Tổng hợp', ['Bảng', 'Chỉ tiêu / Nhóm LV4', 'Theo', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'], summaryRows);
     writeSimpleSheet('02_TS tại thời điểm chọn', headers, selectedAssets.map(toAssetRow));
     writeSimpleSheet('03_TS hiện tại', headers, assets.map(toAssetRow));
     writeSimpleSheet('04_TS tăng', headers, increasedAssets.map(toAssetRow));
@@ -2175,6 +2210,9 @@ router.get('/export-excel', authenticateToken, requirePermission('ASSET_VIEW'), 
     writeSimpleSheet('11_TS hỏng-mất-thanh lý', headers, abnormalAssets.map(toAssetRow));
     writeSimpleSheet('12_Lịch sử biến động', ['Mã TS', 'Tên TS', 'Mốc chọn', 'Hiện tại', 'Ghi chú'], compareRows.filter((row) => row[10] !== 'Không thay đổi').map((row) => [row[0], row[1], formatDate(reportDate), formatDate(currentDate), row[10]]));
     writeSimpleSheet('13_Đối chiếu', ['Mã TS', 'Tên TS', 'Đơn vị tại mốc chọn', 'Đơn vị hiện tại', 'Vị trí tại mốc chọn', 'Vị trí hiện tại', 'NSD tại mốc chọn', 'NSD hiện tại', 'Trạng thái tại mốc chọn', 'Trạng thái hiện tại', 'Kết quả'], compareRows);
+    writeSimpleSheet('14_LV4 theo Bộ phận', ['Nhóm LV4', 'Bộ phận', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'], lv4ByDepartmentRows);
+    writeSimpleSheet('15_LV4 theo Vị trí', ['Nhóm LV4', 'Vị trí', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'], lv4ByLocationRows);
+    writeSimpleSheet('16_LV4 theo Tỉnh TP', ['Nhóm LV4', 'Tỉnh/Thành phố', 'Tại thời điểm chọn', 'Hiện tại', 'Chênh lệch'], lv4ByCityRows);
 
     const sheet = workbook.addWorksheet('Sổ tài sản');
 
