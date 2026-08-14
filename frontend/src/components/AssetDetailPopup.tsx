@@ -76,6 +76,15 @@ function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+export const formatAssetDisplayValue = (value?: string | number | null) => {
+  if (value === undefined || value === null) return '--';
+
+  const text = String(value).trim();
+  if (!text || /^(?:n\/?a|not available)$/i.test(text)) return '--';
+
+  return text;
+};
+
 const stripLocationPrefix = (value: string, prefix?: string | null) => {
   const result = String(value || '').trim();
   const normalizedPrefix = String(prefix || '').trim();
@@ -93,7 +102,11 @@ const getDetailedLocationName = (city?: string | null, project?: string | null, 
 
 const formatCurrentLocation = (asset: any) => {
   const detail = getDetailedLocationName(asset?.cityName, asset?.projectName, asset?.locationName);
-  return [asset?.cityName, asset?.projectName, detail].filter(Boolean).join(' - ') || 'Chưa có vị trí';
+  const parts = [asset?.cityName, asset?.projectName, detail]
+    .map(formatAssetDisplayValue)
+    .filter((value) => value !== '--');
+
+  return formatAssetDisplayValue(parts.join(' - '));
 };
 
 interface AssetDetailPopupProps {
@@ -296,6 +309,13 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const latestHandover = asset?.latestHandoverDocument;
   const assigneeDisplay = getAssetAssigneeDisplay(asset);
   const currentAssignmentPhone = asset?.currentUserPhone || asset?.latestAssignmentPhone || latestHandover?.recipientPhone || latestAssignment?.recipientPhone;
+  const currentDepartmentDisplay = [
+    asset?.departmentName,
+    latestAssignment?.newDepartmentName,
+    latestHandover?.recipientDepartment
+  ]
+    .map(formatAssetDisplayValue)
+    .find((value) => value !== '--') || '--';
   const assignResolvedCity = assignLocationSelection.city === 'Khác'
     ? assignLocationSelection.customCity.trim()
     : assignLocationSelection.city;
@@ -319,18 +339,13 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const assignProjectLocationLevels = assignCanAddChildToSelectedLeaf
     ? [...assignBaseProjectLocationLevels, []]
     : assignBaseProjectLocationLevels;
-  const emptyText = (value?: string | number | null) => {
-    if (value === undefined || value === null || value === '') return '--';
-    return String(value);
-  };
-
   const InfoRow = ({ label, value, icon: Icon }: { label: string; value?: string | number | null; icon?: any }) => (
     <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
         {Icon && <Icon className="mr-2 h-3.5 w-3.5" />}
         {label}
       </p>
-      <p className="text-sm font-bold text-slate-800 leading-snug">{emptyText(value)}</p>
+      <p className="text-sm font-bold text-slate-800 leading-snug">{formatAssetDisplayValue(value)}</p>
     </div>
   );
 
@@ -754,11 +769,18 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
               <div className="grid grid-cols-3 gap-4 p-4 bg-slate-50/80 rounded-3xl border border-slate-100">
                 <div className="px-4 space-y-1">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Người dùng / Khu vực hiện tại</p>
-                  <p className="text-sm font-bold text-slate-700 truncate" title={assigneeDisplay.name}>{assigneeDisplay.name}</p>
+                  <p className="text-sm font-bold text-slate-700 truncate" title={formatAssetDisplayValue(assigneeDisplay.name)}>
+                    {formatAssetDisplayValue(assigneeDisplay.name)}
+                  </p>
+                  <p className="text-xs font-semibold text-slate-500 truncate" title={currentDepartmentDisplay}>
+                    Phòng/Ban sử dụng: {currentDepartmentDisplay}
+                  </p>
                 </div>
                 <div className="px-4 space-y-1 border-x border-slate-200">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Kiểm kê cuối</p>
-                  <p className="text-sm font-bold text-slate-700">{asset.lastInventoryDate ? format(new Date(asset.lastInventoryDate), 'dd/MM/yyyy') : 'Chưa kiểm kê'}</p>
+                  <p className="text-sm font-bold text-slate-700">
+                    {asset.lastInventoryDate ? format(new Date(asset.lastInventoryDate), 'HH:mm - dd/MM/yyyy') : '--'}
+                  </p>
                 </div>
                 <div className="px-4 space-y-1">
                   <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Vị trí hiện tại</p>
