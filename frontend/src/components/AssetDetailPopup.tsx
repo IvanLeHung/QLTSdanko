@@ -842,7 +842,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
                       />
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.assetName}</p>
+                      <p className="text-[15px] font-bold text-slate-800">{formatAssetDisplayValue(asset.assetName)}</p>
                     )}
                   </div>
 
@@ -858,7 +858,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
                       />
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.serialNumber || 'N/A'}</p>
+                      <p className="text-[15px] font-bold text-slate-800">{formatAssetDisplayValue(asset.serialNumber)}</p>
                     )}
                   </div>
 
@@ -875,7 +875,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         {['Cái', 'Bộ', 'Chiếc', 'Mét', 'Kg', 'Lô'].map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.unit}</p>
+                      <p className="text-[15px] font-bold text-slate-800">{formatAssetDisplayValue(asset.unit)}</p>
                     )}
                   </div>
 
@@ -892,7 +892,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         {['Cá nhân', 'Dùng chung', 'Dự phòng', 'Khác'].map(u => <option key={u} value={u}>{u}</option>)}
                       </select>
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.usagePurpose || 'N/A'}</p>
+                      <p className="text-[15px] font-bold text-slate-800">{formatAssetDisplayValue(asset.usagePurpose)}</p>
                     )}
                   </div>
 
@@ -913,7 +913,11 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       )
                     ) : (
                       hasPermission('ASSET_VIEW_PRICE') ? (
-                        <p className="text-[15px] font-bold text-slate-800">{asset.purchasePriceExVat?.toLocaleString()} ₫</p>
+                        <p className="text-[15px] font-bold text-slate-800">
+                          {asset.purchasePriceExVat === undefined || asset.purchasePriceExVat === null
+                            ? '--'
+                            : `${asset.purchasePriceExVat.toLocaleString()} ₫`}
+                        </p>
                       ) : (
                         <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</p>
                       )
@@ -932,7 +936,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
                       />
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.purchaseDate ? format(new Date(asset.purchaseDate), 'dd/MM/yyyy') : 'N/A'}</p>
+                      <p className="text-[15px] font-bold text-slate-800">{asset.purchaseDate ? format(new Date(asset.purchaseDate), 'dd/MM/yyyy') : '--'}</p>
                     )}
                   </div>
 
@@ -948,7 +952,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                         className="w-full bg-slate-50 border border-slate-200 rounded-xl px-4 py-2.5 text-sm font-bold text-slate-700 focus:ring-2 focus:ring-primary-500"
                       />
                     ) : (
-                      <p className="text-[15px] font-bold text-slate-800">{asset.depreciationEndDate ? format(new Date(asset.depreciationEndDate), 'dd/MM/yyyy') : 'N/A'}</p>
+                      <p className="text-[15px] font-bold text-slate-800">{asset.depreciationEndDate ? format(new Date(asset.depreciationEndDate), 'dd/MM/yyyy') : '--'}</p>
                     )}
                   </div>
 
@@ -969,7 +973,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       )
                     ) : (
                       hasPermission('ASSET_VIEW_PRICE') ? (
-                        <p className="text-[15px] font-bold text-slate-800">{asset.supplierName || 'N/A'}</p>
+                        <p className="text-[15px] font-bold text-slate-800">{formatAssetDisplayValue(asset.supplierName)}</p>
                       ) : (
                         <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</p>
                       )
@@ -993,7 +997,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                       )
                     ) : (
                       hasPermission('ASSET_VIEW_PRICE') ? (
-                        <p className="text-[15px] font-bold text-slate-800">{asset.supplierTaxCode || 'N/A'}</p>
+                        <p className="text-[15px] font-bold text-slate-800">{formatAssetDisplayValue(asset.supplierTaxCode)}</p>
                       ) : (
                         <p className="text-xs font-semibold text-slate-400 flex items-center gap-1 py-2"><Lock className="w-3.5 h-3.5" /> Không có quyền xem</p>
                       )
@@ -1189,22 +1193,22 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                                 }}
                                 className="text-sm font-black text-primary-600 hover:text-primary-750 underline text-left"
                               >
-                                {asset.invoiceBatch.invoiceNo || 'N/A'}
+                                {formatAssetDisplayValue(asset.invoiceBatch.invoiceNo)}
                               </button>
                             </div>
                             <div>
                               <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ngày hóa đơn</span>
                               <span className="text-slate-800 text-sm">
-                                {asset.invoiceBatch.invoiceDate ? format(new Date(asset.invoiceBatch.invoiceDate), 'dd/MM/yyyy') : 'N/A'}
+                                {asset.invoiceBatch.invoiceDate ? format(new Date(asset.invoiceBatch.invoiceDate), 'dd/MM/yyyy') : '--'}
                               </span>
                             </div>
                             <div>
                               <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Nhà cung cấp</span>
-                              <span className="text-slate-800 text-sm truncate block" title={asset.invoiceBatch.supplierName}>{asset.invoiceBatch.supplierName || 'N/A'}</span>
+                              <span className="text-slate-800 text-sm truncate block" title={formatAssetDisplayValue(asset.invoiceBatch.supplierName)}>{formatAssetDisplayValue(asset.invoiceBatch.supplierName)}</span>
                             </div>
                             <div>
                               <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Mã số thuế NCC</span>
-                              <span className="text-slate-800 text-sm block">{asset.invoiceBatch.supplierTaxCode || 'N/A'}</span>
+                              <span className="text-slate-800 text-sm block">{formatAssetDisplayValue(asset.invoiceBatch.supplierTaxCode)}</span>
                             </div>
                             <div>
                               <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Giá trị trước VAT</span>
@@ -2665,16 +2669,16 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
                 <div>
                   <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ngày mua / Ngày hóa đơn</span>
                   <span className="text-slate-800 font-bold text-sm">
-                    {invoice.invoiceDate ? format(new Date(invoice.invoiceDate), 'dd/MM/yyyy') : 'N/A'}
+                    {invoice.invoiceDate ? format(new Date(invoice.invoiceDate), 'dd/MM/yyyy') : '--'}
                   </span>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Mã số thuế NCC</span>
-                  <span className="text-slate-800 font-bold text-sm">{invoice.supplierTaxCode || 'N/A'}</span>
+                  <span className="text-slate-800 font-bold text-sm">{formatAssetDisplayValue(invoice.supplierTaxCode)}</span>
                 </div>
                 <div className="col-span-2">
                   <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Nhà cung cấp</span>
-                  <span className="text-slate-800 font-bold text-sm block truncate" title={invoice.supplierName}>{invoice.supplierName || 'N/A'}</span>
+                  <span className="text-slate-800 font-bold text-sm block truncate" title={formatAssetDisplayValue(invoice.supplierName)}>{formatAssetDisplayValue(invoice.supplierName)}</span>
                 </div>
                 <div>
                   <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Tổng giá trị (trước VAT)</span>
