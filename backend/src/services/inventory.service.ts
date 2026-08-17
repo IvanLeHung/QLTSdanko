@@ -264,7 +264,7 @@ export class InventoryService {
 
   static async saveCountSheetRows(
     inventoryCheckId: number,
-    rows: Array<{ itemId: number; actualQuantity: number; quality?: string; note?: string }>,
+    rows: Array<{ itemId: number; actualQuantity: number; actualLocation?: string; quality?: string; note?: string }>,
     performedBy: string
   ) {
     if (!Array.isArray(rows) || rows.length === 0) throw new Error('Không có dòng kiểm kê để lưu.');
@@ -288,25 +288,44 @@ export class InventoryService {
       for (const row of rows) {
         const item = itemById.get(Number(row.itemId));
         if (!item) throw new Error(`Dòng kiểm kê ${row.itemId} không thuộc đợt này.`);
+        if (item.checkStatus === 'CHECKED' || item.checkedAt) {
+          throw new Error(`Tài sản ${item.assetCode} đã kiểm kê và không thể sửa lại.`);
+        }
 
         const actualQuantity = Number(row.actualQuantity);
         if (![0, 1].includes(actualQuantity)) throw new Error('Số lượng thực tế chỉ được nhập 0 hoặc 1.');
 
-        const quality = actualQuantity === 0 ? 'MISSING' : String(row.quality || 'GOOD');
+        const requestedQuality = String(row.quality || 'GOOD');
+        if (actualQuantity === 1 && !['GOOD', 'DAMAGED', 'NEEDS_REPAIR', 'UNKNOWN'].includes(requestedQuality)) {
+          throw new Error(`Tài sản ${item.assetCode}: tình trạng thực tế không hợp lệ.`);
+        }
+        const quality = actualQuantity === 0 ? 'MISSING' : requestedQuality;
         const note = String(row.note || '').trim();
+        const actualLocation = String(row.actualLocation ?? item.expectedLocation ?? '').trim();
+        if (actualQuantity === 1 && !actualLocation) {
+          throw new Error(`Tài sản ${item.assetCode}: cần nhập vị trí kiểm thực tế.`);
+        }
+        if (actualLocation.length > 500) throw new Error(`Tài sản ${item.assetCode}: vị trí kiểm quá dài.`);
+        if (note.length > 2000) throw new Error(`Tài sản ${item.assetCode}: ghi chú quá dài.`);
         if ((actualQuantity === 0 || quality !== 'GOOD') && !note) {
           throw new Error(`Tài sản ${item.assetCode}: cần nhập ghi chú khi thiếu hoặc tình trạng không tốt.`);
         }
 
+        const isWrongLocation = actualQuantity === 1
+          && actualLocation.localeCompare(String(item.expectedLocation || '').trim(), 'vi', { sensitivity: 'accent' }) !== 0;
         const result = actualQuantity === 0
           ? 'MISSING'
-          : quality === 'GOOD' ? 'MATCHED' : 'DAMAGED';
+          : quality !== 'GOOD' ? 'DAMAGED'
+          : isWrongLocation ? 'WRONG_LOCATION' : 'MATCHED';
         const updated = await tx.inventoryItem.update({
           where: { id: item.id },
           data: {
             actualQuantity,
             actualStatus: item.expectedStatus,
-            actualLocation: item.expectedLocation,
+            actualCity: item.expectedCity,
+            actualProject: item.expectedProject,
+            actualDepartment: item.expectedDepartment,
+            actualLocation,
             quality,
             note,
             result,

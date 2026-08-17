@@ -12,7 +12,6 @@ import {
   MapPin,
   PackageCheck,
   PackageX,
-  Save,
   Search,
   User
 } from 'lucide-react';
@@ -31,11 +30,12 @@ import {
 
 type DraftRow = {
   actualQuantity: '' | 0 | 1;
+  actualLocation: string;
   quality: string;
   note: string;
 };
 
-type ViewFilter = 'ALL' | 'UNCHECKED' | 'MISSING' | 'DAMAGED';
+type ViewFilter = 'ALL' | 'UNCHECKED' | 'MISSING' | 'DAMAGED' | 'WRONG_LOCATION';
 
 const QUALITY_OPTIONS = [
   { value: 'GOOD', label: 'Tốt' },
@@ -69,7 +69,7 @@ export const InventoryCountSheet: React.FC = () => {
   const [query, setQuery] = useState('');
   const [viewFilter, setViewFilter] = useState<ViewFilter>('ALL');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [savingItemId, setSavingItemId] = useState<number | null>(null);
   const [finalizing, setFinalizing] = useState(false);
 
   const fetchCountSheet = useCallback(async () => {
@@ -83,6 +83,7 @@ export const InventoryCountSheet: React.FC = () => {
       setItems(nextItems);
       setDrafts(Object.fromEntries(nextItems.map((item) => [item.id, {
         actualQuantity: item.actualQuantity === 0 ? 0 : item.actualQuantity === 1 ? 1 : '',
+        actualLocation: item.actualLocation || item.expectedLocation || item.asset?.locationName || '',
         quality: item.quality && item.quality !== 'MISSING' ? item.quality : 'GOOD',
         note: item.note || ''
       }])));
@@ -100,30 +101,22 @@ export const InventoryCountSheet: React.FC = () => {
     void fetchCountSheet();
   }, [fetchCountSheet]);
 
-  const effectiveItems = useMemo(() => items.map((item) => {
-    const draft = drafts[item.id];
-    if (!draft) return item;
-    return {
-      ...item,
-      actualQuantity: draft.actualQuantity === '' ? null : draft.actualQuantity,
-      quality: draft.actualQuantity === 0 ? 'MISSING' : draft.quality,
-      note: draft.note
-    };
-  }), [drafts, items]);
-
-  const stats = useMemo(() => calculateCountSheetStats(effectiveItems), [effectiveItems]);
+  const stats = useMemo(() => calculateCountSheetStats(items), [items]);
   const visibleItems = useMemo(() => {
-    const searched = filterInventoryCountItems(effectiveItems, query);
+    const searched = filterInventoryCountItems(items, query);
     if (viewFilter === 'UNCHECKED') return searched.filter((item) => item.actualQuantity === null || item.actualQuantity === undefined);
     if (viewFilter === 'MISSING') return searched.filter((item) => item.actualQuantity === 0);
     if (viewFilter === 'DAMAGED') return searched.filter((item) => item.actualQuantity === 1 && item.quality !== 'GOOD');
+    if (viewFilter === 'WRONG_LOCATION') return searched.filter((item) => item.result === 'WRONG_LOCATION');
     return searched;
-  }, [effectiveItems, query, viewFilter]);
+  }, [items, query, viewFilter]);
   const hierarchy = useMemo(() => buildInventoryHierarchy(visibleItems), [visibleItems]);
   const isCompleted = inventory?.status === 'COMPLETED';
+  const canCount = !isCompleted && hasPermission('INVENTORY_CREATE');
+  const wrongLocationCount = useMemo(() => items.filter((item) => item.result === 'WRONG_LOCATION').length, [items]);
 
   const updateDraft = (itemId: number, patch: Partial<DraftRow>) => {
-    if (isCompleted) return;
+    if (!canCount) return;
     setDrafts((current) => ({
       ...current,
       [itemId]: { ...current[itemId], ...patch }
@@ -140,49 +133,47 @@ export const InventoryCountSheet: React.FC = () => {
     });
   };
 
-  const persistDirtyRows = async (showSuccess = true) => {
-    if (!id || dirtyIds.size === 0) return true;
-    const rows = Array.from(dirtyIds).map((itemId) => ({ itemId, ...drafts[itemId] }));
-    const invalid = rows.find((row) => row.actualQuantity === '');
-    if (invalid) {
-      toast.error('Vui lòng nhập số lượng thực tế 0 hoặc 1 cho các dòng đã sửa.');
-      return false;
+  const confirmInventoryItem = async (itemId: number) => {
+    if (!id) return;
+    const row = drafts[itemId];
+    const item = items.find((candidate) => candidate.id === itemId);
+    if (!row || row.actualQuantity === '') {
+      toast.error('Vui lòng chọn số lượng thực tế 0 hoặc 1.');
+      return;
     }
-    const missingNote = rows.find((row) => (row.actualQuantity === 0 || row.quality !== 'GOOD') && !row.note.trim());
-    if (missingNote) {
-      const item = items.find((candidate) => candidate.id === missingNote.itemId);
+    if (row.actualQuantity === 1 && !row.actualLocation.trim()) {
+      toast.error('Vui lòng nhập vị trí kiểm thực tế.');
+      return;
+    }
+    if ((row.actualQuantity === 0 || row.quality !== 'GOOD') && !row.note.trim()) {
       toast.error(`Tài sản ${item?.assetCode || ''}: cần ghi chú khi thiếu hoặc tình trạng không tốt.`);
-      return false;
+      return;
     }
-
     try {
-      setSaving(true);
-      const batches = [];
-      for (let index = 0; index < rows.length; index += 400) batches.push(rows.slice(index, index + 400));
-      const updatedById = new Map<number, any>();
-      for (const batch of batches) {
-        const response = await api.patch(`/inventory/${id}/count-sheet`, { rows: batch });
-        (response.data.items || []).forEach((item: any) => updatedById.set(item.id, item));
-      }
-      setItems((current) => current.map((item) => updatedById.has(item.id)
-        ? { ...item, ...updatedById.get(item.id) }
-        : item));
-      setDirtyIds(new Set());
+      setSavingItemId(itemId);
+      const response = await api.patch(`/inventory/${id}/count-sheet`, { rows: [{ itemId, ...row }] });
+      const updated = response.data.items?.[0];
+      if (updated) setItems((current) => current.map((candidate) => candidate.id === itemId ? { ...candidate, ...updated } : candidate));
+      setDirtyIds((current) => {
+        const next = new Set(current);
+        next.delete(itemId);
+        return next;
+      });
       setInventory((current: any) => ({ ...current, status: current.status === 'DRAFT' || current.status === 'OPEN' ? 'IN_PROGRESS' : current.status }));
-      if (showSuccess) toast.success(`Đã lưu ${rows.length} dòng kiểm kê.`);
-      return true;
+      toast.success(`Đã kiểm kê tài sản ${item?.assetCode || ''}.`);
     } catch (error: any) {
-      toast.error(error.response?.data?.message || 'Không thể lưu bảng kiểm kê.');
-      return false;
+      toast.error(error.response?.data?.message || 'Không thể xác nhận kiểm kê tài sản.');
     } finally {
-      setSaving(false);
+      setSavingItemId(null);
     }
   };
 
   const finalizeInventory = async () => {
     if (!id || isCompleted) return;
-    const saved = await persistDirtyRows(false);
-    if (!saved) return;
+    if (dirtyIds.size > 0) {
+      toast.error('Còn dòng đang sửa. Vui lòng bấm Kiểm kê trên từng dòng trước khi hoàn thành.');
+      return;
+    }
     const message = stats.unchecked > 0
       ? `Còn ${stats.unchecked} tài sản chưa nhập. Khi hoàn thành, các tài sản này sẽ được chốt số lượng 0 (Thiếu). Tiếp tục?`
       : 'Hoàn thành và khóa bảng kiểm kê này?';
@@ -203,7 +194,7 @@ export const InventoryCountSheet: React.FC = () => {
 
   const renderAssetRows = (node: InventoryHierarchyNode) => (
     <div className="overflow-x-auto border-t border-slate-200">
-      <table className="w-full min-w-[1120px] table-fixed">
+      <table className="w-full min-w-[1380px] table-fixed">
         <thead className="bg-slate-50 text-[10px] font-black uppercase text-slate-400">
           <tr>
             <th className="w-[145px] px-4 py-3 text-left">Mã tài sản</th>
@@ -211,14 +202,19 @@ export const InventoryCountSheet: React.FC = () => {
             <th className="w-[165px] px-4 py-3 text-left">Người dùng/Khu vực</th>
             <th className="w-[90px] px-3 py-3 text-center">SL sổ sách</th>
             <th className="w-[105px] px-3 py-3 text-center">SL thực tế</th>
+            <th className="w-[220px] px-3 py-3 text-left">Vị trí kiểm thực tế</th>
             <th className="w-[150px] px-3 py-3 text-left">Tình trạng</th>
             <th className="px-4 py-3 text-left">Ghi chú</th>
+            <th className="w-[115px] px-3 py-3 text-center">Xác nhận</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
           {node.items.map((item) => {
             const snapshot = getInventoryItemSnapshot(item);
             const draft = drafts[item.id];
+            const isChecked = item.checkStatus === 'CHECKED' || Boolean(item.checkedAt);
+            const isWrongLocation = item.result === 'WRONG_LOCATION'
+              || (draft?.actualQuantity === 1 && draft.actualLocation.trim() !== String(item.expectedLocation || '').trim());
             const needsNote = draft && (draft.actualQuantity === 0 || draft.quality !== 'GOOD') && !draft.note.trim();
             return (
               <tr key={item.id} className={dirtyIds.has(item.id) ? 'bg-amber-50/60' : 'bg-white'}>
@@ -241,13 +237,9 @@ export const InventoryCountSheet: React.FC = () => {
                 </td>
                 <td className="px-3 py-3 text-center text-sm font-black text-slate-700">1</td>
                 <td className="px-3 py-3 text-center">
-                  <input
+                  <select
                     aria-label={`Số lượng thực tế ${item.assetCode}`}
-                    type="number"
-                    min={0}
-                    max={1}
-                    step={1}
-                    disabled={isCompleted}
+                    disabled={!canCount || isChecked}
                     value={draft?.actualQuantity ?? ''}
                     onChange={(event) => {
                       const value = event.target.value;
@@ -255,8 +247,24 @@ export const InventoryCountSheet: React.FC = () => {
                       if (value === '0') updateDraft(item.id, { actualQuantity: 0, quality: 'GOOD' });
                       if (value === '1') updateDraft(item.id, { actualQuantity: 1 });
                     }}
-                    className="mx-auto h-9 w-16 rounded-md border border-slate-300 bg-white text-center text-sm font-black text-slate-900 outline-none focus:border-primary-500 disabled:bg-slate-100"
+                    className="mx-auto h-9 w-16 rounded-md border border-slate-300 bg-white px-2 text-center text-sm font-black text-slate-900 outline-none focus:border-primary-500 disabled:bg-slate-100"
+                  >
+                    <option value="">--</option>
+                    <option value="1">1</option>
+                    <option value="0">0</option>
+                  </select>
+                </td>
+                <td className="px-3 py-3">
+                  <input
+                    aria-label={`Vị trí kiểm thực tế ${item.assetCode}`}
+                    disabled={!canCount || isChecked || draft?.actualQuantity === 0}
+                    value={draft?.actualLocation || ''}
+                    onChange={(event) => updateDraft(item.id, { actualLocation: event.target.value })}
+                    placeholder="Nhập vị trí tìm thấy tài sản..."
+                    title={`${snapshot.city} - ${snapshot.project} - ${snapshot.department}`}
+                    className="h-9 w-full rounded-md border border-slate-300 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-primary-500 disabled:bg-slate-100"
                   />
+                  {isWrongLocation && <p className="mt-1 text-[9px] font-black uppercase text-amber-600">Khác sổ sách</p>}
                 </td>
                 <td className="px-3 py-3">
                   {draft?.actualQuantity === 0 ? (
@@ -264,7 +272,7 @@ export const InventoryCountSheet: React.FC = () => {
                   ) : (
                     <select
                       aria-label={`Tình trạng ${item.assetCode}`}
-                      disabled={isCompleted || draft?.actualQuantity !== 1}
+                      disabled={!canCount || isChecked || draft?.actualQuantity !== 1}
                       value={draft?.quality || 'GOOD'}
                       onChange={(event) => updateDraft(item.id, { quality: event.target.value })}
                       className="h-9 w-full rounded-md border border-slate-300 bg-white px-2 text-xs font-bold text-slate-700 outline-none focus:border-primary-500 disabled:bg-slate-100"
@@ -276,12 +284,29 @@ export const InventoryCountSheet: React.FC = () => {
                 <td className="px-4 py-3">
                   <input
                     aria-label={`Ghi chú ${item.assetCode}`}
-                    disabled={isCompleted}
+                    disabled={!canCount || isChecked}
                     value={draft?.note || ''}
                     onChange={(event) => updateDraft(item.id, { note: event.target.value })}
                     placeholder={draft?.actualQuantity === 0 ? 'Bắt buộc nhập lý do thiếu...' : 'Ghi chú tình trạng tài sản...'}
                     className={`h-9 w-full rounded-md border bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-primary-500 disabled:bg-slate-100 ${needsNote ? 'border-rose-400' : 'border-slate-300'}`}
                   />
+                </td>
+                <td className="px-3 py-3 text-center">
+                  {isChecked ? (
+                    <span className="inline-flex h-8 items-center gap-1 rounded-md bg-emerald-50 px-3 text-[10px] font-black uppercase text-emerald-700">
+                      <CheckCircle2 className="h-3.5 w-3.5" /> Đã kiểm
+                    </span>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => void confirmInventoryItem(item.id)}
+                      disabled={!canCount || savingItemId !== null || draft?.actualQuantity === ''}
+                      className="inline-flex h-8 items-center gap-1 rounded-md bg-primary-600 px-3 text-[10px] font-black uppercase text-white hover:bg-primary-700 disabled:opacity-40"
+                    >
+                      {savingItemId === item.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <PackageCheck className="h-3.5 w-3.5" />}
+                      Kiểm kê
+                    </button>
+                  )}
                 </td>
               </tr>
             );
@@ -345,13 +370,8 @@ export const InventoryCountSheet: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
-          {!isCompleted && hasPermission('INVENTORY_CREATE') && (
-            <button type="button" onClick={() => void persistDirtyRows()} disabled={saving || dirtyIds.size === 0} className="flex h-10 items-center gap-2 rounded-md border border-primary-200 bg-white px-4 text-xs font-black text-primary-700 disabled:opacity-40">
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Lưu thay đổi ({dirtyIds.size})
-            </button>
-          )}
           {!isCompleted && hasPermission('INVENTORY_COMPLETE') && (
-            <button type="button" onClick={() => void finalizeInventory()} disabled={finalizing || saving} className="flex h-10 items-center gap-2 rounded-md bg-emerald-600 px-4 text-xs font-black text-white hover:bg-emerald-700 disabled:opacity-50">
+            <button type="button" onClick={() => void finalizeInventory()} disabled={finalizing || savingItemId !== null} className="flex h-10 items-center gap-2 rounded-md bg-emerald-600 px-4 text-xs font-black text-white hover:bg-emerald-700 disabled:opacity-50">
               {finalizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Hoàn thành kiểm kê
             </button>
           )}
@@ -380,7 +400,7 @@ export const InventoryCountSheet: React.FC = () => {
         </div>
         <div className="flex h-10 items-center rounded-md border border-slate-200 bg-white p-1">
           {([
-            ['ALL', 'Tất cả'], ['UNCHECKED', `Chưa kiểm (${stats.unchecked})`], ['MISSING', `Thiếu (${stats.missing})`], ['DAMAGED', 'Không tốt']
+            ['ALL', 'Tất cả'], ['UNCHECKED', `Chưa kiểm (${stats.unchecked})`], ['MISSING', `Thiếu (${stats.missing})`], ['DAMAGED', 'Không tốt'], ['WRONG_LOCATION', `Sai vị trí (${wrongLocationCount})`]
           ] as Array<[ViewFilter, string]>).map(([value, label]) => (
             <button key={value} type="button" onClick={() => setViewFilter(value)} className={`h-8 px-3 text-[10px] font-black ${viewFilter === value ? 'rounded bg-slate-900 text-white' : 'text-slate-500'}`}>{label}</button>
           ))}

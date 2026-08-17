@@ -52,7 +52,24 @@ test.beforeEach(async ({ page }) => {
       permissions: ['INVENTORY_VIEW', 'INVENTORY_CREATE', 'INVENTORY_COMPLETE']
     }
   }));
-  await page.route('**/api/inventory/99/count-sheet', (route) => route.fulfill({ json: inventory }));
+  await page.route('**/api/inventory/99/count-sheet', async (route) => {
+    if (route.request().method() === 'PATCH') {
+      const payload = route.request().postDataJSON();
+      return route.fulfill({
+        json: {
+          items: payload.rows.map((row: any) => ({
+            ...inventory.items.find((item) => item.id === row.itemId),
+            ...row,
+            quality: row.actualQuantity === 0 ? 'MISSING' : row.quality,
+            result: row.actualQuantity === 0 ? 'MISSING' : 'MATCHED',
+            checkStatus: 'CHECKED',
+            checkedAt: '2026-08-17T04:00:00.000Z'
+          }))
+        }
+      });
+    }
+    return route.fulfill({ json: inventory });
+  });
   await page.route('**/api/settings/project-location-nodes', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/assets/101', (route) => route.fulfill({
     json: {
@@ -84,9 +101,14 @@ test('shows the hierarchical count sheet and supports 0/1 counting', async ({ pa
   await page.keyboard.press('Escape');
 
   const quantity = page.getByLabel('Số lượng thực tế 01.03.01.01.001');
-  await quantity.fill('0');
+  const verifiedLocation = page.getByLabel('Vị trí kiểm thực tế 01.03.01.01.001');
+  await expect(verifiedLocation).toHaveValue('Mặt trước C6-I');
+  await quantity.selectOption('0');
   await expect(page.getByText('Thiếu', { exact: true })).toBeVisible();
-  await expect(page.getByPlaceholder('Bắt buộc nhập lý do thiếu...')).toBeVisible();
+  await page.getByPlaceholder('Bắt buộc nhập lý do thiếu...').fill('Không tìm thấy tại vị trí sổ sách');
+  await page.getByRole('button', { name: 'Kiểm kê', exact: true }).click();
+  await expect(page.getByText('Đã kiểm', { exact: true }).first()).toBeVisible();
+  await expect(quantity).toBeDisabled();
 
   await page.getByPlaceholder('Tìm mã, tên, serial, người dùng, vị trí...').fill('MONITOR002');
   await expect(page.getByText('Màn hình Dell E2216H')).toBeVisible();

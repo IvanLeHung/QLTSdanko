@@ -571,7 +571,7 @@ model InventoryItem {
   physicalDetailsJson String?
   bookQuantity        Int             @default(1)
   actualQuantity      Int?
-  
+  actualCity          String?
   actualProject       String?
   actualDepartment    String?
   batchId             String?

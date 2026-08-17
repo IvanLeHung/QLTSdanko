@@ -10,10 +10,15 @@ export type InventoryCountItem = {
   expectedSerialNumber?: string | null;
   bookQuantity?: number | null;
   actualQuantity?: number | null;
+  actualCity?: string | null;
+  actualProject?: string | null;
+  actualLocation?: string | null;
+  actualDepartment?: string | null;
   quality?: string | null;
   note?: string | null;
   result?: string | null;
   checkedAt?: string | null;
+  checkStatus?: string | null;
   asset?: {
     assetName?: string | null;
     cityName?: string | null;
