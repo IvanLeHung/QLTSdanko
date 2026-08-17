@@ -203,6 +203,21 @@ router.get('/options', async (_req, res: Response) => {
   }
 });
 
+router.post('/people/impact', requirePermission('PERMISSION_MANAGE'), async (req, res: Response): Promise<any> => {
+  try {
+    const fullName = clean(req.body.fullName);
+    if (!fullName) return res.status(400).json({ message: 'Họ tên là bắt buộc.' });
+    res.json({
+      type: 'PERSON',
+      name: fullName,
+      impact: await getPersonImpact(fullName),
+      recommendation: 'Thông tin mới được đồng bộ vào tài sản và CCDC hiện tại; hồ sơ lịch sử không thay đổi.'
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Không thể kiểm tra ảnh hưởng: ' + error.message });
+  }
+});
+
 router.get('/:type/:id/impact', requirePermission('PERMISSION_MANAGE'), async (req, res: Response): Promise<any> => {
   try {
     const id = Number(req.params.id);
@@ -254,6 +269,76 @@ router.post('/people', requirePermission('PERMISSION_MANAGE'), async (req: AuthR
     res.status(201).json(person);
   } catch (error: any) {
     res.status(500).json({ message: 'Không thể thêm người dùng danh mục: ' + error.message });
+  }
+});
+
+router.patch('/people/source', requirePermission('PERMISSION_MANAGE'), async (req: AuthRequest, res: Response): Promise<any> => {
+  try {
+    const source = clean(req.body.source).toUpperCase();
+    const sourceId = Number(req.body.sourceId || 0);
+    const requestedOriginalName = clean(req.body.originalFullName);
+    const fullName = clean(req.body.fullName);
+    if (!['USER', 'ASSET'].includes(source)) return res.status(400).json({ message: 'Nguồn liên hệ không hợp lệ.' });
+    if (!requestedOriginalName || !fullName) return res.status(400).json({ message: 'Họ tên là bắt buộc.' });
+
+    const phone = clean(req.body.phone) || null;
+    const position = clean(req.body.position) || null;
+    const departmentName = clean(req.body.departmentName) || null;
+    const cityName = clean(req.body.cityName) || null;
+    const projectName = clean(req.body.projectName) || null;
+    const locationName = clean(req.body.locationName) || null;
+    const department = departmentName
+      ? await prisma.department.findFirst({ where: { name: departmentName, status: 'ACTIVE' }, select: { id: true } })
+      : null;
+
+    let originalFullName = requestedOriginalName;
+    let result: any;
+    await prisma.$transaction(async (tx) => {
+      if (source === 'USER') {
+        if (!sourceId) throw new Error('Không xác định được tài khoản cần cập nhật.');
+        const user = await tx.user.findUnique({ where: { id: sourceId } });
+        if (!user) throw new Error('Không tìm thấy tài khoản hệ thống.');
+        originalFullName = user.fullName;
+        result = await tx.user.update({
+          where: { id: sourceId },
+          data: { fullName, phone, position, departmentId: department?.id || null }
+        });
+      } else {
+        result = await tx.masterPerson.create({
+          data: {
+            fullName,
+            normalizedName: normalize(fullName),
+            phone,
+            position,
+            departmentName,
+            cityName,
+            projectName,
+            locationName,
+            note: clean(req.body.note) || 'Chuẩn hóa từ sổ tài sản',
+            createdBy: req.user?.username || 'system'
+          }
+        });
+      }
+
+      await tx.asset.updateMany({
+        where: { isDeleted: false, currentUserName: originalFullName },
+        data: { currentUserName: fullName, currentUserPhone: phone, currentPosition: position, departmentName, cityName, projectName, locationName }
+      });
+      await tx.toolEquipment.updateMany({
+        where: { isDeleted: false, currentUserName: originalFullName },
+        data: { currentUserName: fullName, departmentName, cityName, projectName, locationName }
+      });
+    });
+    await AuditService.log({
+      entityType: source === 'USER' ? 'USER_CONTACT' : 'MASTER_PERSON',
+      entityId: Number(result?.id || sourceId),
+      action: 'UPDATE',
+      details: JSON.stringify({ source, originalFullName, fullName, syncCurrentData: true }),
+      performedBy: req.user?.username || 'system'
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: 'Không thể cập nhật người dùng và liên hệ: ' + error.message });
   }
 });
 

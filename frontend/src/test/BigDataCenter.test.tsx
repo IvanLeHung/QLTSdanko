@@ -2,8 +2,8 @@ import React from 'react';
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }));
-vi.mock('../lib/api', () => ({ default: { get: apiGet, post: vi.fn(), patch: vi.fn(), delete: vi.fn() } }));
+const { apiGet, apiPost } = vi.hoisted(() => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
+vi.mock('../lib/api', () => ({ default: { get: apiGet, post: apiPost, patch: vi.fn(), delete: vi.fn() } }));
 
 import { BigDataCenter } from '../pages/BigDataCenter';
 
@@ -21,6 +21,11 @@ describe('Big Data Center', () => {
     render(<BigDataCenter />);
     expect(await screen.findByText('Nguyễn Văn A')).toBeInTheDocument();
     expect(screen.getByText('0901234567')).toBeInTheDocument();
+    apiPost.mockResolvedValueOnce({ data: { name: 'Nguyễn Văn A', impact: { assets: 2, tools: 0, total: 2 }, recommendation: 'Đồng bộ dữ liệu hiện tại.' } });
+    fireEvent.click(screen.getByTitle('Sửa liên hệ'));
+    expect(await screen.findByText('Sửa người dùng danh mục')).toBeInTheDocument();
+    expect(screen.getByText(/Mật khẩu, vai trò và quyền đăng nhập được giữ nguyên/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Hủy' }));
 
     fireEvent.click(screen.getByRole('button', { name: /Phòng ban/ }));
     expect(screen.getByText('B. Kế toán')).toBeInTheDocument();
