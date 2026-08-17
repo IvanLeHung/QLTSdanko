@@ -41,8 +41,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       try {
         const res = await api.get('/auth/me');
         setUser(res.data);
-      } catch (err) {
-        localStorage.removeItem('token');
+        localStorage.setItem('auth_user', JSON.stringify(res.data));
+      } catch (err: any) {
+        const isAuthenticationError = err.response?.status === 401
+          || (err.response?.status === 403 && err.response?.data?.message === 'Invalid or expired token.');
+        if (isAuthenticationError) {
+          localStorage.removeItem('token');
+          localStorage.removeItem('auth_user');
+        } else {
+          try {
+            const cachedUser = JSON.parse(localStorage.getItem('auth_user') || 'null');
+            if (cachedUser?.id) setUser(cachedUser);
+          } catch {
+            localStorage.removeItem('auth_user');
+          }
+        }
       }
     }
     setLoading(false);
@@ -54,11 +67,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = (token: string, user: User) => {
     localStorage.setItem('token', token);
+    localStorage.setItem('auth_user', JSON.stringify(user));
     setUser(user);
   };
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('auth_user');
     setUser(null);
   };
 

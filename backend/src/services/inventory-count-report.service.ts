@@ -1,10 +1,12 @@
 import ExcelJS from 'exceljs';
+import type { Stream } from 'stream';
 import prisma from '../utils/prisma';
 
 type BuildOptions = {
   inventoryCheckId: number;
   requestedBy: string;
   assetWhere?: any;
+  stream?: Stream;
 };
 
 const RESULT_LABELS: Record<string, string> = {
@@ -86,6 +88,14 @@ const styleDataRows = (sheet: ExcelJS.Worksheet, startRow: number) => {
   }
 };
 
+const styleDataRow = (row: ExcelJS.Row) => {
+  row.eachCell((cell) => {
+    cell.font = { name: 'Arial', size: 10 };
+    cell.alignment = { vertical: 'middle', wrapText: true };
+    cell.border = { bottom: { style: 'hair', color: { argb: 'FFE2E8F0' } } };
+  });
+};
+
 const addMetric = (sheet: ExcelJS.Worksheet, range: string, label: string, value: number, color: string) => {
   sheet.mergeCells(range);
   const cell = sheet.getCell(range.split(':')[0]);
@@ -136,10 +146,49 @@ export class InventoryCountReportService {
       },
       orderBy: [{ checkedAt: 'desc' }, { id: 'desc' }],
       distinct: ['assetId'],
-      include: { asset: true }
+      select: {
+        id: true,
+        assetId: true,
+        assetCode: true,
+        bookQuantity: true,
+        actualQuantity: true,
+        result: true,
+        quality: true,
+        expectedStatus: true,
+        actualStatus: true,
+        expectedSerialNumber: true,
+        expectedUserName: true,
+        expectedCity: true,
+        expectedProject: true,
+        expectedLocation: true,
+        expectedDepartment: true,
+        actualCity: true,
+        actualProject: true,
+        actualLocation: true,
+        actualDepartment: true,
+        checkedBy: true,
+        checkedAt: true,
+        note: true,
+        asset: {
+          select: {
+            cityName: true,
+            projectName: true,
+            locationName: true,
+            departmentName: true,
+            level4Name: true,
+            assetName: true,
+            serialNumber: true,
+            unit: true,
+            currentUserName: true
+          }
+        }
+      }
     });
 
-    const workbook = new ExcelJS.Workbook();
+    const streaming = Boolean(options.stream);
+    const workbook: any = streaming
+      ? new ExcelJS.stream.xlsx.WorkbookWriter({ stream: options.stream, useStyles: true, useSharedStrings: false })
+      : new ExcelJS.Workbook();
     workbook.creator = options.requestedBy;
     workbook.created = new Date();
     workbook.modified = new Date();
@@ -151,7 +200,7 @@ export class InventoryCountReportService {
     const wrongLocation = items.filter((item) => item.result === 'WRONG_LOCATION').length;
     const unchecked = items.length - checked;
 
-    const overview = workbook.addWorksheet('Tổng hợp số liệu', { views: [{ state: 'frozen', ySplit: 2 }] });
+    const overview = workbook.addWorksheet('Tổng hợp số liệu', { views: [{ state: 'frozen', ySplit: 9 }] });
     overview.columns = Array.from({ length: 12 }, () => ({ width: 15 }));
     styleTitle(overview, 'BÁO CÁO TỔNG HỢP KIỂM KÊ TÀI SẢN', subtitle, 12);
     overview.getRow(4).height = 54;
@@ -177,9 +226,10 @@ export class InventoryCountReportService {
       row.actual, row.missing, row.damaged, row.wrongLocation, row.book - row.checked
     ]));
     overview.autoFilter = { from: { row: 9, column: 1 }, to: { row: 9, column: hierarchyHeaders.length } };
-    overview.views = [{ state: 'frozen', ySplit: 9 }];
-    overview.columns.forEach((column, index) => { column.width = [7, 18, 26, 44, 30, 14, 12, 14, 10, 16, 12, 12][index] || 16; });
+    if (!streaming) overview.views = [{ state: 'frozen', ySplit: 9 }];
+    overview.columns.forEach((column: any, index: number) => { column.width = [7, 18, 26, 44, 30, 14, 12, 14, 10, 16, 12, 12][index] || 16; });
     styleDataRows(overview, 10);
+    if (streaming) overview.commit();
 
     const detailHeaders = [
       'STT', 'Mã tài sản', 'Nhóm tài sản LV4', 'Tên tài sản', 'Serial', 'Đơn vị tính', 'Người dùng/Khu vực',
@@ -229,13 +279,20 @@ export class InventoryCountReportService {
       sheet.addRow([]);
       const header = sheet.addRow(detailHeaders);
       styleHeader(header);
-      source.forEach((item, index) => sheet.addRow(detailValues(item, index)));
+      source.forEach((item, index) => {
+        const row = sheet.addRow(detailValues(item, index));
+        if (streaming) {
+          styleDataRow(row);
+          row.commit();
+        }
+      });
       sheet.autoFilter = { from: { row: 4, column: 1 }, to: { row: 4, column: detailHeaders.length } };
-      sheet.columns.forEach((column, index) => {
+      sheet.columns.forEach((column: any, index: number) => {
         column.width = [7, 22, 28, 42, 20, 14, 28, 12, 14, 12, 20, 20, 18, 20, 18, 24, 38, 28, 52, 18, 24, 38, 28, 52, 24, 20, 38][index] || 18;
       });
       sheet.getColumn(26).numFmt = 'dd/mm/yyyy hh:mm';
-      styleDataRows(sheet, 5);
+      if (streaming) sheet.commit();
+      else styleDataRows(sheet, 5);
       return sheet;
     };
 
@@ -245,6 +302,7 @@ export class InventoryCountReportService {
     addDetailSheet('Sai vị trí', 'DANH SÁCH TÀI SẢN SAI VỊ TRÍ', items.filter((item) => item.result === 'WRONG_LOCATION'));
     addDetailSheet('Chưa kiểm', 'DANH SÁCH TÀI SẢN CHƯA KIỂM', items.filter((item) => item.actualQuantity === null));
 
-    return { workbook, inventory, itemCount: items.length };
+    if (streaming) await workbook.commit();
+    return { workbook: streaming ? null : workbook, inventory, itemCount: items.length };
   }
 }
