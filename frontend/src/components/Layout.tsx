@@ -23,6 +23,7 @@ import {
   BookOpen,
   Hammer,
   FileSpreadsheet,
+  Database,
   X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
@@ -76,6 +77,7 @@ const navSections = [
     title: 'Cài đặt',
     items: [
       { name: 'Phân quyền & Scope', path: '/settings/permissions', icon: Shield, requiredPermission: 'USER_VIEW' },
+      { name: 'Big Data Center', path: '/settings/big-data', icon: Database, requiredPermission: 'PERMISSION_MANAGE' },
       { name: 'Nhật ký hoạt động', path: '/activity-logs', icon: History, requiredPermission: 'AUDIT_LOG_VIEW' },
       { name: 'Cấu trúc tài sản', path: '/settings/classification', icon: Layers, requiredPermission: 'ROLE_MANAGE' },
       { name: 'Công ty thành viên', path: '/settings/companies', icon: Building2, requiredPermission: 'ROLE_MANAGE' },

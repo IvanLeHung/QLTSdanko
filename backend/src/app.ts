@@ -26,6 +26,7 @@ import { ccdcRouter, childRouter as ccdcChildRouter, approvalRouter as ccdcAppro
 import { aiRouter, searchRouter, assistantRouter, automationRouter } from './routes/smart-ai.routes';
 import { financeRouter, procurementRouter, offlineRouter, signatureRouter, analyticsRouter, integrationRouter, notificationRouter } from './routes/enterprise.routes';
 import normalizationRoutes from './routes/normalization.routes';
+import masterDataRoutes from './routes/master-data.routes';
 import { auditMiddleware } from './middleware/audit.middleware';
 import { authenticateToken, loadPermissions } from './middleware/auth.middleware';
 
@@ -105,6 +106,7 @@ protectedApi.use('/creation', creationRoutes);
 protectedApi.use('/audit', auditRoutes);
 protectedApi.use('/templates', templateRoutes);
 protectedApi.use('/normalization', normalizationRoutes);
+protectedApi.use('/master-data', masterDataRoutes);
 
 app.use('/api', protectedApi);
 

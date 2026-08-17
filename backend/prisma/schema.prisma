@@ -187,6 +187,26 @@ model ProjectLocationNode {
   @@index([cityName, projectName, status])
 }
 
+model MasterPerson {
+  id             Int      @id @default(autoincrement())
+  fullName       String
+  normalizedName String
+  phone          String?
+  position       String?
+  departmentName String?
+  cityName       String?
+  projectName    String?
+  locationName   String?
+  status         String   @default("ACTIVE")
+  note           String?
+  createdBy      String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([normalizedName, status])
+  @@index([departmentName])
+}
+
 model AssetCategory {
   id        Int      @id @default(autoincrement())
   code      String

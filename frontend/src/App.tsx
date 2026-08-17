@@ -26,6 +26,7 @@ import { PrintCenter } from './pages/PrintCenter';
 import { ActivityLogs } from './pages/ActivityLogs';
 import { UserPermissions } from './pages/UserPermissions';
 import { ForceChangePassword } from './pages/ForceChangePassword';
+import { BigDataCenter } from './pages/BigDataCenter';
 
 // Import CCDC (Tools & Equipment) components
 import { ToolList } from './pages/ToolList';
@@ -111,6 +112,7 @@ function App() {
           <Route path="/print-center" element={<PrivateRoute><PrintCenter /></PrivateRoute>} />
           <Route path="/activity-logs" element={<PrivateRoute><ActivityLogs /></PrivateRoute>} />
           <Route path="/settings/permissions" element={<PrivateRoute><UserPermissions /></PrivateRoute>} />
+          <Route path="/settings/big-data" element={<PrivateRoute><BigDataCenter /></PrivateRoute>} />
           
           <Route path="/" element={<Navigate to="/dashboard" />} />
         </Routes>

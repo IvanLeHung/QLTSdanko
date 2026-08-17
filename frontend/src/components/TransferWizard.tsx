@@ -541,9 +541,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [projectLocationNodes, setProjectLocationNodes] = useState<ProjectLocationNode[]>([]);
-  const [isAddingDepartment, setIsAddingDepartment] = useState(false);
-  const [isCreatingDepartment, setIsCreatingDepartment] = useState(false);
-  const [newDepartment, setNewDepartment] = useState({ code: '', name: '' });
+  const [masterPeople, setMasterPeople] = useState<any[]>([]);
   const [addingLocationDepth, setAddingLocationDepth] = useState<number | null>(null);
   const [newLocationNodeName, setNewLocationNodeName] = useState('');
   const [isCreatingLocationNode, setIsCreatingLocationNode] = useState(false);
@@ -570,6 +568,14 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const projectLocationLevels = canAddChildToSelectedLeaf
     ? [...baseProjectLocationLevels, []]
     : baseProjectLocationLevels;
+  const availableCities = useMemo(() => Array.from(new Set([
+    ...Object.keys(LOCATION_HIERARCHY),
+    ...projectLocationNodes.map((node) => node.cityName)
+  ])).sort((a, b) => a.localeCompare(b, 'vi')), [projectLocationNodes]);
+  const availableProjects = useMemo(() => Array.from(new Set([
+    ...Object.keys(LOCATION_HIERARCHY[selectedCity] || {}),
+    ...projectLocationNodes.filter((node) => node.cityName === selectedCity).map((node) => node.projectName)
+  ])).sort((a, b) => a.localeCompare(b, 'vi')), [projectLocationNodes, selectedCity]);
 
   // Search Asset Lookup
   const [assetSearch, setAssetSearch] = useState('');
@@ -579,14 +585,16 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [deptsRes, locsRes, projectNodesRes] = await Promise.all([
+        const [deptsRes, locsRes, projectNodesRes, masterDataRes] = await Promise.all([
           api.get('/settings/departments'),
           api.get('/settings/locations'),
-          api.get('/settings/project-location-nodes')
+          api.get('/settings/project-location-nodes'),
+          api.get('/master-data/options').catch(() => ({ data: { people: [] } }))
         ]);
         setDepartments(deptsRes.data);
         setLocations(locsRes.data);
         setProjectLocationNodes(projectNodesRes.data);
+        setMasterPeople(masterDataRes.data?.people || []);
       } catch (err) {
         console.error('Error loading wizard metadata:', err);
       }
@@ -601,7 +609,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     setWizardForm(prev => ({
       ...prev,
       newCity: resolved.city,
-      newLocation: resolved.location
+      newLocation: resolved.location,
+      recipientArea: prev.recipientType === 'AREA' && resolved.location ? resolved.location : prev.recipientArea
     }));
   }, [selectedCity, selectedProject, selectedLocation, customCity, customProject, customLocation]);
 
@@ -831,9 +840,6 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     setCustomCity('');
     setCustomProject('');
     setCustomLocation('');
-    setIsAddingDepartment(false);
-    setIsCreatingDepartment(false);
-    setNewDepartment({ code: '', name: '' });
     setAddingLocationDepth(null);
     setNewLocationNodeName('');
     setIsCreatingLocationNode(false);
@@ -938,38 +944,36 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     }
   };
 
-  const handleCreateDepartment = async () => {
-    const code = newDepartment.code.trim().toUpperCase();
-    const name = newDepartment.name.trim();
-    if (!code || !name) {
-      toast.error('Vui lòng nhập đầy đủ Mã và Tên phòng ban');
+  const handleRecipientSelect = (key: string) => {
+    const person = masterPeople.find((item) => item.key === key);
+    if (!person) {
+      setWizardForm((current) => ({ ...current, recipientName: '', recipientPosition: '', recipientPhone: '', receiverId: null }));
       return;
     }
+    const department = departments.find((item) => item.name === person.departmentName);
+    setWizardForm((current) => ({
+      ...current,
+      recipientName: person.fullName,
+      recipientPosition: person.position || '',
+      recipientPhone: person.phone || '',
+      recipientDepartment: person.departmentName || '',
+      receiverDepartmentId: department?.id || null,
+      receiverId: person.source === 'USER' ? person.id : null
+    }));
+    const location = [person.cityName, person.projectName, person.locationName].filter(Boolean).join(' - ');
+    if (location) parseLocationToStates(location);
+  };
 
-    setIsCreatingDepartment(true);
-    try {
-      const res = await api.post('/admin/departments', {
-        code,
-        name,
-        type: 'DEPARTMENT',
-        status: 'ACTIVE'
-      });
-      const created = res.data;
-      setDepartments((current) => [...current.filter((dept) => dept.id !== created.id), created]
-        .sort((a, b) => String(a.name).localeCompare(String(b.name), 'vi')));
-      setWizardForm((current) => ({
-        ...current,
-        receiverDepartmentId: created.id,
-        recipientDepartment: created.name
-      }));
-      setNewDepartment({ code: '', name: '' });
-      setIsAddingDepartment(false);
-      toast.success(`Đã thêm và chọn phòng ban ${created.name}`);
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Không thể thêm phòng ban mới');
-    } finally {
-      setIsCreatingDepartment(false);
-    }
+  const handleSenderSelect = (key: string) => {
+    const person = masterPeople.find((item) => item.key === key);
+    if (!person) return;
+    setWizardForm((current) => ({
+      ...current,
+      senderName: person.fullName,
+      senderPosition: person.position || '',
+      senderDepartment: person.departmentName || '',
+      senderId: person.source === 'USER' ? person.id : null
+    }));
   };
 
   const handleCreateProjectLocation = async (depth: number) => {
@@ -1465,9 +1469,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               name="recipientArea"
                               type="text"
                               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                              placeholder="VD: Bể bơi Danko City, Phòng họp VIP 1"
+                              placeholder="Chọn vị trí phân cấp bên phải"
+                              disabled
                               value={wizardForm.recipientArea}
-                              onChange={(e) => setWizardForm({ ...wizardForm, recipientArea: e.target.value })}
                             />
                             <p className="text-[10px] text-slate-400 font-medium">
                               Vị trí phân cấp bên phải sẽ được ghi nhận là vị trí hiện tại của tài sản.
@@ -1481,27 +1485,34 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               ? 'Người phụ trách khu vực (nếu có)'
                               : 'Họ tên người nhận *'}
                           </label>
-                          <input 
+                          <select
                             id="handover-recipient-name"
                             name="recipientName"
-                            type="text"
                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                            placeholder={wizardForm.recipientType === 'AREA' ? 'Có thể để trống' : 'Nguyễn Văn A'}
                             disabled={wizardType === 'RECALL' || wizardType === 'LOCATION_TRANSFER'}
-                            value={wizardForm.recipientName}
-                            onChange={(e) => setWizardForm({...wizardForm, recipientName: e.target.value})}
-                          />
+                            value={masterPeople.find((person) => person.fullName === wizardForm.recipientName)?.key || (wizardForm.recipientName ? '__current__' : '')}
+                            onChange={(e) => handleRecipientSelect(e.target.value)}
+                          >
+                            <option value="">{wizardForm.recipientType === 'AREA' ? '-- Không chỉ định người phụ trách --' : '-- Chọn người nhận --'}</option>
+                            {wizardForm.recipientName && !masterPeople.some((person) => person.fullName === wizardForm.recipientName) && <option value="__current__" disabled>{wizardForm.recipientName} - dữ liệu hồ sơ cũ</option>}
+                            {masterPeople.map((person) => (
+                              <option key={person.key} value={person.key}>
+                                {person.fullName}{person.departmentName ? ` - ${person.departmentName}` : ''}{person.phone ? ` - ${person.phone}` : ''}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="text-[10px] font-medium text-slate-400">Dữ liệu được quản lý tập trung tại Big Data Center.</p>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
                           {wizardForm.recipientType !== 'AREA' && (
                             <div className="space-y-1">
                             <label className="font-bold text-slate-500">Chức vụ</label>
-                            <input 
+                            <input
                               type="text"
                               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                               placeholder="Nhân viên"
-                              disabled={wizardType === 'RECALL' || wizardType === 'LOCATION_TRANSFER'}
+                              disabled
                               value={wizardForm.recipientPosition}
                               onChange={(e) => setWizardForm({...wizardForm, recipientPosition: e.target.value})}
                             />
@@ -1509,11 +1520,11 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                           )}
                           <div className={`space-y-1 ${wizardForm.recipientType === 'AREA' ? 'col-span-2' : ''}`}>
                             <label className="font-bold text-slate-500">Số điện thoại</label>
-                            <input 
+                            <input
                               type="text"
                               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                               placeholder="0901234567"
-                              disabled={wizardType === 'RECALL' || wizardType === 'LOCATION_TRANSFER'}
+                              disabled
                               value={wizardForm.recipientPhone}
                               onChange={(e) => setWizardForm({...wizardForm, recipientPhone: e.target.value})}
                             />
@@ -1534,67 +1545,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                             ))}
                           </select>
                           {wizardType !== 'RECALL' && wizardType !== 'LOCATION_TRANSFER' && hasPermission('PERMISSION_MANAGE') && (
-                            <div className="pt-1.5">
-                              {!isAddingDepartment ? (
-                                <button
-                                  type="button"
-                                  onClick={() => setIsAddingDepartment(true)}
-                                  className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary-600 hover:text-primary-700"
-                                >
-                                  <Plus className="h-3.5 w-3.5" /> Thêm phòng ban mới
-                                </button>
-                              ) : (
-                                <div className="space-y-2 border-l-2 border-primary-200 pl-3 pt-1">
-                                  <div className="grid grid-cols-[120px_1fr] gap-2">
-                                    <div className="space-y-1">
-                                      <label htmlFor="new-department-code" className="font-bold text-slate-500">Mã phòng ban *</label>
-                                      <input
-                                        id="new-department-code"
-                                        name="newDepartmentCode"
-                                        value={newDepartment.code}
-                                        onChange={(e) => setNewDepartment((current) => ({ ...current, code: e.target.value.toUpperCase() }))}
-                                        placeholder="VD: BQLDA"
-                                        maxLength={30}
-                                        className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 uppercase focus:border-primary-500 outline-none"
-                                      />
-                                    </div>
-                                    <div className="space-y-1">
-                                      <label htmlFor="new-department-name" className="font-bold text-slate-500">Tên phòng ban *</label>
-                                      <input
-                                        id="new-department-name"
-                                        name="newDepartmentName"
-                                        value={newDepartment.name}
-                                        onChange={(e) => setNewDepartment((current) => ({ ...current, name: e.target.value }))}
-                                        placeholder="Nhập tên phòng ban"
-                                        maxLength={150}
-                                        className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-primary-500 outline-none"
-                                      />
-                                    </div>
-                                  </div>
-                                  <div className="flex items-center gap-2">
-                                    <button
-                                      type="button"
-                                      onClick={handleCreateDepartment}
-                                      disabled={isCreatingDepartment}
-                                      className="h-8 px-3 rounded-lg bg-primary-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-primary-700 disabled:opacity-50"
-                                    >
-                                      {isCreatingDepartment ? 'Đang thêm...' : 'Thêm và chọn'}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      onClick={() => {
-                                        setIsAddingDepartment(false);
-                                        setNewDepartment({ code: '', name: '' });
-                                      }}
-                                      disabled={isCreatingDepartment}
-                                      className="h-8 px-3 rounded-lg border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 disabled:opacity-50"
-                                    >
-                                      Hủy
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
+                            <a href="/settings/big-data" target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary-600 hover:text-primary-700">
+                              <Plus className="h-3.5 w-3.5" /> Quản lý tại Big Data Center
+                            </a>
                           )}
                         </div>
                       </div>
@@ -1610,31 +1563,34 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                       <div className="space-y-3 text-xs">
                         <div className="space-y-1">
                           <label className="font-bold text-slate-550">Họ tên người giao (Bên giao)</label>
-                          <input 
-                            type="text"
+                          <select
                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                            value={wizardForm.senderName}
-                            onChange={(e) => setWizardForm({...wizardForm, senderName: e.target.value})}
-                          />
+                            value={masterPeople.find((person) => person.fullName === wizardForm.senderName)?.key || (wizardForm.senderName ? '__current_sender__' : '')}
+                            onChange={(e) => handleSenderSelect(e.target.value)}
+                          >
+                            <option value="">-- Chọn người giao --</option>
+                            {wizardForm.senderName && !masterPeople.some((person) => person.fullName === wizardForm.senderName) && <option value="__current_sender__" disabled>{wizardForm.senderName} - dữ liệu hiện tại</option>}
+                            {masterPeople.map((person) => <option key={person.key} value={person.key}>{person.fullName}{person.departmentName ? ` - ${person.departmentName}` : ''}</option>)}
+                          </select>
                         </div>
 
                         <div className="grid grid-cols-2 gap-3">
                           <div className="space-y-1">
                             <label className="font-bold text-slate-500">Chức vụ giao</label>
-                            <input 
+                            <input
                               type="text"
                               className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                               value={wizardForm.senderPosition}
-                              onChange={(e) => setWizardForm({...wizardForm, senderPosition: e.target.value})}
+                              disabled
                             />
                           </div>
                           <div className="space-y-1">
                             <label className="font-bold text-slate-500">Phòng ban giao</label>
-                            <input 
+                            <input
                               type="text"
                               className="w-full px-3 py-2 bg-slate-50 border border-slate-205 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                               value={wizardForm.senderDepartment}
-                              onChange={(e) => setWizardForm({...wizardForm, senderDepartment: e.target.value})}
+                              disabled
                             />
                           </div>
                         </div>
@@ -1659,25 +1615,11 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                               className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                             >
                               <option value="">-- Chọn thành phố --</option>
-                              {Object.keys(LOCATION_HIERARCHY).map(c => (
+                              {availableCities.map(c => (
                                 <option key={c} value={c}>{c}</option>
                               ))}
-                              <option value="Khác">Khác</option>
                             </select>
                           </div>
-
-                          {selectedCity === 'Khác' && (
-                            <div className="space-y-1">
-                              <label className="font-bold text-slate-500">Ghi rõ thành phố khác *</label>
-                              <input
-                                type="text"
-                                value={customCity}
-                                onChange={(e) => setCustomCity(e.target.value)}
-                                placeholder="Nhập tên thành phố..."
-                                className="w-full px-3 py-2 bg-slate-50 border border-slate-202 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                              />
-                            </div>
-                          )}
 
                           {selectedCity && (
                             <>
@@ -1697,25 +1639,11 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                   className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                                 >
                                   <option value="">-- Chọn dự án --</option>
-                                  {selectedCity !== 'Khác' && Object.keys(LOCATION_HIERARCHY[selectedCity] || {}).map(p => (
+                                  {availableProjects.map(p => (
                                     <option key={p} value={p}>{p}</option>
                                   ))}
-                                  <option value="Khác">Khác</option>
                                 </select>
                               </div>
-
-                              {selectedProject === 'Khác' && (
-                                <div className="space-y-1">
-                                  <label className="font-bold text-slate-500">Ghi rõ dự án khác *</label>
-                                  <input
-                                    type="text"
-                                    value={customProject}
-                                    onChange={(e) => setCustomProject(e.target.value)}
-                                    placeholder="Nhập tên dự án..."
-                                    className="w-full px-3 py-2 bg-slate-50 border border-slate-202 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                                  />
-                                </div>
-                              )}
                             </>
                           )}
 
@@ -1745,7 +1673,6 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                           {options.map((location) => (
                                             <option key={location} value={location}>{location}</option>
                                           ))}
-                                          {depth === 0 && <option value="Khác">Khác</option>}
                                         </select>
                                         {depth < PROJECT_LOCATION_LEVEL_LABELS.length && hasPermission('PERMISSION_MANAGE') && (
                                           <div className="pt-1.5">
