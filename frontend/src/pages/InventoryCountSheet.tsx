@@ -19,6 +19,7 @@ import {
 import { toast } from 'react-toastify';
 import api from '../lib/api';
 import { useAuth } from '../context/AuthContext';
+import { useModal } from '../context/ModalContext';
 import {
   buildInventoryHierarchy,
   calculateCountSheetStats,
@@ -59,6 +60,7 @@ export const InventoryCountSheet: React.FC = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { hasPermission } = useAuth();
+  const { openModal } = useModal();
   const [inventory, setInventory] = useState<any>(null);
   const [items, setItems] = useState<InventoryCountItem[]>([]);
   const [drafts, setDrafts] = useState<Record<number, DraftRow>>({});
@@ -220,7 +222,16 @@ export const InventoryCountSheet: React.FC = () => {
             const needsNote = draft && (draft.actualQuantity === 0 || draft.quality !== 'GOOD') && !draft.note.trim();
             return (
               <tr key={item.id} className={dirtyIds.has(item.id) ? 'bg-amber-50/60' : 'bg-white'}>
-                <td className="px-4 py-3 font-mono text-xs font-bold text-primary-700">{item.assetCode}</td>
+                <td className="px-4 py-3">
+                  <button
+                    type="button"
+                    title="Xem thông tin tài sản"
+                    onClick={() => openModal('ASSET_DETAIL', { assetId: item.assetId, initialTab: 'info' })}
+                    className="font-mono text-xs font-bold text-primary-700 hover:text-primary-900 hover:underline focus:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+                  >
+                    {item.assetCode}
+                  </button>
+                </td>
                 <td className="px-4 py-3">
                   <p className="truncate text-sm font-bold text-slate-800" title={snapshot.assetName}>{snapshot.assetName}</p>
                   <p className="truncate text-[10px] font-semibold text-slate-400">Serial: {snapshot.serial}</p>

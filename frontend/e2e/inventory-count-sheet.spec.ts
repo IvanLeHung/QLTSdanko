@@ -53,6 +53,21 @@ test.beforeEach(async ({ page }) => {
     }
   }));
   await page.route('**/api/inventory/99/count-sheet', (route) => route.fulfill({ json: inventory }));
+  await page.route('**/api/settings/project-location-nodes', (route) => route.fulfill({ json: [] }));
+  await page.route('**/api/assets/101', (route) => route.fulfill({
+    json: {
+      id: 101,
+      assetCode: '01.03.01.01.001',
+      assetName: 'Laptop Dell Latitude 3410',
+      status: 'ASSIGNED',
+      serialNumber: 'DELL001',
+      currentUserName: 'Nguyễn An',
+      departmentName: 'B. Kế toán',
+      cityName: 'Hà Nội',
+      projectName: 'Văn phòng C6',
+      locationName: 'Mặt trước C6-I'
+    }
+  }));
 });
 
 test('shows the hierarchical count sheet and supports 0/1 counting', async ({ page }) => {
@@ -63,6 +78,10 @@ test('shows the hierarchical count sheet and supports 0/1 counting', async ({ pa
   await page.getByRole('button', { name: 'Dự án: Văn phòng C6' }).click();
   await page.getByRole('button', { name: 'Vị trí: Mặt trước C6-I' }).click();
   await page.getByRole('button', { name: 'Phòng/Ban: B. Kế toán' }).click();
+
+  await page.getByRole('button', { name: '01.03.01.01.001' }).click();
+  await expect(page.getByRole('heading', { name: 'Laptop Dell Latitude 3410' })).toBeVisible();
+  await page.keyboard.press('Escape');
 
   const quantity = page.getByLabel('Số lượng thực tế 01.03.01.01.001');
   await quantity.fill('0');
