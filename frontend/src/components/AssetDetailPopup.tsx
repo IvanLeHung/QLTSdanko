@@ -43,6 +43,7 @@ import {
   EyeOff,
   FileUp,
   FileDown,
+  Search,
   QrCode as QrCodeIcon,
   Copy,
   Lock
@@ -61,6 +62,14 @@ import { AssetDocumentsTab } from './AssetDocumentsTab';
 import { getAssetAssigneeDisplay } from '../utils/assetAssignee';
 import { BMFormDispatcher } from './forms/BMFormDispatcher';
 import { BaseModal } from './BaseModal';
+import {
+  getBigDataPersonAssignmentFields,
+  getBigDataPersonIdentity,
+  getBigDataPersonLocation,
+  getBigDataPersonSourceLabel,
+  normalizeBigDataPersonName,
+  type BigDataPersonOption
+} from '../utils/bigDataPeople';
 import {
   LOCATION_HIERARCHY,
   PROJECT_LOCATION_LEVEL_LABELS,
@@ -174,6 +183,10 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [assignAddingLocationDepth, setAssignAddingLocationDepth] = useState<number | null>(null);
   const [assignNewLocationNodeName, setAssignNewLocationNodeName] = useState('');
   const [isCreatingAssignLocationNode, setIsCreatingAssignLocationNode] = useState(false);
+  const [assignPersonOptions, setAssignPersonOptions] = useState<BigDataPersonOption[]>([]);
+  const [assignPersonDropdownOpen, setAssignPersonDropdownOpen] = useState(false);
+  const [assignPersonLoading, setAssignPersonLoading] = useState(false);
+  const [selectedAssignPersonKey, setSelectedAssignPersonKey] = useState('');
   const [showLinkInvoiceModal, setShowLinkInvoiceModal] = useState(false);
   const [showInvoiceDetailsModal, setShowInvoiceDetailsModal] = useState(false);
   const [selectedInvoiceId, setSelectedInvoiceId] = useState<number | null>(null);
@@ -197,6 +210,35 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       setSelectedInvoiceId(null);
     }
   }, [isOpen, assetId, initialTab]);
+
+  useEffect(() => {
+    if (!showAssignInfoModal || !isAssignInfoEditing || assignRecipientType !== 'PERSON' || !assignPersonDropdownOpen) return;
+    const search = String(assignInfoForm.currentUserName || '').trim();
+    if (!search) {
+      setAssignPersonOptions([]);
+      setAssignPersonLoading(false);
+      return;
+    }
+
+    let active = true;
+    setAssignPersonLoading(true);
+    const timer = window.setTimeout(async () => {
+      try {
+        const response = await api.get('/master-data/people/options', { params: { search, limit: 20 } });
+        if (active) setAssignPersonOptions(response.data?.items || []);
+      } catch (error) {
+        if (active) setAssignPersonOptions([]);
+        console.error(error);
+      } finally {
+        if (active) setAssignPersonLoading(false);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timer);
+    };
+  }, [assignInfoForm.currentUserName, assignPersonDropdownOpen, assignRecipientType, isAssignInfoEditing, showAssignInfoModal]);
 
   const fetchCompanies = async () => {
     try {
@@ -339,6 +381,9 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const assignProjectLocationLevels = assignCanAddChildToSelectedLeaf
     ? [...assignBaseProjectLocationLevels, []]
     : assignBaseProjectLocationLevels;
+  const assignExactNameMatches = assignPersonOptions.filter((person) => (
+    normalizeBigDataPersonName(person.fullName) === normalizeBigDataPersonName(assignInfoForm.currentUserName || '')
+  ));
   const InfoRow = ({ label, value, icon: Icon }: { label: string; value?: string | number | null; icon?: any }) => (
     <div className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
       <p className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
@@ -349,10 +394,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     </div>
   );
 
-  const openAssignInfoEditor = () => {
-    const rawCity = asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity || '';
-    const rawProject = asset.projectName || '';
-    const rawLocation = asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation || '';
+  const buildAssignLocationSelection = (rawCity: string, rawProject: string, rawLocation: string) => {
     const knownCity = Object.prototype.hasOwnProperty.call(LOCATION_HIERARCHY, rawCity);
     const city = knownCity ? rawCity : (rawCity ? 'Khác' : '');
     const locationWithoutCity = stripLocationPrefix(rawLocation, rawCity);
@@ -378,6 +420,22 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       ? path.join(' / ')
       : (standardLocation ? detailLocation : (detailLocation ? 'Khác' : ''));
 
+    return {
+      city,
+      project,
+      location,
+      path,
+      customCity: city === 'Khác' ? rawCity : '',
+      customProject: project === 'Khác' ? resolvedProject : '',
+      customLocation: location === 'Khác' ? detailLocation : ''
+    };
+  };
+
+  const openAssignInfoEditor = () => {
+    const rawCity = asset.cityName || latestAssignment?.newCityName || latestHandover?.newCity || '';
+    const rawProject = asset.projectName || '';
+    const rawLocation = asset.locationName || latestAssignment?.newLocationName || latestHandover?.newLocation || '';
+
     setAssignInfoForm({
       currentUserName: assigneeDisplay.isArea ? '' : (asset.currentUserName || latestAssignment?.newUserName || latestHandover?.recipientName || ''),
       assignedAreaName: assigneeDisplay.isArea ? assigneeDisplay.name : '',
@@ -389,19 +447,31 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       note: ''
     });
     setAssignRecipientType(assigneeDisplay.isArea ? 'AREA' : 'PERSON');
-    setAssignLocationSelection({
-      city,
-      project,
-      location,
-      path,
-      customCity: city === 'Khác' ? rawCity : '',
-      customProject: project === 'Khác' ? resolvedProject : '',
-      customLocation: location === 'Khác' ? detailLocation : ''
-    });
+    setAssignLocationSelection(buildAssignLocationSelection(rawCity, rawProject, rawLocation));
     setAssignAddingLocationDepth(null);
     setAssignNewLocationNodeName('');
+    setAssignPersonOptions([]);
+    setAssignPersonDropdownOpen(false);
+    setSelectedAssignPersonKey('');
     setShowAssignInfoModal(true);
     setIsAssignInfoEditing(true);
+  };
+
+  const handleSelectAssignPerson = (person: BigDataPersonOption) => {
+    const personFields = getBigDataPersonAssignmentFields(person);
+    setAssignInfoForm((current: any) => ({
+      ...current,
+      ...personFields
+    }));
+    if (person.cityName || person.projectName || person.locationName) {
+      setAssignLocationSelection(buildAssignLocationSelection(
+        person.cityName || '',
+        person.projectName || '',
+        person.locationName || ''
+      ));
+    }
+    setSelectedAssignPersonKey(person.key);
+    setAssignPersonDropdownOpen(false);
   };
 
   const cancelAssignInfoEditor = () => {
@@ -428,6 +498,9 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
     });
     setAssignAddingLocationDepth(null);
     setAssignNewLocationNodeName('');
+    setAssignPersonOptions([]);
+    setAssignPersonDropdownOpen(false);
+    setSelectedAssignPersonKey('');
   };
 
   const handleCreateAssignProjectLocation = async (depth: number) => {
@@ -516,6 +589,11 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
 
     if (assignRecipientType === 'PERSON' && !assignInfoForm.currentUserName.trim()) {
       toast.error('Vui lòng nhập họ tên người nhận');
+      return;
+    }
+    if (assignRecipientType === 'PERSON' && assignExactNameMatches.length > 1 && !selectedAssignPersonKey) {
+      toast.error('Có nhiều người trùng tên trong Big Data. Vui lòng chọn đúng người theo SĐT/phòng ban.');
+      setAssignPersonDropdownOpen(true);
       return;
     }
     if (assignRecipientType === 'AREA' && !assignInfoForm.assignedAreaName.trim()) {
@@ -1857,19 +1935,78 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                           { key: 'currentUserPhone', label: 'Số điện thoại', icon: Info },
                           { key: 'departmentName', label: 'Phòng ban', icon: Building2 }
                         ].map(({ key, label, icon: Icon }) => (
-                          <div key={key} className="p-4 rounded-2xl bg-slate-50 border border-slate-100">
+                          <div key={key} className={cn(
+                            "p-4 rounded-2xl bg-slate-50 border border-slate-100",
+                            key === 'currentUserName' && "relative z-30"
+                          )}>
                             <label className="text-[10px] font-black uppercase tracking-widest text-slate-400 flex items-center mb-1.5">
                               <Icon className="mr-2 h-3.5 w-3.5" />
                               {label}
                             </label>
-                            <input
-                              id={`asset-assignment-${key}`}
-                              name={key}
-                              type={key === 'currentUserPhone' ? 'tel' : 'text'}
-                              value={assignInfoForm[key] || ''}
-                              onChange={(e) => setAssignInfoForm({ ...assignInfoForm, [key]: e.target.value })}
-                              className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50"
-                            />
+                            <div className="relative">
+                              <input
+                                id={`asset-assignment-${key}`}
+                                name={key}
+                                type={key === 'currentUserPhone' ? 'tel' : 'text'}
+                                autoComplete={key === 'currentUserName' ? 'off' : undefined}
+                                value={assignInfoForm[key] || ''}
+                                onFocus={() => key === 'currentUserName' && setAssignPersonDropdownOpen(true)}
+                                onBlur={() => key === 'currentUserName' && window.setTimeout(() => setAssignPersonDropdownOpen(false), 150)}
+                                onChange={(e) => {
+                                  setAssignInfoForm({ ...assignInfoForm, [key]: e.target.value });
+                                  if (key === 'currentUserName') {
+                                    setSelectedAssignPersonKey('');
+                                    setAssignPersonDropdownOpen(true);
+                                  }
+                                }}
+                                className={cn(
+                                  "w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-800 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-50",
+                                  key === 'currentUserName' && "pr-9"
+                                )}
+                              />
+                              {key === 'currentUserName' && (
+                                <Search className="pointer-events-none absolute right-3 top-2.5 h-4 w-4 text-slate-400" />
+                              )}
+                              {key === 'currentUserName' && assignPersonDropdownOpen && assignInfoForm.currentUserName.trim() && (
+                                <div className="absolute left-0 right-0 top-[calc(100%+6px)] z-[120] max-h-72 overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-2xl md:right-auto md:w-[calc(200%+0.75rem)]">
+                                  {assignPersonLoading ? (
+                                    <div className="flex items-center justify-center gap-2 px-4 py-6 text-xs font-bold text-slate-500">
+                                      <Loader2 className="h-4 w-4 animate-spin" /> Đang tìm trong Big Data...
+                                    </div>
+                                  ) : assignPersonOptions.length > 0 ? assignPersonOptions.map((person) => (
+                                    <button
+                                      key={person.key}
+                                      type="button"
+                                      onMouseDown={(event) => {
+                                        event.preventDefault();
+                                        handleSelectAssignPerson(person);
+                                      }}
+                                      className="block w-full border-b border-slate-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-primary-50"
+                                    >
+                                      <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                          <div className="flex flex-wrap items-center gap-1.5">
+                                            <span className="text-sm font-black text-slate-900">{person.fullName}</span>
+                                            {person.duplicateName && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[9px] font-black uppercase text-amber-700">Trùng tên</span>}
+                                          </div>
+                                          <p className="mt-0.5 text-[11px] font-semibold text-slate-600">{getBigDataPersonIdentity(person)}</p>
+                                          {getBigDataPersonLocation(person) && <p className="mt-0.5 truncate text-[10px] text-slate-400">{getBigDataPersonLocation(person)}</p>}
+                                        </div>
+                                        <span className="shrink-0 rounded bg-slate-100 px-1.5 py-1 text-[9px] font-black uppercase text-slate-500">{getBigDataPersonSourceLabel(person.source)}</span>
+                                      </div>
+                                    </button>
+                                  )) : (
+                                    <div className="px-4 py-5 text-center text-xs font-bold text-slate-400">Không tìm thấy người dùng trong Big Data</div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            {key === 'currentUserName' && selectedAssignPersonKey && (
+                              <p className="mt-1.5 flex items-center gap-1 text-[10px] font-bold text-emerald-600"><Check className="h-3 w-3" /> Đã chọn từ Big Data</p>
+                            )}
+                            {key === 'currentUserName' && !selectedAssignPersonKey && assignExactNameMatches.length > 1 && (
+                              <p className="mt-1.5 flex items-start gap-1 text-[10px] font-bold text-amber-700"><AlertCircle className="mt-0.5 h-3 w-3 shrink-0" /> Có {assignExactNameMatches.length} người trùng tên. Hãy chọn đúng SĐT/phòng ban.</p>
+                            )}
                           </div>
                         ))}
                       </div>

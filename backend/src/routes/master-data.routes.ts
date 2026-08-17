@@ -34,7 +34,19 @@ const mergePerson = (target: Map<string, PersonOption>, person: PersonOption) =>
   const phoneKey = person.phone.replace(/\D/g, '');
   const candidates = Array.from(target.entries()).filter(([, item]) => normalize(item.fullName) === nameKey);
   const exact = candidates.find(([, item]) => phoneKey && item.phone.replace(/\D/g, '') === phoneKey);
-  const loose = candidates.length === 1 && (!phoneKey || !candidates[0][1].phone.replace(/\D/g, '')) ? candidates[0] : undefined;
+  const loose = candidates.find(([, item]) => {
+    const candidatePhone = item.phone.replace(/\D/g, '');
+    if (phoneKey && candidatePhone) return false;
+    const personPosition = normalize(person.position);
+    const candidatePosition = normalize(item.position);
+    const personDepartment = normalize(person.departmentName);
+    const candidateDepartment = normalize(item.departmentName);
+    if (personPosition && candidatePosition && personPosition !== candidatePosition) return false;
+    if (personDepartment && candidateDepartment && personDepartment !== candidateDepartment) return false;
+    const samePosition = personPosition && personPosition === candidatePosition;
+    const sameDepartment = personDepartment && personDepartment === candidateDepartment;
+    return Boolean(samePosition || sameDepartment);
+  });
   const matched = exact || loose;
   const key = matched?.[0] || `${nameKey}|${phoneKey || person.key}`;
   const current = matched?.[1];
@@ -54,6 +66,62 @@ const mergePerson = (target: Map<string, PersonOption>, person: PersonOption) =>
     projectName: preferred.projectName || fallback.projectName,
     locationName: preferred.locationName || fallback.locationName
   });
+};
+
+const buildPeopleOptions = (manualPeople: any[], users: any[], assetPeople: any[]) => {
+  const people = new Map<string, PersonOption>();
+  assetPeople.forEach((item, index) => mergePerson(people, {
+    key: `asset:${normalize(item.currentUserName)}:${index}`,
+    fullName: clean(item.currentUserName),
+    phone: clean(item.currentUserPhone),
+    position: clean(item.currentPosition),
+    departmentName: clean(item.departmentName),
+    cityName: clean(item.cityName),
+    projectName: clean(item.projectName),
+    locationName: clean(item.locationName),
+    source: 'ASSET',
+    editable: false
+  }));
+  users.forEach((item) => mergePerson(people, {
+    key: `user:${item.id}`,
+    id: item.id,
+    fullName: clean(item.fullName),
+    phone: clean(item.phone),
+    position: clean(item.position),
+    departmentName: clean(item.department?.name),
+    cityName: '', projectName: '', locationName: '',
+    source: 'USER',
+    editable: false
+  }));
+  manualPeople.forEach((item) => mergePerson(people, {
+    key: `manual:${item.id}`,
+    id: item.id,
+    fullName: item.fullName,
+    phone: clean(item.phone),
+    position: clean(item.position),
+    departmentName: clean(item.departmentName),
+    cityName: clean(item.cityName),
+    projectName: clean(item.projectName),
+    locationName: clean(item.locationName),
+    source: 'MANUAL',
+    editable: true
+  }));
+
+  const sorted = Array.from(people.values()).sort((a, b) => (
+    a.fullName.localeCompare(b.fullName, 'vi')
+    || a.phone.localeCompare(b.phone, 'vi')
+    || a.departmentName.localeCompare(b.departmentName, 'vi')
+  ));
+  const nameCounts = sorted.reduce((counts, person) => {
+    const key = normalize(person.fullName);
+    counts.set(key, (counts.get(key) || 0) + 1);
+    return counts;
+  }, new Map<string, number>());
+
+  return sorted.map((person) => ({
+    ...person,
+    duplicateName: (nameCounts.get(normalize(person.fullName)) || 0) > 1
+  }));
 };
 
 const replaceLocation = (value: string | null, oldPath: string, newPath: string, oldName: string, newName: string) => {
@@ -125,45 +193,7 @@ router.get('/options', async (_req, res: Response) => {
       })
     ]);
 
-    const people = new Map<string, PersonOption>();
-    assetPeople.forEach((item) => mergePerson(people, {
-      key: `asset:${normalize(item.currentUserName)}`,
-      fullName: clean(item.currentUserName),
-      phone: clean(item.currentUserPhone),
-      position: clean(item.currentPosition),
-      departmentName: clean(item.departmentName),
-      cityName: clean(item.cityName),
-      projectName: clean(item.projectName),
-      locationName: clean(item.locationName),
-      source: 'ASSET',
-      editable: false
-    }));
-    users.forEach((item) => mergePerson(people, {
-      key: `user:${item.id}`,
-      id: item.id,
-      fullName: clean(item.fullName),
-      phone: clean(item.phone),
-      position: clean(item.position),
-      departmentName: clean(item.department?.name),
-      cityName: '', projectName: '', locationName: '',
-      source: 'USER',
-      editable: false
-    }));
-    manualPeople.forEach((item) => mergePerson(people, {
-      key: `manual:${item.id}`,
-      id: item.id,
-      fullName: item.fullName,
-      phone: clean(item.phone),
-      position: clean(item.position),
-      departmentName: clean(item.departmentName),
-      cityName: clean(item.cityName),
-      projectName: clean(item.projectName),
-      locationName: clean(item.locationName),
-      source: 'MANUAL',
-      editable: true
-    }));
-
-    const sortedPeople = Array.from(people.values()).sort((a, b) => a.fullName.localeCompare(b.fullName, 'vi'));
+    const sortedPeople = buildPeopleOptions(manualPeople, users, assetPeople);
     const unifiedLocations = new Map<string, any>();
     assetLocations.forEach((item, index) => {
       const cityName = clean(item.cityName);
@@ -200,6 +230,59 @@ router.get('/options', async (_req, res: Response) => {
     });
   } catch (error: any) {
     res.status(500).json({ message: 'Không thể tải Big Data Center: ' + error.message });
+  }
+});
+
+router.get('/people/options', async (req, res: Response) => {
+  try {
+    const search = clean(req.query.search).slice(0, 100);
+    const limit = Math.min(50, Math.max(1, Number(req.query.limit) || 20));
+    const contains = search ? { contains: search, mode: 'insensitive' as const } : undefined;
+    const candidateLimit = Math.min(200, limit * 4);
+    const [manualPeople, users, assetPeople] = await Promise.all([
+      prisma.masterPerson.findMany({
+        where: {
+          status: 'ACTIVE',
+          ...(contains ? { OR: [{ fullName: contains }, { phone: contains }, { departmentName: contains }] } : {})
+        },
+        orderBy: { fullName: 'asc' },
+        take: candidateLimit
+      }),
+      prisma.user.findMany({
+        where: {
+          isActive: true,
+          status: 'ACTIVE',
+          ...(contains ? { OR: [{ fullName: contains }, { phone: contains }, { position: contains }, { department: { name: contains } }] } : {})
+        },
+        select: { id: true, fullName: true, phone: true, position: true, department: { select: { name: true } } },
+        orderBy: { fullName: 'asc' },
+        take: candidateLimit
+      }),
+      prisma.asset.findMany({
+        where: {
+          isDeleted: false,
+          currentUserName: { not: null },
+          ...(contains ? { OR: [{ currentUserName: contains }, { currentUserPhone: contains }, { currentPosition: contains }, { departmentName: contains }] } : {})
+        },
+        select: {
+          currentUserName: true,
+          currentUserPhone: true,
+          currentPosition: true,
+          departmentName: true,
+          cityName: true,
+          projectName: true,
+          locationName: true
+        },
+        orderBy: { currentUserName: 'asc' },
+        distinct: ['currentUserName', 'currentUserPhone', 'currentPosition', 'departmentName', 'cityName', 'projectName', 'locationName'],
+        take: candidateLimit
+      })
+    ]);
+
+    const people = buildPeopleOptions(manualPeople, users, assetPeople);
+    res.json({ items: people.slice(0, limit), total: people.length });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Không thể tìm người dùng Big Data: ' + error.message });
   }
 });
 
