@@ -10,6 +10,7 @@ import path from 'path';
 import { InvoiceParserService } from '../services/invoice-parser.service';
 import { InvoicePostService } from '../services/invoice-post.service';
 import { AssetGroupReportService } from '../services/asset-group-report.service';
+import { AssigneeNormalizationService } from '../services/assignee-normalization.service';
 import { buildDataScopeWhere } from '../utils/data-scope.util';
 import ExcelJS from 'exceljs';
 import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
@@ -2745,11 +2746,27 @@ router.patch('/:id/assignment-info', authenticateToken, requirePermission('ASSET
         currentUserName: normalizedRecipientType === 'AREA' ? null : normalizedUserName,
         currentUserPhone: normalizedRecipientType === 'AREA' ? null : (currentUserPhone || null),
         currentPosition: normalizedRecipientType === 'AREA' ? null : (currentPosition || null),
+        currentAssigneeProfileId: null,
         departmentName: normalizedDepartment,
         locationName: normalizedLocation || null,
         cityName: cityName || parsedLocation.city || null,
         projectName: normalizeProjectName(projectName || parsedLocation.project) || null
       };
+      if (normalizedRecipientType === 'PERSON') {
+        const canonicalAssignee = await AssigneeNormalizationService.resolveCanonicalAssignee(tx, {
+          name: normalizedUserName,
+          phone: currentUserPhone,
+          position: currentPosition,
+          departmentName: normalizedDepartment
+        });
+        if (canonicalAssignee) {
+          assetUpdates.currentUserName = canonicalAssignee.currentUserName;
+          assetUpdates.currentUserPhone = canonicalAssignee.currentUserPhone;
+          assetUpdates.currentPosition = canonicalAssignee.currentPosition;
+          assetUpdates.departmentName = canonicalAssignee.departmentName;
+          assetUpdates.currentAssigneeProfileId = canonicalAssignee.profileId;
+        }
+      }
 
       const updatedAsset = await tx.asset.update({
         where: { id },

@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs';
 import multer from 'multer';
 import { ImportService } from '../services/import.service';
 import { AssetService } from '../services/asset.service';
+import { AssigneeNormalizationService } from '../services/assignee-normalization.service';
 import {
   normalizeAssetLocation,
   normalizeAssetUnit,
@@ -370,6 +371,7 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     status: row.status || 'IN_STOCK',
                     usagePurpose: row.usage_purpose,
                     currentUserName: row.current_user_name,
+                    currentUserPhone: row.current_user_phone || row.currentUserPhone,
                     currentPosition: row.current_position,
                     departmentName: normalizeDepartmentName(
                       row.department_name,
@@ -391,6 +393,23 @@ router.post('/assets/excel', authenticateToken, upload.single('file'), async (re
                     supplierName: row.supplier_name,
                     supplierTaxCode: row.supplier_tax_code || row.supplierTaxCode || null
                 };
+
+                if (assetData.currentUserName) {
+                    assetData.currentAssigneeProfileId = null;
+                    const canonicalAssignee = await AssigneeNormalizationService.resolveCanonicalAssignee(prisma, {
+                        name: assetData.currentUserName,
+                        phone: assetData.currentUserPhone,
+                        position: assetData.currentPosition,
+                        departmentName: assetData.departmentName
+                    });
+                    if (canonicalAssignee) {
+                        assetData.currentUserName = canonicalAssignee.currentUserName;
+                        assetData.currentUserPhone = canonicalAssignee.currentUserPhone;
+                        assetData.currentPosition = canonicalAssignee.currentPosition;
+                        assetData.departmentName = canonicalAssignee.departmentName;
+                        assetData.currentAssigneeProfileId = canonicalAssignee.profileId;
+                    }
+                }
 
                 await prisma.asset.upsert({
                     where: { assetCode: assetCode },

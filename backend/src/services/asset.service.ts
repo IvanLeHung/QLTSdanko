@@ -1,5 +1,6 @@
 import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
+import { AssigneeNormalizationService } from './assignee-normalization.service';
 import {
   normalizeAssetLocation,
   normalizeAssetUnit,
@@ -302,6 +303,25 @@ export class AssetService {
           updates.cityName ?? oldAsset.cityName,
           updates.projectName ?? oldAsset.projectName
         );
+      }
+
+      if (['currentUserName', 'currentUserPhone', 'currentPosition', 'departmentName'].some((field) => updates[field] !== undefined)
+        && (updates.currentUserName ?? oldAsset.currentUserName)) {
+        const canonicalAssignee = await AssigneeNormalizationService.resolveCanonicalAssignee(tx, {
+          name: updates.currentUserName ?? oldAsset.currentUserName,
+          phone: updates.currentUserPhone ?? oldAsset.currentUserPhone,
+          position: updates.currentPosition ?? oldAsset.currentPosition,
+          departmentName: updates.departmentName ?? oldAsset.departmentName
+        });
+        if (canonicalAssignee) {
+          updates.currentUserName = canonicalAssignee.currentUserName;
+          updates.currentUserPhone = canonicalAssignee.currentUserPhone;
+          updates.currentPosition = canonicalAssignee.currentPosition;
+          updates.departmentName = canonicalAssignee.departmentName;
+          updates.currentAssigneeProfileId = canonicalAssignee.profileId;
+        } else {
+          updates.currentAssigneeProfileId = null;
+        }
       }
 
       // Normalize location if updated

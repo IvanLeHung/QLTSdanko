@@ -1,10 +1,105 @@
 import { Router } from 'express';
-import { authenticateToken } from '../middleware/auth.middleware';
+import { authenticateToken, AuthRequest, requirePermission } from '../middleware/auth.middleware';
 import { NormalizationService } from '../services/normalization.service';
+import { AssigneeNormalizationService } from '../services/assignee-normalization.service';
+import { buildDataScopeWhere } from '../utils/data-scope.util';
 import multer from 'multer';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
+
+const getAssetScopeWhere = (req: AuthRequest) => {
+  const where = buildDataScopeWhere(
+    req.user?.dataScope,
+    req.user?.id || 0,
+    {
+      company: 'companyCode',
+      department: 'departmentName',
+      warehouse: 'locationName',
+      user: 'currentUserName'
+    },
+    req.user?.departmentName
+  );
+
+  const currentUserName = req.user?.fullName || req.user?.username || '';
+  return JSON.parse(JSON.stringify(where).replace(/\{\{CURRENT_USER\}\}/g, currentUserName));
+};
+
+router.get('/assignees/suggestions', authenticateToken, requirePermission('PERMISSION_MANAGE'), async (req: AuthRequest, res) => {
+  try {
+    const result = await AssigneeNormalizationService.getSuggestions({
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      page: req.query.page ? Number(req.query.page) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      assetWhere: getAssetScopeWhere(req)
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/assignees/profiles', authenticateToken, requirePermission('PERMISSION_MANAGE'), async (req: AuthRequest, res) => {
+  try {
+    const result = await AssigneeNormalizationService.getProfiles({
+      search: typeof req.query.search === 'string' ? req.query.search : undefined,
+      page: req.query.page ? Number(req.query.page) : undefined,
+      limit: req.query.limit ? Number(req.query.limit) : undefined,
+      assetWhere: getAssetScopeWhere(req)
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.post('/assignees/merge', authenticateToken, requirePermission('PERMISSION_MANAGE'), async (req: AuthRequest, res) => {
+  try {
+    const { groupKey, canonicalName, primaryPhone, canonicalPosition, departmentName } = req.body || {};
+    if (!groupKey || !canonicalName) {
+      return res.status(400).json({ message: 'Thiếu nhóm gợi ý hoặc họ tên chuẩn.' });
+    }
+    const result = await AssigneeNormalizationService.mergeSuggestion({
+      groupKey,
+      canonicalName,
+      primaryPhone,
+      canonicalPosition,
+      departmentName,
+      reviewedBy: req.user?.username || 'system',
+      assetWhere: getAssetScopeWhere(req)
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/assignees/not-duplicate', authenticateToken, requirePermission('PERMISSION_MANAGE'), async (req: AuthRequest, res) => {
+  try {
+    const { groupKey } = req.body || {};
+    if (!groupKey) return res.status(400).json({ message: 'Thiếu nhóm gợi ý.' });
+    const result = await AssigneeNormalizationService.markNotDuplicate({
+      groupKey,
+      reviewedBy: req.user?.username || 'system',
+      assetWhere: getAssetScopeWhere(req)
+    });
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/assignees/decisions/:id/rollback', authenticateToken, requirePermission('PERMISSION_MANAGE'), async (req: AuthRequest, res) => {
+  try {
+    const result = await AssigneeNormalizationService.rollbackDecision(
+      Number(req.params.id),
+      req.user?.username || 'system'
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
 
 // Create and start a new scan job
 router.post('/jobs', authenticateToken, async (req: any, res) => {

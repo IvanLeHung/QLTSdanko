@@ -26,7 +26,6 @@ import { PrintCenter } from './pages/PrintCenter';
 import { ActivityLogs } from './pages/ActivityLogs';
 import { UserPermissions } from './pages/UserPermissions';
 import { ForceChangePassword } from './pages/ForceChangePassword';
-import { BigDataCenter } from './pages/BigDataCenter';
 
 // Import CCDC (Tools & Equipment) components
 import { ToolList } from './pages/ToolList';
@@ -44,6 +43,7 @@ import { ToolChildDetail } from './pages/ToolChildDetail';
 import { CCDCChildDashboard } from './pages/CCDCChildDashboard';
 import { AISmartDashboard } from './pages/AISmartDashboard';
 import { EnterpriseDashboard } from './pages/EnterpriseDashboard';
+import { BigDataCenter } from './pages/BigDataCenter';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, loading } = useAuth();

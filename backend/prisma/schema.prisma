@@ -253,6 +253,7 @@ model Asset {
   currentUserName         String?
   currentUserPhone        String?
   currentPosition         String?
+  currentAssigneeProfileId Int?
   departmentName          String?
   locationName            String?
   cityName                String?
@@ -300,14 +301,78 @@ model Asset {
   normalizationSuggestions AssetNormalizationSuggestion[]
   updateProposals          AssetUpdateProposal[]
   financeProfile           AssetFinanceProfile?
+  currentAssigneeProfile   AssetAssigneeProfile? @relation(fields: [currentAssigneeProfileId], references: [id], onDelete: SetNull)
 
   @@index([assetCode])
   @@index([serialNumber])
   @@index([locationName])
   @@index([currentUserName])
+  @@index([currentAssigneeProfileId])
   @@index([offboardingAlert, expectedRecoveryDate])
   @@index([recoveryPriority])
   @@index([organizationUnitId])
+}
+
+model AssetAssigneeProfile {
+  id                   Int       @id @default(autoincrement())
+  canonicalName        String
+  normalizedName       String
+  primaryPhone         String?
+  normalizedPhone      String?
+  canonicalPosition    String?
+  departmentName       String?
+  status               String    @default("ACTIVE") // ACTIVE, ARCHIVED
+  verifiedBy           String?
+  verifiedAt           DateTime?
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+  assets               Asset[]
+  aliases              AssetAssigneeAlias[]
+  mergeDecisions       AssetAssigneeMergeDecision[]
+
+  @@index([normalizedName])
+  @@index([normalizedPhone])
+  @@index([status])
+}
+
+model AssetAssigneeAlias {
+  id                   Int       @id @default(autoincrement())
+  profileId            Int
+  originalName         String
+  normalizedName       String
+  originalPhone        String?
+  normalizedPhone      String?
+  originalPosition     String?
+  normalizedPosition   String?
+  originalDepartment   String?
+  normalizedDepartment String?
+  source               String    @default("ASSET_REGISTER")
+  createdAt            DateTime  @default(now())
+  profile              AssetAssigneeProfile @relation(fields: [profileId], references: [id], onDelete: Cascade)
+
+  @@index([normalizedName])
+  @@index([normalizedPhone])
+  @@index([profileId])
+}
+
+model AssetAssigneeMergeDecision {
+  id                Int       @id @default(autoincrement())
+  groupKey          String    @unique
+  normalizedName    String
+  status            String    @default("PENDING") // PENDING, MERGED, NOT_DUPLICATE, SKIPPED, ROLLED_BACK
+  candidateSnapshot Json
+  canonicalSnapshot Json?
+  batchId           String?
+  profileId         Int?
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  profile           AssetAssigneeProfile? @relation(fields: [profileId], references: [id], onDelete: SetNull)
+
+  @@index([normalizedName])
+  @@index([status])
+  @@index([batchId])
 }
 
 model OrganizationUnit {

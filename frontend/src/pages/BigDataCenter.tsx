@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Building2, Database, Edit2, MapPin, Phone, Plus, Search, Trash2, UserRound, X } from 'lucide-react';
+import { Building2, Database, Edit2, GitMerge, MapPin, Phone, Plus, Search, Trash2, UserRound, X } from 'lucide-react';
 import { toast } from 'react-toastify';
 import api from '../lib/api';
+import { AssigneeReviewModal } from '../components/AssigneeReviewModal';
 
 type Person = {
   key: string;
@@ -49,6 +50,7 @@ export const BigDataCenter: React.FC = () => {
   const [deleteTarget, setDeleteTarget] = useState<{ type: 'PERSON' | 'DEPARTMENT' | 'LOCATION'; item: any } | null>(null);
   const [replacementId, setReplacementId] = useState('');
   const [saving, setSaving] = useState(false);
+  const [assigneeReviewOpen, setAssigneeReviewOpen] = useState(false);
 
   const loadData = async () => {
     try {
@@ -228,9 +230,14 @@ export const BigDataCenter: React.FC = () => {
           <h1 className="mt-1 text-2xl font-black text-slate-900">Big Data Center</h1>
           <p className="mt-1 text-sm text-slate-500">Nguồn chọn thống nhất cho người dùng, số điện thoại, phòng ban và vị trí sử dụng.</p>
         </div>
-        <button type="button" onClick={() => activeTab === 'people' ? openPerson() : activeTab === 'departments' ? openDepartmentCreate() : openLocationCreate()} className="h-10 px-4 inline-flex items-center gap-2 rounded-md bg-primary-600 text-xs font-black text-white hover:bg-primary-700">
-          <Plus className="h-4 w-4" /> {activeTab === 'people' ? 'Thêm người dùng' : activeTab === 'departments' ? 'Thêm phòng ban' : 'Thêm vị trí'}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => setAssigneeReviewOpen(true)} className="h-10 px-4 inline-flex items-center gap-2 rounded-md border border-primary-200 bg-white text-xs font-black text-primary-700 hover:bg-primary-50">
+            <GitMerge className="h-4 w-4" /> Rà soát trùng
+          </button>
+          <button type="button" onClick={() => activeTab === 'people' ? openPerson() : activeTab === 'departments' ? openDepartmentCreate() : openLocationCreate()} className="h-10 px-4 inline-flex items-center gap-2 rounded-md bg-primary-600 text-xs font-black text-white hover:bg-primary-700">
+            <Plus className="h-4 w-4" /> {activeTab === 'people' ? 'Thêm người dùng' : activeTab === 'departments' ? 'Thêm phòng ban' : 'Thêm vị trí'}
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-2 gap-px border border-slate-200 bg-slate-200 md:grid-cols-5">
@@ -279,6 +286,7 @@ export const BigDataCenter: React.FC = () => {
         <ModalActions saving={saving} onCancel={() => { setLocationModal(false); setEditingLocation(null); setImpact(null); }} onSave={() => void saveLocation()} />
       </Modal>}
       {deleteTarget && <DeleteModal target={deleteTarget} impact={impact} data={data} replacementId={replacementId} setReplacementId={setReplacementId} saving={saving} onClose={() => { setDeleteTarget(null); setImpact(null); setReplacementId(''); }} onConfirm={() => void confirmDelete()} />}
+      {assigneeReviewOpen && <AssigneeReviewModal onClose={() => setAssigneeReviewOpen(false)} onChanged={() => void loadData()} />}
     </div>
   );
 };

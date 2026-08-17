@@ -322,7 +322,7 @@ router.patch('/people/source', requirePermission('PERMISSION_MANAGE'), async (re
 
       await tx.asset.updateMany({
         where: { isDeleted: false, currentUserName: originalFullName },
-        data: { currentUserName: fullName, currentUserPhone: phone, currentPosition: position, departmentName, cityName, projectName, locationName }
+        data: { currentUserName: fullName, currentUserPhone: phone, currentPosition: position, currentAssigneeProfileId: null, departmentName, cityName, projectName, locationName }
       });
       await tx.toolEquipment.updateMany({
         where: { isDeleted: false, currentUserName: originalFullName },
@@ -363,7 +363,7 @@ router.patch('/people/:id', requirePermission('PERMISSION_MANAGE'), async (req: 
     const person = await prisma.$transaction(async (tx) => {
       const updated = await tx.masterPerson.update({ where: { id }, data });
       if (req.body.syncCurrentData !== false) {
-        await tx.asset.updateMany({ where: { isDeleted: false, currentUserName: current.fullName }, data: { currentUserName: fullName, currentUserPhone: data.phone, currentPosition: data.position, departmentName: data.departmentName, cityName: data.cityName, projectName: data.projectName, locationName: data.locationName } });
+        await tx.asset.updateMany({ where: { isDeleted: false, currentUserName: current.fullName }, data: { currentUserName: fullName, currentUserPhone: data.phone, currentPosition: data.position, currentAssigneeProfileId: null, departmentName: data.departmentName, cityName: data.cityName, projectName: data.projectName, locationName: data.locationName } });
         await tx.toolEquipment.updateMany({ where: { isDeleted: false, currentUserName: current.fullName }, data: { currentUserName: fullName, departmentName: data.departmentName, cityName: data.cityName, projectName: data.projectName, locationName: data.locationName } });
       }
       return updated;

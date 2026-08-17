@@ -1015,6 +1015,9 @@ export class NormalizationService {
   static async getLatestBatches() {
     const records = await prisma.assetNormalizationHistory.groupBy({
       by: ['batchId', 'approvedBy', 'approvedAt', 'reason'],
+      where: {
+        NOT: { batchId: { startsWith: 'assignee-' } }
+      },
       _count: {
         assetId: true
       },

@@ -2,6 +2,7 @@ import prisma from '../utils/prisma';
 import { AuditService } from './audit.service';
 import { generateDocumentNo } from '../utils/document';
 import { normalizeDepartmentName, parseAndNormalizeLocation } from '../utils/location.util';
+import { AssigneeNormalizationService } from './assignee-normalization.service';
 
 type HandoverType = 'HANDOVER' | 'TRANSFER' | 'LOCATION_TRANSFER' | 'RECALL';
 type HandoverRecipientType = 'PERSON' | 'AREA';
@@ -63,6 +64,18 @@ export class HandoverService {
           const recipientArea = recipientType === 'AREA' ? data.recipientArea?.trim() : undefined;
           const recipientName = data.recipientName?.trim()
             || (data.type === 'LOCATION_TRANSFER' ? 'GIỮ NGUYÊN PHÂN BỔ HIỆN TẠI' : '');
+          const canonicalAssignee = recipientType === 'PERSON' && recipientName
+            ? await AssigneeNormalizationService.resolveCanonicalAssignee(tx, {
+                name: recipientName,
+                phone: data.recipientPhone,
+                position: data.recipientPosition,
+                departmentName: normalizedRecipientDepartment
+              })
+            : null;
+          const resolvedRecipientName = canonicalAssignee?.currentUserName || recipientName;
+          const resolvedRecipientPhone = canonicalAssignee?.currentUserPhone ?? data.recipientPhone;
+          const resolvedRecipientPosition = canonicalAssignee?.currentPosition ?? data.recipientPosition;
+          const resolvedRecipientDepartment = canonicalAssignee?.departmentName ?? normalizedRecipientDepartment;
 
           if (!data.assetIds || data.assetIds.length === 0) {
             throw new Error('Vui lòng chọn ít nhất 1 tài sản.');
@@ -124,12 +137,12 @@ export class HandoverService {
             data: {
               documentNo,
               type: data.type,
-              recipientName,
+              recipientName: resolvedRecipientName,
               recipientType,
               recipientArea: recipientArea || null,
-              recipientPosition: data.recipientPosition,
-              recipientDepartment: normalizedRecipientDepartment || null,
-              recipientPhone: data.recipientPhone,
+              recipientPosition: resolvedRecipientPosition,
+              recipientDepartment: resolvedRecipientDepartment || null,
+              recipientPhone: resolvedRecipientPhone,
               receiverId: data.receiverId,
               receiverDepartmentId: data.receiverDepartmentId,
               newLocation: normalizedLoc.fullFormatted || data.newLocation,
@@ -195,10 +208,11 @@ export class HandoverService {
                   projectName: normalizedLoc.project || undefined,
                 } : {
                   status: item.newStatus || 'ASSIGNED',
-                  currentUserName: isWarehouseReturn || isAreaAssignment ? null : recipientName,
-                  currentUserPhone: isWarehouseReturn || isAreaAssignment ? null : data.recipientPhone,
-                  currentPosition: isWarehouseReturn || isAreaAssignment ? null : data.recipientPosition,
-                  departmentName: data.type === 'RECALL' ? null : normalizedRecipientDepartment,
+                  currentUserName: isWarehouseReturn || isAreaAssignment ? null : resolvedRecipientName,
+                  currentUserPhone: isWarehouseReturn || isAreaAssignment ? null : resolvedRecipientPhone,
+                  currentPosition: isWarehouseReturn || isAreaAssignment ? null : resolvedRecipientPosition,
+                  currentAssigneeProfileId: isWarehouseReturn || isAreaAssignment ? null : (canonicalAssignee?.profileId ?? null),
+                  departmentName: data.type === 'RECALL' ? null : resolvedRecipientDepartment,
                   locationName: normalizedLoc.fullFormatted || data.newLocation,
                   cityName: normalizedLoc.city || data.newCity,
                   projectName: normalizedLoc.project || undefined,
@@ -215,13 +229,13 @@ export class HandoverService {
                     ? (oldAsset.currentUserName || previousAssignment?.newUserName || 'CHƯA CẤP PHÁT')
                     : isWarehouseReturn
                     ? 'KHO QLTS'
-                    : (isAreaAssignment ? `KHU VỰC: ${recipientArea}` : recipientName),
+                    : (isAreaAssignment ? `KHU VỰC: ${recipientArea}` : resolvedRecipientName),
                   newPosition: isLocationTransfer
                     ? (oldAsset.currentPosition || previousAssignment?.newPosition)
-                    : (isWarehouseReturn || isAreaAssignment ? null : data.recipientPosition),
+                    : (isWarehouseReturn || isAreaAssignment ? null : resolvedRecipientPosition),
                   newDepartmentName: isLocationTransfer
                     ? (oldAsset.departmentName || previousAssignment?.newDepartmentName)
-                    : (normalizedRecipientDepartment || null),
+                    : (resolvedRecipientDepartment || null),
                   newLocationName: normalizedLoc.fullFormatted || data.newLocation,
                   newCityName: normalizedLoc.city || data.newCity,
                   newStatus: item.newStatus || 'ASSIGNED',
@@ -485,6 +499,29 @@ export class HandoverService {
         normalizedLoc.city || doc.newCity,
         normalizedLoc.project
       );
+      const canonicalAssignee = doc.recipientType === 'PERSON' && doc.recipientName
+        ? await AssigneeNormalizationService.resolveCanonicalAssignee(tx, {
+            name: doc.recipientName,
+            phone: doc.recipientPhone,
+            position: doc.recipientPosition,
+            departmentName: normalizedRecipientDepartment
+          })
+        : null;
+      const resolvedRecipientName = canonicalAssignee?.currentUserName || doc.recipientName;
+      const resolvedRecipientPhone = canonicalAssignee?.currentUserPhone ?? doc.recipientPhone;
+      const resolvedRecipientPosition = canonicalAssignee?.currentPosition ?? doc.recipientPosition;
+      const resolvedRecipientDepartment = canonicalAssignee?.departmentName ?? normalizedRecipientDepartment;
+      if (canonicalAssignee) {
+        await tx.handoverDocument.update({
+          where: { id: doc.id },
+          data: {
+            recipientName: resolvedRecipientName,
+            recipientPhone: resolvedRecipientPhone,
+            recipientPosition: resolvedRecipientPosition,
+            recipientDepartment: resolvedRecipientDepartment
+          }
+        });
+      }
       // Update each asset
       for (const item of doc.items) {
         const oldAsset = await tx.asset.findUnique({ where: { id: item.assetId } });
@@ -525,10 +562,11 @@ export class HandoverService {
             projectName: normalizedLoc.project || undefined,
           } : {
             status: finalStatus,
-            currentUserName: isWarehouseReturn || isAreaAssignment ? null : doc.recipientName,
-            currentUserPhone: isWarehouseReturn || isAreaAssignment ? null : doc.recipientPhone,
-            currentPosition: isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition,
-            departmentName: doc.type === 'RECALL' ? null : normalizedRecipientDepartment,
+            currentUserName: isWarehouseReturn || isAreaAssignment ? null : resolvedRecipientName,
+            currentUserPhone: isWarehouseReturn || isAreaAssignment ? null : resolvedRecipientPhone,
+            currentPosition: isWarehouseReturn || isAreaAssignment ? null : resolvedRecipientPosition,
+            currentAssigneeProfileId: isWarehouseReturn || isAreaAssignment ? null : (canonicalAssignee?.profileId ?? null),
+            departmentName: doc.type === 'RECALL' ? null : resolvedRecipientDepartment,
             locationName: normalizedLoc.fullFormatted || doc.newLocation,
             cityName: normalizedLoc.city || doc.newCity,
             projectName: normalizedLoc.project || undefined,
@@ -545,13 +583,13 @@ export class HandoverService {
               ? (oldAsset.currentUserName || previousAssignment?.newUserName || 'CHƯA CẤP PHÁT')
               : isWarehouseReturn
               ? 'KHO QLTS'
-              : (isAreaAssignment ? `KHU VỰC: ${doc.recipientArea || doc.newLocation || doc.recipientName}` : doc.recipientName),
+              : (isAreaAssignment ? `KHU VỰC: ${doc.recipientArea || doc.newLocation || resolvedRecipientName}` : resolvedRecipientName),
             newPosition: isLocationTransfer
               ? (oldAsset.currentPosition || previousAssignment?.newPosition)
-              : (isWarehouseReturn || isAreaAssignment ? null : doc.recipientPosition),
+              : (isWarehouseReturn || isAreaAssignment ? null : resolvedRecipientPosition),
             newDepartmentName: isLocationTransfer
               ? (oldAsset.departmentName || previousAssignment?.newDepartmentName)
-              : (normalizedRecipientDepartment || null),
+              : (resolvedRecipientDepartment || null),
             newLocationName: normalizedLoc.fullFormatted || doc.newLocation,
             newCityName: normalizedLoc.city || doc.newCity,
             newStatus: finalStatus,
