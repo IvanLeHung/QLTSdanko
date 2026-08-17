@@ -2466,6 +2466,8 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
   const [addQuantityAsset, setAddQuantityAsset] = useState<any>(null);
   const [addQtyForm, setAddQtyForm] = useState({ quantity: 1, serials: '' });
   const [addingQty, setAddingQty] = useState(false);
+  const [quickAssetCodes, setQuickAssetCodes] = useState('');
+  const [quickAdding, setQuickAdding] = useState(false);
 
   const startAddQuantity = (ast: any) => {
     setAddQtyForm({ quantity: 1, serials: '' });
@@ -2517,6 +2519,31 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
       fetchInvoiceDetails();
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Lỗi khi xóa tài sản khỏi hóa đơn");
+    }
+  };
+
+  const handleQuickAddAssets = async () => {
+    if (!quickAssetCodes.trim()) return toast.error('Vui lòng nhập mã tài sản.');
+    try {
+      setQuickAdding(true);
+      const response = await api.post(`/assets/invoices/${invoiceId}/link-assets-by-code`, { assetCodes: quickAssetCodes });
+      const result = response.data;
+      if (result.linked?.length) toast.success(`Đã liên kết ${result.linked.length} tài sản vào hóa đơn.`);
+      const warnings = [
+        result.missing?.length ? `Không tìm thấy: ${result.missing.join(', ')}` : '',
+        result.alreadyLinked?.length ? `Đã có trong hóa đơn: ${result.alreadyLinked.join(', ')}` : '',
+        result.otherInvoice?.length ? `Đang thuộc hóa đơn khác: ${result.otherInvoice.join(', ')}` : '',
+        result.otherCompany?.length ? `Khác công ty: ${result.otherCompany.join(', ')}` : ''
+      ].filter(Boolean);
+      if (warnings.length) toast.warning(warnings.join(' | '));
+      if (result.linked?.length) {
+        setQuickAssetCodes('');
+        fetchInvoiceDetails();
+      }
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể thêm nhanh tài sản.');
+    } finally {
+      setQuickAdding(false);
     }
   };
 
@@ -2781,7 +2808,15 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
 
             {/* Assets list */}
             <div className="space-y-3">
-              <h4 className="text-xs font-black uppercase tracking-widest text-slate-500 px-1">Danh sách tài sản hình thành từ hóa đơn</h4>
+              <div className="flex flex-wrap items-center justify-between gap-3 px-1">
+                <h4 className="text-xs font-black uppercase tracking-widest text-slate-500">Danh sách tài sản hình thành từ hóa đơn</h4>
+                {hasPermission('ASSET_UPDATE') && <div className="flex w-full max-w-xl gap-2">
+                  <input id="quick-invoice-asset-codes" name="quickInvoiceAssetCodes" value={quickAssetCodes} onChange={(event) => setQuickAssetCodes(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') void handleQuickAddAssets(); }} placeholder="Nhập hoặc dán mã tài sản..." className="h-9 min-w-0 flex-1 rounded-lg border border-slate-200 px-3 font-mono text-xs outline-none focus:border-primary-500" />
+                  <button type="button" disabled={quickAdding || !quickAssetCodes.trim()} onClick={() => void handleQuickAddAssets()} className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary-600 px-3 text-[10px] font-black uppercase text-white hover:bg-primary-700 disabled:opacity-50">
+                    {quickAdding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />} Thêm nhanh
+                  </button>
+                </div>}
+              </div>
               <div className="border border-slate-100 rounded-3xl overflow-hidden shadow-sm bg-white overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>

@@ -1678,6 +1678,78 @@ router.post('/invoices/:id/add-assets', authenticateToken, requirePermission('AS
   }
 });
 
+router.post('/invoices/:id/link-assets-by-code', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res): Promise<any> => {
+  try {
+    const invoiceId = Number(req.params.id);
+    const codes = Array.from(new Set(String(req.body.assetCodes || '')
+      .split(/[\s,;]+/)
+      .map((code) => code.trim())
+      .filter((code) => /^\d+(?:\.\d+){2,}$/.test(code))))
+      .slice(0, 200);
+    if (codes.length === 0) return res.status(400).json({ message: 'Vui lòng nhập ít nhất một mã tài sản hợp lệ.' });
+
+    const invoice = await prisma.assetInvoiceBatch.findUnique({ where: { id: invoiceId } });
+    if (!invoice) return res.status(404).json({ message: 'Hóa đơn không tồn tại.' });
+    const company = await prisma.company.findUnique({ where: { id: invoice.companyId }, select: { code: true } });
+    if (!company) return res.status(400).json({ message: 'Không xác định được công ty nhận hóa đơn.' });
+
+    const assets = await prisma.asset.findMany({
+      where: { assetCode: { in: codes }, isDeleted: false },
+      select: { id: true, assetCode: true, companyCode: true, invoiceBatchId: true }
+    });
+    const foundCodes = new Set(assets.map((asset) => asset.assetCode));
+    const missing = codes.filter((code) => !foundCodes.has(code));
+    const alreadyLinked = assets.filter((asset) => asset.invoiceBatchId === invoiceId).map((asset) => asset.assetCode);
+    const otherInvoice = assets.filter((asset) => asset.invoiceBatchId && asset.invoiceBatchId !== invoiceId).map((asset) => asset.assetCode);
+    const otherCompany = assets.filter((asset) => !asset.invoiceBatchId && asset.companyCode !== company.code).map((asset) => asset.assetCode);
+    const eligible = assets.filter((asset) => !asset.invoiceBatchId && asset.companyCode === company.code);
+    const performedBy = req.user?.username || 'system';
+
+    if (eligible.length > 0) {
+      await prisma.$transaction(async (tx) => {
+        await tx.asset.updateMany({
+          where: { id: { in: eligible.map((asset) => asset.id) } },
+          data: {
+            invoiceBatchId: invoiceId,
+            invoiceLineId: null,
+            supplierName: invoice.supplierName,
+            supplierTaxCode: invoice.supplierTaxCode,
+            purchaseDate: invoice.invoiceDate
+          }
+        });
+        await tx.assetEditLog.createMany({
+          data: eligible.map((asset) => ({
+            assetId: asset.id,
+            fieldName: 'invoiceBatchId',
+            oldValue: null,
+            newValue: String(invoiceId),
+            editedBy: performedBy
+          }))
+        });
+        const totalAssets = await tx.asset.count({ where: { invoiceBatchId: invoiceId, isDeleted: false } });
+        await tx.assetInvoiceBatch.update({ where: { id: invoiceId }, data: { totalAssets } });
+      });
+      await AuditService.log({
+        entityType: 'ASSET_INVOICE',
+        entityId: invoiceId,
+        action: 'UPDATE',
+        details: JSON.stringify({ operation: 'LINK_ASSETS_BY_CODE', assetCodes: eligible.map((asset) => asset.assetCode) }),
+        performedBy
+      });
+    }
+
+    res.json({
+      linked: eligible.map((asset) => asset.assetCode),
+      alreadyLinked,
+      missing,
+      otherInvoice,
+      otherCompany
+    });
+  } catch (error: any) {
+    res.status(500).json({ message: 'Không thể thêm nhanh tài sản vào hóa đơn: ' + error.message });
+  }
+});
+
 router.delete('/invoices/:id/assets/:assetId', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res) => {
   const performedBy = req.user?.username || 'system';
   try {
