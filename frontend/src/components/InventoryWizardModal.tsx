@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import api from '../lib/api';
+import { useNavigate } from 'react-router-dom';
+import { CalendarDays, ClipboardList, Loader2, Plus } from 'lucide-react';
 import { toast } from 'react-toastify';
-import { ClipboardCheck, Plus, CheckCircle2, Loader2 } from 'lucide-react';
+import api from '../lib/api';
 import { BaseModal } from './BaseModal';
 
 interface InventoryWizardModalProps {
@@ -11,114 +12,78 @@ interface InventoryWizardModalProps {
   initialAssetIds: number[];
 }
 
-export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({
-  isOpen,
-  onClose,
-  onComplete,
-  initialAssetIds
-}) => {
-  const [sessions, setSessions] = useState<any[]>([]);
+export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({ isOpen, onClose, onComplete, initialAssetIds }) => {
+  const navigate = useNavigate();
+  const [inventories, setInventories] = useState<any[]>([]);
+  const [selectedId, setSelectedId] = useState('');
+  const [createMode, setCreateMode] = useState(false);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
-
-  const [selectedSessionId, setSelectedSessionId] = useState<string>('');
-  const [showCreateSession, setShowCreateSession] = useState(false);
-
-  // New session form
-  const [newSession, setNewSession] = useState({
+  const [form, setForm] = useState({
     inventoryName: '',
-    inventoryDate: new Date().toISOString().split('T')[0],
+    inventoryDate: new Date().toISOString().slice(0, 10),
     expectedFinishDate: '',
-    scopeType: 'ALL',
-    scopeValue: '',
     responsiblePerson: '',
     note: ''
   });
 
-  // Checklist values
-  const [checkForm, setCheckForm] = useState({
-    actualStatus: 'IN_STOCK',
-    quality: 'GOOD',
-    note: ''
-  });
-
-  const fetchOpenSessions = async () => {
-    try {
-      const res = await api.get('/inventory');
-      const activeSessions = res.data.filter((s: any) => s.status === 'OPEN' || s.status === 'IN_PROGRESS');
-      setSessions(activeSessions);
-      if (activeSessions.length > 0) {
-        setSelectedSessionId(activeSessions[0].id.toString());
-      } else {
-        setShowCreateSession(true);
-      }
-    } catch (err) {
-      toast.error("Không thể tải danh sách đợt kiểm kê");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   useEffect(() => {
-    if (isOpen) {
-      fetchOpenSessions();
-    }
+    if (!isOpen) return;
+    const load = async () => {
+      try {
+        setLoading(true);
+        const response = await api.get('/inventory');
+        const active = (response.data || []).filter((item: any) => ['DRAFT', 'OPEN', 'IN_PROGRESS'].includes(item.status));
+        setInventories(active);
+        setSelectedId(active[0]?.id ? String(active[0].id) : '');
+        setCreateMode(active.length === 0);
+      } catch (error: any) {
+        toast.error(error.response?.data?.message || 'Không thể tải danh sách đợt kiểm kê.');
+      } finally {
+        setLoading(false);
+      }
+    };
+    void load();
   }, [isOpen]);
 
-  const handleCreateSession = async (status: 'DRAFT' | 'OPEN') => {
-    if (!newSession.inventoryName.trim()) {
-      return toast.error("Vui lòng nhập tên đợt kiểm kê mới");
-    }
-    if (!newSession.responsiblePerson.trim()) {
-      return toast.error("Vui lòng nhập tên người phụ trách");
-    }
-    setSubmitting(true);
+  const openCountSheet = async () => {
+    if (!selectedId) return toast.error('Vui lòng chọn đợt kiểm kê.');
     try {
-      const payload = {
-        ...newSession,
-        inventoryDate: new Date(`${newSession.inventoryDate}T00:00:00+07:00`).toISOString(),
-        expectedFinishDate: newSession.expectedFinishDate ? new Date(`${newSession.expectedFinishDate}T00:00:00+07:00`).toISOString() : undefined,
-        status
-      };
-      const res = await api.post('/inventory', payload);
-      toast.success(status === 'DRAFT' ? "Đã lưu bản nháp đợt kiểm kê" : "Đã bắt đầu đợt kiểm kê mới");
-      await fetchOpenSessions();
-      if (status === 'OPEN') {
-        setSelectedSessionId(res.data.id.toString());
-        setShowCreateSession(false);
-      } else {
-        setShowCreateSession(false);
+      setSubmitting(true);
+      if (initialAssetIds.length > 0) {
+        await api.post(`/inventory/${selectedId}/count-sheet/assets`, { assetIds: initialAssetIds });
       }
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Lỗi khi tạo đợt kiểm kê");
+      onComplete?.();
+      onClose();
+      navigate(`/inventory/${selectedId}`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể mở bảng chốt kiểm kê.');
     } finally {
       setSubmitting(false);
     }
   };
 
-  const handleConfirmCheck = async () => {
-    if (!selectedSessionId) {
-      return toast.error("Vui lòng chọn hoặc tạo đợt kiểm kê");
-    }
-    if (!initialAssetIds || initialAssetIds.length === 0) {
-      return toast.error("Không có tài sản nào được chọn để kiểm kê");
-    }
-
-    setSubmitting(true);
+  const createInventory = async () => {
+    if (!form.inventoryName.trim()) return toast.error('Vui lòng nhập tên đợt kiểm kê.');
+    if (!form.responsiblePerson.trim()) return toast.error('Vui lòng nhập người phụ trách.');
+    if (initialAssetIds.length === 0) return toast.error('Vui lòng chọn ít nhất một tài sản.');
     try {
-      await api.post('/inventory/check-multiple-assets', {
-        sessionId: parseInt(selectedSessionId),
+      setSubmitting(true);
+      const response = await api.post('/inventory', {
+        ...form,
+        inventoryDate: new Date(`${form.inventoryDate}T00:00:00+07:00`).toISOString(),
+        expectedFinishDate: form.expectedFinishDate ? new Date(`${form.expectedFinishDate}T00:00:00+07:00`).toISOString() : undefined,
+        scopeType: 'SELECTED',
+        scopeValue: `${initialAssetIds.length} tài sản được chọn`,
         assetIds: initialAssetIds,
-        actualStatus: checkForm.actualStatus,
-        quality: checkForm.quality,
-        note: checkForm.note
+        status: 'OPEN'
       });
-
-      toast.success(`Đã kiểm kê thành công ${initialAssetIds.length} tài sản!`);
-      if (onComplete) onComplete();
+      toast.success(`Đã tạo bảng chốt gồm ${response.data.assetCount || initialAssetIds.length} tài sản.`);
+      onComplete?.();
       onClose();
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || "Có lỗi xảy ra khi thực hiện kiểm kê");
+      navigate(`/inventory/${response.data.id}`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể tạo đợt kiểm kê.');
     } finally {
       setSubmitting(false);
     }
@@ -129,210 +94,48 @@ export const InventoryWizardModal: React.FC<InventoryWizardModalProps> = ({
       isOpen={isOpen}
       onClose={onClose}
       size="form"
-      title={
-        <div>
-          <h2 className="text-lg font-black uppercase tracking-widest text-slate-900">Thực hiện kiểm kê tài sản</h2>
-          <p className="text-[10px] uppercase font-bold tracking-widest text-slate-400 mt-0.5">Kiểm kê nhanh cho {initialAssetIds?.length || 0} tài sản đang chọn</p>
-        </div>
-      }
-      footer={
-        <>
-          <button onClick={onClose} className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl text-slate-500 hover:bg-slate-50 transition-colors font-bold text-xs uppercase tracking-wider">Hủy</button>
-          {!showCreateSession ? (
-            <button 
-              onClick={handleConfirmCheck}
-              disabled={submitting || !selectedSessionId}
-              className="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center shadow-lg shadow-emerald-100 disabled:opacity-50"
-            >
-              {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />} Xác nhận kiểm kê
-            </button>
-          ) : (
-            <>
-              <button 
-                onClick={() => handleCreateSession('DRAFT')}
-                disabled={submitting}
-                className="px-5 py-2.5 bg-white border border-slate-250 text-slate-700 rounded-xl font-black text-xs uppercase tracking-wider hover:bg-slate-50 transition-all disabled:opacity-50"
-              >
-                Lưu bản nháp
-              </button>
-              <button 
-                onClick={() => handleCreateSession('OPEN')}
-                disabled={submitting}
-                className="px-6 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-black text-xs uppercase tracking-widest flex items-center shadow-lg disabled:opacity-50"
-              >
-                {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Plus className="mr-2 h-4 w-4" />} Bắt đầu kiểm kê
-              </button>
-            </>
-          )}
-        </>
-      }
+      title={<div><h2 className="text-lg font-black uppercase text-slate-900">Đưa tài sản vào bảng chốt kiểm kê</h2><p className="mt-0.5 text-[10px] font-bold uppercase text-slate-400">{initialAssetIds.length} tài sản đang chọn</p></div>}
+      footer={<>
+        <button type="button" onClick={onClose} className="h-10 rounded-md border border-slate-200 bg-white px-5 text-xs font-bold text-slate-600">Hủy</button>
+        <button type="button" onClick={() => void (createMode ? createInventory() : openCountSheet())} disabled={submitting || loading} className="flex h-10 items-center gap-2 rounded-md bg-primary-600 px-5 text-xs font-black text-white disabled:opacity-50">
+          {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : createMode ? <Plus className="h-4 w-4" /> : <ClipboardList className="h-4 w-4" />}
+          {createMode ? 'Tạo và mở bảng chốt' : 'Mở bảng chốt'}
+        </button>
+      </>}
     >
-      {loading ? (
-        <div className="py-20 flex flex-col items-center justify-center space-y-3">
-          <Loader2 className="h-8 w-8 text-primary-600 animate-spin" />
-          <p className="text-xs text-slate-450 font-bold uppercase tracking-wider">Đang tải cấu trúc dữ liệu kiểm kê...</p>
-        </div>
-      ) : (
-        <div className="space-y-6">
-          {/* Session Selector / Creator toggle */}
-          <div className="p-5 border border-slate-150 rounded-2xl bg-slate-50/50 space-y-4">
-            <div className="flex justify-between items-center">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-900">Đợt kiểm kê đang hoạt động</h4>
-              <button 
-                onClick={() => setShowCreateSession(!showCreateSession)}
-                className="text-[10px] font-black uppercase tracking-widest text-primary-650 hover:underline"
-              >
-                {showCreateSession ? '← Chọn đợt có sẵn' : '+ Tạo đợt kiểm kê mới'}
-              </button>
-            </div>
-
-            {!showCreateSession ? (
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-400 uppercase">Chọn đợt kiểm kê</label>
-                {sessions.length === 0 ? (
-                  <p className="text-xs text-rose-500 font-semibold">Chưa có đợt kiểm kê nào đang mở. Hãy tạo đợt kiểm kê mới!</p>
-                ) : (
-                  <select
-                    value={selectedSessionId}
-                    onChange={e => setSelectedSessionId(e.target.value)}
-                    className="w-full h-9 bg-white border border-slate-200 rounded-xl px-3 text-xs font-bold text-slate-700"
-                  >
-                    {sessions.map(s => (
-                      <option key={s.id} value={s.id}>{s.inventoryName} ({s.scopeType})</option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-3 text-xs animate-in fade-in duration-200">
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-500">Tên đợt kiểm kê *</label>
-                  <input 
-                    type="text"
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                    placeholder="Ví dụ: Kiểm kê tài sản quý II/2026"
-                    value={newSession.inventoryName}
-                    onChange={e => setNewSession({...newSession, inventoryName: e.target.value})}
-                  />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Ngày bắt đầu *</label>
-                    <input 
-                      type="date"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                      value={newSession.inventoryDate}
-                      onChange={e => setNewSession({...newSession, inventoryDate: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Kết thúc dự kiến</label>
-                    <input 
-                      type="date"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                      value={newSession.expectedFinishDate}
-                      onChange={e => setNewSession({...newSession, expectedFinishDate: e.target.value})}
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Người phụ trách *</label>
-                    <input 
-                      type="text"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                      placeholder="Họ tên người phụ trách..."
-                      value={newSession.responsiblePerson}
-                      onChange={e => setNewSession({...newSession, responsiblePerson: e.target.value})}
-                    />
-                  </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-500">Phạm vi kiểm kê</label>
-                    <select 
-                      value={newSession.scopeType}
-                      onChange={e => setNewSession({...newSession, scopeType: e.target.value})}
-                      className="w-full h-8 px-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                    >
-                      <option value="ALL">Toàn bộ tài sản (ALL)</option>
-                      <option value="COMPANY">Theo Công ty thành viên</option>
-                      <option value="DEPARTMENT">Theo Phòng ban</option>
-                    </select>
-                  </div>
-                </div>
-
-                {newSession.scopeType !== 'ALL' && (
-                  <div className="space-y-1 animate-in slide-in-from-top-2 duration-300">
-                    <label className="font-bold text-slate-500">Giá trị phạm vi *</label>
-                    <input 
-                      type="text"
-                      className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                      placeholder={newSession.scopeType === 'COMPANY' ? "Mã công ty (Vd: DKO)" : "Tên phòng ban..."}
-                      value={newSession.scopeValue}
-                      onChange={e => setNewSession({...newSession, scopeValue: e.target.value})}
-                    />
-                  </div>
-                )}
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-500">Ghi chú đợt kiểm kê</label>
-                  <textarea 
-                    className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl font-semibold text-slate-800 h-16 resize-none text-xs"
-                    placeholder="Nhập ghi chú thêm..."
-                    value={newSession.note}
-                    onChange={e => setNewSession({...newSession, note: e.target.value})}
-                  />
-                </div>
-              </div>
-            )}
+      {loading ? <div className="flex min-h-56 items-center justify-center"><Loader2 className="h-8 w-8 animate-spin text-primary-600" /></div> : (
+        <div className="space-y-5">
+          <div className="grid grid-cols-2 rounded-md border border-slate-200 bg-slate-50 p-1">
+            <button type="button" onClick={() => setCreateMode(false)} disabled={inventories.length === 0} className={`h-10 text-xs font-black ${!createMode ? 'rounded bg-white text-primary-700 shadow-sm' : 'text-slate-500 disabled:opacity-40'}`}>Chọn đợt đang mở</button>
+            <button type="button" onClick={() => setCreateMode(true)} className={`h-10 text-xs font-black ${createMode ? 'rounded bg-white text-primary-700 shadow-sm' : 'text-slate-500'}`}>Tạo đợt mới</button>
           </div>
 
-          {/* Checklist Form */}
-          {!showCreateSession && (
-            <div className="p-5 border border-slate-200 rounded-2xl bg-white shadow-sm space-y-4 animate-in fade-in duration-200">
-              <h4 className="text-xs font-black uppercase tracking-wider text-slate-900 flex items-center gap-1.5 border-b pb-2">
-                <ClipboardCheck className="h-4 w-4 text-emerald-500" /> Kết quả đối soát thực tế
-              </h4>
-
-              <div className="space-y-3 text-xs">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-550">Trạng thái sổ sách</label>
-                    <select 
-                      value={checkForm.actualStatus}
-                      onChange={e => setCheckForm({...checkForm, actualStatus: e.target.value})}
-                      className="w-full h-8 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                    >
-                      <option value="IN_STOCK">Trong kho (IN_STOCK)</option>
-                      <option value="ASSIGNED">Đang sử dụng (ASSIGNED)</option>
-                      <option value="UNDER_REPAIR">Đang sửa chữa (UNDER_REPAIR)</option>
-                      <option value="DAMAGED">Báo hỏng (DAMAGED)</option>
-                      <option value="LOST">Báo mất (LOST)</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <label className="font-bold text-slate-550">Tình trạng vật lý</label>
-                    <select 
-                      value={checkForm.quality}
-                      onChange={e => setCheckForm({...checkForm, quality: e.target.value})}
-                      className="w-full h-8 px-2 bg-slate-50 border border-slate-200 rounded-xl font-bold text-slate-800 text-xs"
-                    >
-                      <option value="GOOD">Tốt (GOOD)</option>
-                      <option value="DAMAGED">Hỏng / lỗi (DAMAGED)</option>
-                      <option value="LOST">Mất (LOST)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="font-bold text-slate-550">Ghi chú đối soát</label>
-                  <textarea 
-                    className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl font-semibold text-slate-800 h-16 resize-none focus:bg-white transition-all text-xs"
-                    placeholder="Nhập thông tin ghi chú kiểm kê..."
-                    value={checkForm.note}
-                    onChange={e => setCheckForm({...checkForm, note: e.target.value})}
-                  />
-                </div>
+          {!createMode ? (
+            <div className="space-y-3">
+              <label className="text-[10px] font-black uppercase text-slate-500">Đợt kiểm kê</label>
+              <div className="space-y-2">
+                {inventories.map((item) => (
+                  <label key={item.id} className={`flex cursor-pointer items-center justify-between rounded-md border p-4 ${selectedId === String(item.id) ? 'border-primary-500 bg-primary-50/50' : 'border-slate-200 bg-white'}`}>
+                    <span className="flex min-w-0 items-center gap-3">
+                      <input type="radio" name="inventory" checked={selectedId === String(item.id)} onChange={() => setSelectedId(String(item.id))} />
+                      <span className="min-w-0"><span className="block truncate text-sm font-black text-slate-800">{item.inventoryName}</span><span className="block text-[10px] font-bold text-slate-400">{item.inventoryCode} · {item._count?.items || 0} tài sản</span></span>
+                    </span>
+                    <span className="rounded bg-slate-100 px-2 py-1 text-[9px] font-black uppercase text-slate-600">{item.status}</span>
+                  </label>
+                ))}
               </div>
+              <p className="text-xs font-semibold text-slate-500">Các tài sản đang chọn sẽ được thêm vào đợt này nếu chưa có trong danh sách.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div><label className="mb-1 block text-[10px] font-black uppercase text-slate-500">Tên đợt kiểm kê *</label><input value={form.inventoryName} onChange={(event) => setForm({ ...form, inventoryName: event.target.value })} placeholder="Ví dụ: Kiểm kê tài sản tháng 8/2026" className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-bold outline-none focus:border-primary-500" /></div>
+              <div className="grid grid-cols-2 gap-3">
+                <div><label className="mb-1 block text-[10px] font-black uppercase text-slate-500">Ngày bắt đầu *</label><div className="relative"><CalendarDays className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" /><input type="date" value={form.inventoryDate} onChange={(event) => setForm({ ...form, inventoryDate: event.target.value })} className="h-10 w-full rounded-md border border-slate-300 pl-10 pr-3 text-xs font-bold" /></div></div>
+                <div><label className="mb-1 block text-[10px] font-black uppercase text-slate-500">Kết thúc dự kiến</label><input type="date" value={form.expectedFinishDate} onChange={(event) => setForm({ ...form, expectedFinishDate: event.target.value })} className="h-10 w-full rounded-md border border-slate-300 px-3 text-xs font-bold" /></div>
+              </div>
+              <div><label className="mb-1 block text-[10px] font-black uppercase text-slate-500">Người phụ trách *</label><input value={form.responsiblePerson} onChange={(event) => setForm({ ...form, responsiblePerson: event.target.value })} placeholder="Họ tên người phụ trách" className="h-10 w-full rounded-md border border-slate-300 px-3 text-sm font-bold outline-none focus:border-primary-500" /></div>
+              <div><label className="mb-1 block text-[10px] font-black uppercase text-slate-500">Ghi chú</label><textarea value={form.note} onChange={(event) => setForm({ ...form, note: event.target.value })} rows={3} className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm font-semibold outline-none focus:border-primary-500" /></div>
+              <div className="rounded-md border border-blue-100 bg-blue-50 px-4 py-3 text-xs font-bold text-blue-700">Danh sách ban đầu gồm {initialAssetIds.length} tài sản đang chọn; mỗi tài sản có SL sổ sách bằng 1.</div>
             </div>
           )}
         </div>

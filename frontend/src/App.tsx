@@ -11,7 +11,7 @@ import { AssetList } from './pages/AssetList';
 import { AssetDetail } from './pages/AssetDetail';
 import { AssetAssign } from './pages/AssetAssign';
 import { InventoryList } from './pages/InventoryList';
-import { InventoryDetail } from './pages/InventoryDetail';
+import { InventoryCountSheet } from './pages/InventoryCountSheet';
 import { CreateAsset } from './pages/CreateAsset';
 import { ClassificationSettings } from './pages/ClassificationSettings';
 import { CompanySettings } from './pages/CompanySettings';
@@ -99,7 +99,7 @@ function App() {
           <Route path="/settings/companies" element={<PrivateRoute><CompanySettings /></PrivateRoute>} />
           
           <Route path="/inventory" element={<PrivateRoute><InventoryList /></PrivateRoute>} />
-          <Route path="/inventory/:id" element={<PrivateRoute><InventoryDetail /></PrivateRoute>} />
+          <Route path="/inventory/:id" element={<PrivateRoute><InventoryCountSheet /></PrivateRoute>} />
           <Route path="/handover" element={<PrivateRoute><HandoverTransfer /></PrivateRoute>} />
           <Route path="/handover/new" element={<PrivateRoute><HandoverTransfer /></PrivateRoute>} />
           <Route path="/operational/damage" element={<PrivateRoute><DamageReport /></PrivateRoute>} />

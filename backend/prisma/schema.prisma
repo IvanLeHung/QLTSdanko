@@ -549,6 +549,11 @@ model InventoryItem {
   assetId          Int
   assetCode        String
   expectedStatus   String?
+  expectedCity     String?
+  expectedProject  String?
+  expectedDepartment String?
+  expectedUserName String?
+  expectedSerialNumber String?
   actualStatus     String?
   expectedLocation String?
   actualLocation   String?
@@ -564,6 +569,8 @@ model InventoryItem {
   actualSerialNumber  String?
   checkCondition      String?        @default("FOUND")
   physicalDetailsJson String?
+  bookQuantity        Int             @default(1)
+  actualQuantity      Int?
   
   actualProject       String?
   actualDepartment    String?

@@ -406,11 +406,99 @@ router.get('/sessions/:sessionId/report', authenticateToken, async (req, res) =>
   }
 });
 
-router.post('/', authenticateToken, async (req: AuthRequest, res) => {
+router.post('/', authenticateToken, requirePermission('INVENTORY_CREATE'), async (req: AuthRequest, res) => {
   const performedBy = req.user?.username || 'system';
   try {
-    const session = await InventoryService.createInventorySession(req.body, performedBy);
+    let payload = req.body;
+    if (req.body?.scopeType === 'SELECTED') {
+      const requestedIds = Array.from(new Set<number>(
+        (Array.isArray(req.body?.assetIds) ? req.body.assetIds : [])
+          .map(Number)
+          .filter((id: number) => Number.isInteger(id) && id > 0)
+      ));
+      const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+        company: 'companyCode',
+        department: 'departmentName',
+        warehouse: 'locationName',
+        user: 'currentUserName'
+      });
+      if (scopeWhere.id === -1) return res.status(403).json({ message: 'Bạn không có quyền kiểm kê các tài sản này.' });
+      const allowedAssets = await prisma.asset.findMany({
+        where: {
+          id: { in: requestedIds },
+          isDeleted: false,
+          ...(Object.keys(scopeWhere).length > 0 ? { AND: [scopeWhere] } : {})
+        },
+        select: { id: true }
+      });
+      payload = { ...req.body, assetIds: allowedAssets.map((asset) => asset.id) };
+    }
+    const session = await InventoryService.createInventorySession(payload, performedBy);
     res.status(201).json(session);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/:id/count-sheet/assets', authenticateToken, requirePermission('INVENTORY_CREATE'), async (req: AuthRequest, res) => {
+  const performedBy = req.user?.fullName || req.user?.username || 'system';
+  try {
+    const rawIds = Array.isArray(req.body?.assetIds) ? req.body.assetIds : [];
+    const requestedIds = Array.from(new Set<number>(
+      rawIds.map(Number).filter((id: number) => Number.isInteger(id) && id > 0)
+    ));
+    const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+      company: 'companyCode',
+      department: 'departmentName',
+      warehouse: 'locationName',
+      user: 'currentUserName'
+    });
+    if (scopeWhere.id === -1) return res.status(403).json({ message: 'Bạn không có quyền thêm tài sản vào đợt kiểm kê.' });
+
+    const allowedAssets = await prisma.asset.findMany({
+      where: {
+        id: { in: requestedIds },
+        isDeleted: false,
+        ...(Object.keys(scopeWhere).length > 0 ? { AND: [scopeWhere] } : {})
+      },
+      select: { id: true }
+    });
+    const result = await InventoryService.addAssetsToCountSheet(
+      Number(req.params.id),
+      allowedAssets.map((asset) => asset.id),
+      performedBy
+    );
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.get('/:id/count-sheet', authenticateToken, requirePermission('INVENTORY_VIEW'), async (req: AuthRequest, res) => {
+  try {
+    const result = await InventoryService.getInventoryCountSheet(Number(req.params.id));
+    if (!result) return res.status(404).json({ message: 'Không tìm thấy đợt kiểm kê.' });
+    res.json(result);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
+  }
+});
+
+router.patch('/:id/count-sheet', authenticateToken, requirePermission('INVENTORY_CREATE'), async (req: AuthRequest, res) => {
+  const performedBy = req.user?.fullName || req.user?.username || 'system';
+  try {
+    const items = await InventoryService.saveCountSheetRows(Number(req.params.id), req.body?.rows, performedBy);
+    res.json({ message: `Đã lưu ${items.length} dòng kiểm kê.`, items });
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
+router.post('/:id/count-sheet/finalize', authenticateToken, requirePermission('INVENTORY_COMPLETE'), async (req: AuthRequest, res) => {
+  const performedBy = req.user?.fullName || req.user?.username || 'system';
+  try {
+    const result = await InventoryService.finalizeCountSheet(Number(req.params.id), performedBy);
+    res.json(result);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
   }

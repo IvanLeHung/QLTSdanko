@@ -43,6 +43,7 @@ export class InventoryService {
     responsiblePerson?: string;
     note?: string;
     status?: string;
+    assetIds?: number[];
   }, performedBy: string) {
     // 1. Check duplicate session name (excluding CANCELLED)
     const existing = await prisma.inventoryCheck.findFirst({
@@ -80,9 +81,19 @@ export class InventoryService {
 
       // 2. Fetch assets in scope
       const where: any = { isDeleted: false };
+
+      if (data.scopeType === 'SELECTED') {
+        const assetIds = Array.from(new Set(
+          (data.assetIds || []).map(Number).filter((id) => Number.isInteger(id) && id > 0)
+        ));
+        if (assetIds.length === 0) {
+          throw new Error('Vui lòng chọn ít nhất một tài sản để kiểm kê.');
+        }
+        where.id = { in: assetIds };
+      }
       
       // If company scope is set
-      if (data.scopeType === 'COMPANY' && data.scopeValue) {
+      else if (data.scopeType === 'COMPANY' && data.scopeValue) {
         where.companyCode = data.scopeValue;
       } 
       // If department scope is set
@@ -111,7 +122,13 @@ export class InventoryService {
             assetId: asset.id,
             assetCode: asset.assetCode,
             expectedStatus: asset.status,
+            expectedCity: asset.cityName,
+            expectedProject: asset.projectName,
+            expectedDepartment: asset.departmentName,
+            expectedUserName: asset.currentUserName,
+            expectedSerialNumber: asset.serialNumber,
             expectedLocation: asset.locationName || 'Trong kho',
+            bookQuantity: 1,
             checkStatus: 'PENDING'
           }))
         });
@@ -157,6 +174,8 @@ export class InventoryService {
                 locationName: true,
                 serialNumber: true,
                 companyName: true,
+                cityName: true,
+                projectName: true,
                 purchasePriceExVat: true
               }
             }
@@ -164,6 +183,208 @@ export class InventoryService {
         }
       }
     });
+  }
+
+  static async getInventoryCountSheet(id: number) {
+    const inventory = await prisma.inventoryCheck.findUnique({ where: { id } });
+    if (!inventory) return null;
+    const items = await prisma.inventoryItem.findMany({
+      where: { inventoryCheckId: id },
+      orderBy: [{ checkedAt: 'desc' }, { id: 'desc' }],
+      distinct: ['assetId'],
+      include: {
+        asset: {
+          select: {
+            assetName: true,
+            currentUserName: true,
+            departmentName: true,
+            locationName: true,
+            serialNumber: true,
+            cityName: true,
+            projectName: true
+          }
+        }
+      }
+    });
+    return { ...inventory, items };
+  }
+
+  static async addAssetsToCountSheet(inventoryCheckId: number, assetIds: number[], performedBy: string) {
+    const uniqueIds = Array.from(new Set(
+      assetIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+    ));
+    if (uniqueIds.length === 0) throw new Error('Không có tài sản hợp lệ để thêm vào đợt kiểm kê.');
+
+    return prisma.$transaction(async (tx) => {
+      const inventory = await tx.inventoryCheck.findUnique({ where: { id: inventoryCheckId } });
+      if (!inventory || !['DRAFT', 'OPEN', 'IN_PROGRESS'].includes(inventory.status)) {
+        throw new Error('Đợt kiểm kê không tồn tại hoặc đã được chốt.');
+      }
+
+      const assets = await tx.asset.findMany({
+        where: { id: { in: uniqueIds }, isDeleted: false }
+      });
+      const existingItems = await tx.inventoryItem.findMany({
+        where: { inventoryCheckId, assetId: { in: assets.map((asset) => asset.id) } },
+        select: { assetId: true }
+      });
+      const existingAssetIds = new Set(existingItems.map((item) => item.assetId));
+      const newAssets = assets.filter((asset) => !existingAssetIds.has(asset.id));
+      const result = newAssets.length > 0
+        ? await tx.inventoryItem.createMany({
+            data: newAssets.map((asset) => ({
+              inventoryCheckId,
+              assetId: asset.id,
+              assetCode: asset.assetCode,
+              expectedStatus: asset.status,
+              expectedCity: asset.cityName,
+              expectedProject: asset.projectName,
+              expectedDepartment: asset.departmentName,
+              expectedUserName: asset.currentUserName,
+              expectedSerialNumber: asset.serialNumber,
+              expectedLocation: asset.locationName || 'Trong kho',
+              bookQuantity: 1,
+              checkStatus: 'PENDING'
+            }))
+          })
+        : { count: 0 };
+
+      await AuditService.log({
+        entityType: 'INVENTORY',
+        entityId: inventoryCheckId,
+        action: 'UPDATE',
+        details: { action: 'ADD_COUNT_SHEET_ASSETS', requested: uniqueIds.length, added: result.count },
+        performedBy,
+        tx
+      });
+
+      return { added: result.count };
+    });
+  }
+
+  static async saveCountSheetRows(
+    inventoryCheckId: number,
+    rows: Array<{ itemId: number; actualQuantity: number; quality?: string; note?: string }>,
+    performedBy: string
+  ) {
+    if (!Array.isArray(rows) || rows.length === 0) throw new Error('Không có dòng kiểm kê để lưu.');
+    if (rows.length > 500) throw new Error('Mỗi lần chỉ được lưu tối đa 500 dòng kiểm kê.');
+
+    return prisma.$transaction(async (tx) => {
+      const inventory = await tx.inventoryCheck.findUnique({ where: { id: inventoryCheckId } });
+      if (!inventory || !['DRAFT', 'OPEN', 'IN_PROGRESS'].includes(inventory.status)) {
+        throw new Error('Đợt kiểm kê không tồn tại hoặc đã được chốt.');
+      }
+
+      const itemIds = rows.map((row) => Number(row.itemId));
+      const items = await tx.inventoryItem.findMany({
+        where: { id: { in: itemIds }, inventoryCheckId },
+        include: { asset: true }
+      });
+      const itemById = new Map(items.map((item) => [item.id, item]));
+      const checkedAt = new Date();
+      const updatedItems = [];
+
+      for (const row of rows) {
+        const item = itemById.get(Number(row.itemId));
+        if (!item) throw new Error(`Dòng kiểm kê ${row.itemId} không thuộc đợt này.`);
+
+        const actualQuantity = Number(row.actualQuantity);
+        if (![0, 1].includes(actualQuantity)) throw new Error('Số lượng thực tế chỉ được nhập 0 hoặc 1.');
+
+        const quality = actualQuantity === 0 ? 'MISSING' : String(row.quality || 'GOOD');
+        const note = String(row.note || '').trim();
+        if ((actualQuantity === 0 || quality !== 'GOOD') && !note) {
+          throw new Error(`Tài sản ${item.assetCode}: cần nhập ghi chú khi thiếu hoặc tình trạng không tốt.`);
+        }
+
+        const result = actualQuantity === 0
+          ? 'MISSING'
+          : quality === 'GOOD' ? 'MATCHED' : 'DAMAGED';
+        const updated = await tx.inventoryItem.update({
+          where: { id: item.id },
+          data: {
+            actualQuantity,
+            actualStatus: item.expectedStatus,
+            actualLocation: item.expectedLocation,
+            quality,
+            note,
+            result,
+            checkStatus: 'CHECKED',
+            checkCondition: actualQuantity === 0 ? 'MISSING' : 'FOUND',
+            checkedAt,
+            checkedBy: performedBy
+          }
+        });
+        updatedItems.push(updated);
+
+        await tx.asset.update({
+          where: { id: item.assetId },
+          data: { lastInventoryDate: checkedAt, lastInventoryStatus: result }
+        });
+      }
+
+      if (inventory.status !== 'IN_PROGRESS') {
+        await tx.inventoryCheck.update({ where: { id: inventoryCheckId }, data: { status: 'IN_PROGRESS' } });
+      }
+      await AuditService.log({
+        entityType: 'INVENTORY',
+        entityId: inventoryCheckId,
+        action: 'UPDATE',
+        details: { action: 'SAVE_COUNT_SHEET', count: updatedItems.length },
+        performedBy,
+        tx
+      });
+      return updatedItems;
+    }, { timeout: 30000 });
+  }
+
+  static async finalizeCountSheet(inventoryCheckId: number, performedBy: string) {
+    return prisma.$transaction(async (tx) => {
+      const inventory = await tx.inventoryCheck.findUnique({ where: { id: inventoryCheckId } });
+      if (!inventory || !['DRAFT', 'OPEN', 'IN_PROGRESS'].includes(inventory.status)) {
+        throw new Error('Đợt kiểm kê không tồn tại hoặc đã được chốt.');
+      }
+
+      const unchecked = await tx.inventoryItem.findMany({
+        where: { inventoryCheckId, actualQuantity: null },
+        select: { id: true, assetId: true }
+      });
+      const completedAt = new Date();
+      if (unchecked.length > 0) {
+        await tx.inventoryItem.updateMany({
+          where: { id: { in: unchecked.map((item) => item.id) } },
+          data: {
+            actualQuantity: 0,
+            quality: 'MISSING',
+            result: 'MISSING',
+            note: 'Không ghi nhận được tài sản khi chốt đợt kiểm kê.',
+            checkStatus: 'CHECKED',
+            checkCondition: 'MISSING',
+            checkedAt: completedAt,
+            checkedBy: performedBy
+          }
+        });
+        await tx.asset.updateMany({
+          where: { id: { in: unchecked.map((item) => item.assetId) } },
+          data: { lastInventoryDate: completedAt, lastInventoryStatus: 'MISSING' }
+        });
+      }
+
+      const updatedInventory = await tx.inventoryCheck.update({
+        where: { id: inventoryCheckId },
+        data: { status: 'COMPLETED' }
+      });
+      await AuditService.log({
+        entityType: 'INVENTORY',
+        entityId: inventoryCheckId,
+        action: 'UPDATE',
+        details: { status: 'COMPLETED', uncheckedMarkedMissing: unchecked.length },
+        performedBy,
+        tx
+      });
+      return { inventory: updatedInventory, uncheckedMarkedMissing: unchecked.length };
+    }, { timeout: 30000 });
   }
 
   static async getInventorySessions(inventoryCheckId: number) {
