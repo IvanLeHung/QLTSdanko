@@ -2605,7 +2605,7 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
 
   const linkedAssets = Array.isArray(invoice?.assets) ? invoice.assets : [];
   const assetsExVatTotal = linkedAssets.reduce((sum: number, assetItem: any) => sum + (Number(assetItem.purchasePriceExVat) || 0), 0);
-  const invoiceExVatTotal = Number(invoice?.totalAmount) || 0;
+  const invoiceExVatTotal = isEditing ? (Number(editForm.totalAmount) || 0) : (Number(invoice?.totalAmount) || 0);
   const exVatDifference = assetsExVatTotal - invoiceExVatTotal;
   const assetsWithoutPrice = linkedAssets.filter((assetItem: any) => assetItem.purchasePriceExVat === null || assetItem.purchasePriceExVat === undefined).length;
   const formatCurrency = (value: number) => `${Math.abs(value).toLocaleString('vi-VN')} ₫`;
