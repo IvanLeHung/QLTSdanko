@@ -264,7 +264,16 @@ export class InventoryService {
 
   static async saveCountSheetRows(
     inventoryCheckId: number,
-    rows: Array<{ itemId: number; actualQuantity: number; actualLocation?: string; quality?: string; note?: string }>,
+    rows: Array<{
+      itemId: number;
+      actualQuantity: number;
+      actualCity?: string;
+      actualProject?: string;
+      actualLocation?: string;
+      actualDepartment?: string;
+      quality?: string;
+      note?: string;
+    }>,
     performedBy: string
   ) {
     if (!Array.isArray(rows) || rows.length === 0) throw new Error('Không có dòng kiểm kê để lưu.');
@@ -301,18 +310,44 @@ export class InventoryService {
         }
         const quality = actualQuantity === 0 ? 'MISSING' : requestedQuality;
         const note = String(row.note || '').trim();
+        const actualCity = String(row.actualCity ?? item.expectedCity ?? '').trim();
+        const actualProject = String(row.actualProject ?? item.expectedProject ?? '').trim();
         const actualLocation = String(row.actualLocation ?? item.expectedLocation ?? '').trim();
-        if (actualQuantity === 1 && !actualLocation) {
-          throw new Error(`Tài sản ${item.assetCode}: cần nhập vị trí kiểm thực tế.`);
+        const actualDepartment = String(row.actualDepartment ?? item.expectedDepartment ?? '--').trim() || '--';
+        if (actualQuantity === 1 && (!actualCity || !actualProject || !actualLocation)) {
+          throw new Error(`Tài sản ${item.assetCode}: cần chọn đầy đủ vị trí kiểm thực tế.`);
         }
+        if (actualCity.length > 200) throw new Error(`Tài sản ${item.assetCode}: tên thành phố quá dài.`);
+        if (actualProject.length > 200) throw new Error(`Tài sản ${item.assetCode}: tên dự án quá dài.`);
         if (actualLocation.length > 500) throw new Error(`Tài sản ${item.assetCode}: vị trí kiểm quá dài.`);
+        if (actualDepartment.length > 200) throw new Error(`Tài sản ${item.assetCode}: tên phòng ban quá dài.`);
         if (note.length > 2000) throw new Error(`Tài sản ${item.assetCode}: ghi chú quá dài.`);
         if ((actualQuantity === 0 || quality !== 'GOOD') && !note) {
           throw new Error(`Tài sản ${item.assetCode}: cần nhập ghi chú khi thiếu hoặc tình trạng không tốt.`);
         }
 
-        const isWrongLocation = actualQuantity === 1
-          && actualLocation.localeCompare(String(item.expectedLocation || '').trim(), 'vi', { sensitivity: 'accent' }) !== 0;
+        const differs = (actual: string, expected?: string | null) => actual.localeCompare(
+          String(expected || '').trim(),
+          'vi',
+          { sensitivity: 'accent' }
+        ) !== 0;
+        const normalizeLocationPath = (value?: string | null) => String(value || '')
+          .trim()
+          .toLocaleLowerCase('vi')
+          .replace(/\s+(?:-|\/|–)\s+/g, '|')
+          .replace(/\s+/g, ' ');
+        const expectedLocationPath = normalizeLocationPath(item.expectedLocation);
+        const actualLocationPath = normalizeLocationPath(actualLocation);
+        const fullActualLocationPath = normalizeLocationPath([actualCity, actualProject, actualLocation].filter(Boolean).join(' - '));
+        const locationMatches = expectedLocationPath === actualLocationPath
+          || expectedLocationPath === fullActualLocationPath
+          || Boolean(actualLocationPath && expectedLocationPath.endsWith(`|${actualLocationPath}`));
+        const isWrongLocation = actualQuantity === 1 && (
+          differs(actualCity, item.expectedCity)
+          || differs(actualProject, item.expectedProject)
+          || !locationMatches
+          || differs(actualDepartment, item.expectedDepartment || '--')
+        );
         const result = actualQuantity === 0
           ? 'MISSING'
           : quality !== 'GOOD' ? 'DAMAGED'
@@ -322,9 +357,9 @@ export class InventoryService {
           data: {
             actualQuantity,
             actualStatus: item.expectedStatus,
-            actualCity: item.expectedCity,
-            actualProject: item.expectedProject,
-            actualDepartment: item.expectedDepartment,
+            actualCity,
+            actualProject,
+            actualDepartment,
             actualLocation,
             quality,
             note,

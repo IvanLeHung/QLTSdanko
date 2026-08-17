@@ -51,6 +51,24 @@ export const displayInventoryGroupValue = (value?: string | null) => {
   return text && !/^(?:n\/?a|not available)$/i.test(text) ? text : '--';
 };
 
+const normalizeInventoryLocationPath = (value?: string | null) => String(value || '')
+  .trim()
+  .toLocaleLowerCase('vi')
+  .replace(/\s+(?:-|\/|–)\s+/g, '|')
+  .replace(/\s+/g, ' ');
+
+export const inventoryLocationsMatch = (
+  expectedLocation: string | null | undefined,
+  actualCity: string,
+  actualProject: string,
+  actualLocation: string
+) => {
+  const expected = normalizeInventoryLocationPath(expectedLocation);
+  const detail = normalizeInventoryLocationPath(actualLocation);
+  const full = normalizeInventoryLocationPath([actualCity, actualProject, actualLocation].filter(Boolean).join(' - '));
+  return expected === detail || expected === full || Boolean(detail && expected.endsWith(`|${detail}`));
+};
+
 export const getInventoryItemSnapshot = (item: InventoryCountItem) => ({
   city: displayInventoryGroupValue(item.expectedCity || item.asset?.cityName),
   project: displayInventoryGroupValue(item.expectedProject || item.asset?.projectName),

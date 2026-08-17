@@ -3,6 +3,7 @@ import {
   buildInventoryHierarchy,
   calculateCountSheetStats,
   filterInventoryCountItems,
+  inventoryLocationsMatch,
   type InventoryCountItem
 } from '../utils/inventoryCountSheet';
 
@@ -74,5 +75,20 @@ describe('inventory count sheet', () => {
     expect(filterInventoryCountItems(items, 'Nguyễn An').map((item) => item.id)).toEqual([1]);
     expect(filterInventoryCountItems(items, 'Danko Riverside').map((item) => item.id)).toEqual([3]);
     expect(filterInventoryCountItems(items, '01.002').map((item) => item.id)).toEqual([2]);
+  });
+
+  it('matches hierarchical locations against legacy full location strings', () => {
+    expect(inventoryLocationsMatch(
+      'Hà Nội - Văn phòng C6 - Mặt trước C6-I',
+      'Hà Nội',
+      'Văn phòng C6',
+      'Mặt trước C6-I'
+    )).toBe(true);
+    expect(inventoryLocationsMatch(
+      'Hà Nội - Văn phòng C6 - Mặt sau C6-I',
+      'Hà Nội',
+      'Văn phòng C6',
+      'Mặt trước C6-I'
+    )).toBe(false);
   });
 });

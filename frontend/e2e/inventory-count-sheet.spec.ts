@@ -96,13 +96,18 @@ test('shows the hierarchical count sheet and supports 0/1 counting', async ({ pa
   await page.getByRole('button', { name: 'Vị trí: Mặt trước C6-I' }).click();
   await page.getByRole('button', { name: 'Phòng/Ban: B. Kế toán' }).click();
 
-  await page.getByRole('button', { name: '01.03.01.01.001' }).click();
+  await page.getByRole('button', { name: '01.03.01.01.001', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Laptop Dell Latitude 3410' })).toBeVisible();
   await page.keyboard.press('Escape');
 
   const quantity = page.getByLabel('Số lượng thực tế 01.03.01.01.001');
   const verifiedLocation = page.getByLabel('Vị trí kiểm thực tế 01.03.01.01.001');
-  await expect(verifiedLocation).toHaveValue('Mặt trước C6-I');
+  await verifiedLocation.click();
+  await expect(page.getByLabel('Thành phố kiểm thực tế')).toHaveValue('Hà Nội');
+  await expect(page.getByLabel('Dự án kiểm thực tế')).toHaveValue('Văn phòng C6');
+  await expect(page.getByLabel('Khu vực kiểm thực tế')).toHaveValue('Mặt trước C6-I');
+  await page.getByRole('button', { name: 'Xác nhận vị trí' }).click();
+  await expect(verifiedLocation).toContainText('Hà Nội - Văn phòng C6 - Mặt trước C6-I');
   await quantity.selectOption('0');
   await expect(page.getByText('Thiếu', { exact: true })).toBeVisible();
   await page.getByPlaceholder('Bắt buộc nhập lý do thiếu...').fill('Không tìm thấy tại vị trí sổ sách');
