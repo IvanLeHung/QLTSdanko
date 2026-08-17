@@ -2603,6 +2603,13 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
     }
   };
 
+  const linkedAssets = Array.isArray(invoice?.assets) ? invoice.assets : [];
+  const assetsExVatTotal = linkedAssets.reduce((sum: number, assetItem: any) => sum + (Number(assetItem.purchasePriceExVat) || 0), 0);
+  const invoiceExVatTotal = Number(invoice?.totalAmount) || 0;
+  const exVatDifference = assetsExVatTotal - invoiceExVatTotal;
+  const assetsWithoutPrice = linkedAssets.filter((assetItem: any) => assetItem.purchasePriceExVat === null || assetItem.purchasePriceExVat === undefined).length;
+  const formatCurrency = (value: number) => `${Math.abs(value).toLocaleString('vi-VN')} ₫`;
+
   return (
     <div className="fixed inset-0 z-[150] flex items-center justify-center p-4 animate-in fade-in duration-200">
       <div className="absolute inset-0 bg-slate-900/60 backdrop-blur-sm" onClick={onClose} />
@@ -2817,6 +2824,11 @@ const InvoiceDetailsModal: React.FC<InvoiceDetailsModalProps> = ({ invoiceId, on
                   </button>
                 </div>}
               </div>
+              {hasPermission('ASSET_VIEW_PRICE') && <div className="grid grid-cols-1 border border-slate-200 bg-slate-200 sm:grid-cols-3">
+                <div className="bg-white px-4 py-3"><p className="text-[10px] font-black uppercase text-slate-400">Tổng giá trị tài sản (ex VAT)</p><p className="mt-1 text-base font-black text-slate-900">{formatCurrency(assetsExVatTotal)}</p>{assetsWithoutPrice > 0 && <p className="mt-0.5 text-[10px] font-bold text-amber-600">{assetsWithoutPrice} tài sản chưa có giá</p>}</div>
+                <div className="bg-white px-4 py-3"><p className="text-[10px] font-black uppercase text-slate-400">Tổng hóa đơn (trước VAT)</p><p className="mt-1 text-base font-black text-slate-900">{formatCurrency(invoiceExVatTotal)}</p></div>
+                <div className="bg-white px-4 py-3"><p className="text-[10px] font-black uppercase text-slate-400">Chênh lệch</p><p className={`mt-1 text-base font-black ${exVatDifference === 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{exVatDifference > 0 ? '+' : exVatDifference < 0 ? '-' : ''}{formatCurrency(exVatDifference)}</p><p className={`mt-0.5 text-[10px] font-bold ${exVatDifference === 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{exVatDifference === 0 ? 'Khớp giá trị hóa đơn' : exVatDifference > 0 ? 'Tài sản cao hơn hóa đơn' : 'Tài sản thấp hơn hóa đơn'}</p></div>
+              </div>}
               <div className="border border-slate-100 rounded-3xl overflow-hidden shadow-sm bg-white overflow-x-auto">
                 <table className="w-full text-left text-xs border-collapse">
                   <thead>
