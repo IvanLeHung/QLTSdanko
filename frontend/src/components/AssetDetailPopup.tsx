@@ -2253,8 +2253,14 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
             </div>
             
             <LinkInvoiceSelector 
+              assetId={asset.id}
               currentInvoiceId={asset.invoiceBatchId}
               onCancel={() => setShowLinkInvoiceModal(false)}
+              onCreated={() => {
+                setShowLinkInvoiceModal(false);
+                fetchAssetDetail();
+                onAction?.('refresh', asset.id);
+              }}
               onConfirm={async (invoiceId) => {
                 try {
                   await api.put(`/assets/${asset.id}/link-invoice`, { invoiceBatchId: invoiceId });
@@ -2293,16 +2299,24 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
 
 // ================= LINK INVOICE SELECTOR COMPONENT =================
 interface LinkInvoiceSelectorProps {
+  assetId: number;
   currentInvoiceId: number | null;
   onCancel: () => void;
   onConfirm: (invoiceId: number | null) => void;
+  onCreated: () => void;
 }
 
-const LinkInvoiceSelector: React.FC<LinkInvoiceSelectorProps> = ({ currentInvoiceId, onCancel, onConfirm }) => {
+const LinkInvoiceSelector: React.FC<LinkInvoiceSelectorProps> = ({ assetId, currentInvoiceId, onCancel, onConfirm, onCreated }) => {
   const [invoices, setInvoices] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState('');
   const [selectedId, setSelectedId] = useState<number | null>(currentInvoiceId);
+  const [creating, setCreating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState({
+    invoiceNo: '', invoiceDate: new Date().toISOString().slice(0, 10), supplierName: '',
+    supplierTaxCode: '', totalAmount: '', note: ''
+  });
 
   useEffect(() => {
     fetchInvoices();
@@ -2320,11 +2334,43 @@ const LinkInvoiceSelector: React.FC<LinkInvoiceSelectorProps> = ({ currentInvoic
     }
   };
 
+  const createInvoice = async () => {
+    if (!invoiceForm.invoiceNo.trim() || !invoiceForm.invoiceDate || !invoiceForm.supplierName.trim()) {
+      return toast.error('Vui lòng nhập số hóa đơn, ngày hóa đơn và nhà cung cấp.');
+    }
+    try {
+      setSaving(true);
+      await api.post('/assets/invoices', { assetId, ...invoiceForm });
+      toast.success('Đã thêm và liên kết hóa đơn với tài sản.');
+      onCreated();
+    } catch (error: any) {
+      toast.error(error.response?.data?.message || 'Không thể thêm hóa đơn.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   return (
     <div className="space-y-5">
-      <div className="space-y-1.5">
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] font-black uppercase tracking-widest text-slate-400">{creating ? 'Thông tin hóa đơn mới' : 'Tìm kiếm hóa đơn'}</div>
+        <button type="button" onClick={() => setCreating((value) => !value)} className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-primary-200 px-3 text-[10px] font-black uppercase text-primary-700 hover:bg-primary-50">
+          {creating ? <X className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}{creating ? 'Chọn hóa đơn có sẵn' : 'Thêm hóa đơn'}
+        </button>
+      </div>
+
+      {creating ? <div className="grid grid-cols-2 gap-3">
+        <label className="space-y-1 text-[10px] font-black uppercase text-slate-400"><span>Số hóa đơn *</span><input id="new-invoice-no" name="invoiceNo" value={invoiceForm.invoiceNo} onChange={(event) => setInvoiceForm({ ...invoiceForm, invoiceNo: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-bold normal-case text-slate-800" /></label>
+        <label className="space-y-1 text-[10px] font-black uppercase text-slate-400"><span>Ngày hóa đơn *</span><input id="new-invoice-date" name="invoiceDate" type="date" value={invoiceForm.invoiceDate} onChange={(event) => setInvoiceForm({ ...invoiceForm, invoiceDate: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-800" /></label>
+        <label className="col-span-2 space-y-1 text-[10px] font-black uppercase text-slate-400"><span>Nhà cung cấp *</span><input id="new-invoice-supplier" name="supplierName" value={invoiceForm.supplierName} onChange={(event) => setInvoiceForm({ ...invoiceForm, supplierName: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-bold normal-case text-slate-800" /></label>
+        <label className="space-y-1 text-[10px] font-black uppercase text-slate-400"><span>MST nhà cung cấp</span><input id="new-invoice-tax-code" name="supplierTaxCode" value={invoiceForm.supplierTaxCode} onChange={(event) => setInvoiceForm({ ...invoiceForm, supplierTaxCode: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-bold normal-case text-slate-800" /></label>
+        <label className="space-y-1 text-[10px] font-black uppercase text-slate-400"><span>Tổng tiền</span><input id="new-invoice-total" name="totalAmount" type="number" min="0" value={invoiceForm.totalAmount} onChange={(event) => setInvoiceForm({ ...invoiceForm, totalAmount: event.target.value })} className="h-10 w-full rounded-xl border border-slate-200 px-3 text-xs font-bold text-slate-800" /></label>
+        <label className="col-span-2 space-y-1 text-[10px] font-black uppercase text-slate-400"><span>Ghi chú</span><textarea id="new-invoice-note" name="note" rows={2} value={invoiceForm.note} onChange={(event) => setInvoiceForm({ ...invoiceForm, note: event.target.value })} className="w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-xs font-bold normal-case text-slate-800" /></label>
+      </div> : <><div className="space-y-1.5">
         <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest block">Tìm kiếm hóa đơn</label>
         <input
+          id="invoice-search"
+          name="invoiceSearch"
           type="text"
           placeholder="Nhập số hóa đơn hoặc tên nhà cung cấp..."
           value={search}
@@ -2363,7 +2409,7 @@ const LinkInvoiceSelector: React.FC<LinkInvoiceSelectorProps> = ({ currentInvoic
             <p className="text-center py-6 text-slate-400 italic text-xs font-bold">Đang tải...</p>
           )}
         </div>
-      </div>
+      </div></>}
 
       <div className="flex gap-2.5 pt-2">
         <button
@@ -2373,7 +2419,7 @@ const LinkInvoiceSelector: React.FC<LinkInvoiceSelectorProps> = ({ currentInvoic
         >
           Hủy
         </button>
-        {currentInvoiceId && (
+        {!creating && currentInvoiceId && (
           <button
             type="button"
             onClick={() => onConfirm(null)}
@@ -2384,11 +2430,11 @@ const LinkInvoiceSelector: React.FC<LinkInvoiceSelectorProps> = ({ currentInvoic
         )}
         <button
           type="button"
-          disabled={!selectedId}
-          onClick={() => onConfirm(selectedId)}
+          disabled={creating ? saving : !selectedId}
+          onClick={() => creating ? void createInvoice() : onConfirm(selectedId)}
           className="flex-[2] px-4 py-3 bg-primary-600 text-white hover:bg-primary-700 rounded-xl font-black text-[10px] uppercase tracking-widest disabled:opacity-50 transition-all shadow-md shadow-primary-100"
         >
-          Liên kết
+          {creating ? saving ? 'Đang lưu...' : 'Thêm & liên kết' : 'Liên kết'}
         </button>
       </div>
     </div>

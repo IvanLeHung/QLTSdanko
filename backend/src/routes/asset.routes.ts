@@ -1359,6 +1359,84 @@ router.get('/invoices', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
+router.post('/invoices', authenticateToken, requirePermission('ASSET_UPDATE'), async (req: AuthRequest, res): Promise<any> => {
+  try {
+    const assetId = Number(req.body.assetId || 0);
+    const invoiceNo = String(req.body.invoiceNo || '').trim();
+    const supplierName = String(req.body.supplierName || '').trim();
+    const invoiceDate = String(req.body.invoiceDate || '').trim();
+    if (!assetId || !invoiceNo || !supplierName || !invoiceDate) {
+      return res.status(400).json({ message: 'Vui lòng nhập đủ số hóa đơn, ngày hóa đơn và nhà cung cấp.' });
+    }
+
+    const asset = await prisma.asset.findFirst({ where: { id: assetId, isDeleted: false } });
+    if (!asset) return res.status(404).json({ message: 'Tài sản không tồn tại.' });
+    const company = await prisma.company.findFirst({ where: { code: asset.companyCode, isActive: true } });
+    if (!company) return res.status(400).json({ message: `Không tìm thấy công ty sở hữu theo mã ${asset.companyCode}.` });
+
+    const duplicate = await prisma.assetInvoiceBatch.findFirst({
+      where: { invoiceNo, supplierName: { equals: supplierName, mode: 'insensitive' }, companyId: company.id }
+    });
+    if (duplicate) return res.status(409).json({ message: 'Hóa đơn này đã tồn tại. Vui lòng chọn hóa đơn trong danh sách để liên kết.' });
+
+    const parsedDate = new Date(invoiceDate);
+    if (Number.isNaN(parsedDate.getTime())) return res.status(400).json({ message: 'Ngày hóa đơn không hợp lệ.' });
+    const performedBy = req.user?.username || 'system';
+    const oldInvoiceId = asset.invoiceBatchId;
+    const totalAmount = req.body.totalAmount === '' || req.body.totalAmount === null || req.body.totalAmount === undefined
+      ? null
+      : Number(req.body.totalAmount);
+    if (totalAmount !== null && (!Number.isFinite(totalAmount) || totalAmount < 0)) {
+      return res.status(400).json({ message: 'Tổng tiền hóa đơn không hợp lệ.' });
+    }
+
+    const invoice = await prisma.$transaction(async (tx) => {
+      const created = await tx.assetInvoiceBatch.create({
+        data: {
+          invoiceNo,
+          invoiceDate: parsedDate,
+          supplierName,
+          supplierTaxCode: String(req.body.supplierTaxCode || '').trim() || null,
+          companyId: company.id,
+          totalAmount,
+          note: String(req.body.note || '').trim() || null,
+          status: 'POSTED',
+          totalAssets: 1,
+          postedAt: new Date()
+        }
+      });
+      await tx.asset.update({
+        where: { id: assetId },
+        data: {
+          invoiceBatchId: created.id,
+          invoiceLineId: null,
+          supplierName: created.supplierName,
+          supplierTaxCode: created.supplierTaxCode,
+          purchaseDate: created.invoiceDate
+        }
+      });
+      if (oldInvoiceId) {
+        const remainingAssets = await tx.asset.count({ where: { invoiceBatchId: oldInvoiceId, isDeleted: false } });
+        await tx.assetInvoiceBatch.update({ where: { id: oldInvoiceId }, data: { totalAssets: remainingAssets } });
+      }
+      await tx.assetEditLog.create({
+        data: {
+          assetId,
+          fieldName: 'invoiceBatchId',
+          oldValue: oldInvoiceId ? String(oldInvoiceId) : null,
+          newValue: String(created.id),
+          editedBy: performedBy
+        }
+      });
+      return created;
+    });
+    await AuditService.log({ entityType: 'ASSET_INVOICE', entityId: invoice.id, action: 'CREATE', details: JSON.stringify({ operation: 'CREATE_AND_LINK', assetId, invoiceNo }), performedBy });
+    res.status(201).json(invoice);
+  } catch (error: any) {
+    res.status(500).json({ message: 'Không thể thêm và liên kết hóa đơn: ' + error.message });
+  }
+});
+
 router.get('/invoices/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const id = parseInt(req.params.id as string);
