@@ -8,6 +8,7 @@ import {
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Download,
   Loader2,
   MapPin,
   PackageCheck,
@@ -80,6 +81,7 @@ export const InventoryCountSheet: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [savingItemId, setSavingItemId] = useState<number | null>(null);
   const [finalizing, setFinalizing] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [locationPickerItemId, setLocationPickerItemId] = useState<number | null>(null);
   const [projectLocationNodes, setProjectLocationNodes] = useState<ProjectLocationNode[]>([]);
   const [departments, setDepartments] = useState<Array<{ id?: number; name?: string; code?: string }>>([]);
@@ -221,6 +223,35 @@ export const InventoryCountSheet: React.FC = () => {
       toast.error(error.response?.data?.message || 'Không thể hoàn thành kiểm kê.');
     } finally {
       setFinalizing(false);
+    }
+  };
+
+  const exportInventoryReport = async () => {
+    if (!id) return;
+    try {
+      setExporting(true);
+      const response = await api.get(`/inventory/${id}/count-sheet/export`, { responseType: 'blob' });
+      const disposition = String(response.headers?.['content-disposition'] || '');
+      const matchedName = disposition.match(/filename="?([^";]+)"?/i)?.[1];
+      const fileName = matchedName || `BaoCaoKiemKe_${inventory?.inventoryCode || id}_${new Date().toISOString().slice(0, 10)}.xlsx`;
+      const url = URL.createObjectURL(new Blob([response.data], {
+        type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success('Đã xuất báo cáo kiểm kê Excel.');
+    } catch (error: any) {
+      const message = error.response?.data && !(error.response.data instanceof Blob)
+        ? error.response.data.message
+        : '';
+      toast.error(message || 'Không thể xuất báo cáo kiểm kê.');
+    } finally {
+      setExporting(false);
     }
   };
 
@@ -411,6 +442,15 @@ export const InventoryCountSheet: React.FC = () => {
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => void exportInventoryReport()}
+            disabled={exporting}
+            className="flex h-10 items-center gap-2 rounded-md border border-slate-200 bg-white px-4 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
+            Xuất báo cáo Excel
+          </button>
           {!isCompleted && hasPermission('INVENTORY_COMPLETE') && (
             <button type="button" onClick={() => void finalizeInventory()} disabled={finalizing || savingItemId !== null} className="flex h-10 items-center gap-2 rounded-md bg-emerald-600 px-4 text-xs font-black text-white hover:bg-emerald-700 disabled:opacity-50">
               {finalizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />} Hoàn thành kiểm kê

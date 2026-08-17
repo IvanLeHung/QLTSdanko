@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { InventoryService } from '../services/inventory.service';
+import { InventoryCountReportService } from '../services/inventory-count-report.service';
 import { authenticateToken, AuthRequest, requirePermission } from '../middleware/auth.middleware';
 import prisma from '../utils/prisma';
 import { buildExcelWorkbook, formatDate } from '../utils/excel.util';
@@ -481,6 +482,29 @@ router.get('/:id/count-sheet', authenticateToken, requirePermission('INVENTORY_V
     res.json(result);
   } catch (error: any) {
     res.status(500).json({ message: error.message });
+  }
+});
+
+router.get('/:id/count-sheet/export', authenticateToken, requirePermission('INVENTORY_VIEW'), async (req: AuthRequest, res) => {
+  try {
+    const scopeWhere = buildDataScopeWhere(req.user?.dataScope, req.user?.id || 0, {
+      company: 'companyCode',
+      department: 'departmentName',
+      warehouse: 'locationName',
+      user: 'currentUserName'
+    });
+    const report = await InventoryCountReportService.build({
+      inventoryCheckId: Number(req.params.id),
+      requestedBy: req.user?.fullName || req.user?.username || 'system',
+      assetWhere: scopeWhere
+    });
+    const safeCode = String(report.inventory.inventoryCode || req.params.id).replace(/[^a-zA-Z0-9_-]/g, '_');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=BaoCaoKiemKe_${safeCode}.xlsx`);
+    await report.workbook.xlsx.write(res);
+    res.end();
+  } catch (error: any) {
+    if (!res.headersSent) res.status(500).json({ message: 'Không thể xuất báo cáo kiểm kê: ' + error.message });
   }
 });
 

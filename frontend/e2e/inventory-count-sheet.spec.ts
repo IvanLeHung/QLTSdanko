@@ -70,6 +70,13 @@ test.beforeEach(async ({ page }) => {
     }
     return route.fulfill({ json: inventory });
   });
+  await page.route('**/api/inventory/99/count-sheet/export', (route) => route.fulfill({
+    body: Buffer.from('mock-xlsx'),
+    headers: {
+      'content-type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'content-disposition': 'attachment; filename=BaoCaoKiemKe_INV-DEMO.xlsx'
+    }
+  }));
   await page.route('**/api/settings/project-location-nodes', (route) => route.fulfill({ json: [] }));
   await page.route('**/api/assets/101', (route) => route.fulfill({
     json: {
@@ -90,6 +97,11 @@ test.beforeEach(async ({ page }) => {
 test('shows the hierarchical count sheet and supports 0/1 counting', async ({ page }) => {
   await page.goto('/inventory/99');
   await expect(page.getByRole('heading', { name: 'Kiểm kê tháng 8/2026' })).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Xuất báo cáo Excel' })).toBeVisible();
+  const downloadPromise = page.waitForEvent('download');
+  await page.getByRole('button', { name: 'Xuất báo cáo Excel' }).click();
+  const download = await downloadPromise;
+  expect(download.suggestedFilename()).toBe('BaoCaoKiemKe_INV-DEMO.xlsx');
   await expect(page.getByText('2', { exact: true }).first()).toBeVisible();
 
   await page.getByRole('button', { name: 'Dự án: Văn phòng C6' }).click();
