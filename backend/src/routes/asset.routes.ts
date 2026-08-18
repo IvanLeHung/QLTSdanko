@@ -36,6 +36,37 @@ const parsePastedAssetCodes = (value: unknown): string[] => {
     : [];
 };
 
+const resolveAssetOwningCompany = async (asset: {
+  assetCode: string;
+  companyCode: string;
+  companyName: string;
+}) => {
+  const assetCodePrefix = String(asset.assetCode || '').split('.')[0]?.trim();
+  const codeCandidates = Array.from(new Set([
+    String(asset.companyCode || '').trim(),
+    assetCodePrefix
+  ].filter(Boolean)));
+  const nameCandidates = Array.from(new Set([
+    String(asset.companyName || '').trim(),
+    String(asset.companyCode || '').trim()
+  ].filter(Boolean)));
+
+  const companies = await prisma.company.findMany({
+    where: {
+      isActive: true,
+      OR: [
+        ...(codeCandidates.length > 0 ? [{ code: { in: codeCandidates } }] : []),
+        ...nameCandidates.map((name) => ({ name: { equals: name, mode: 'insensitive' as const } }))
+      ]
+    }
+  });
+
+  return companies.find((company) => company.code === asset.companyCode)
+    || companies.find((company) => company.code === assetCodePrefix)
+    || companies.find((company) => nameCandidates.some((name) => company.name.localeCompare(name, 'vi', { sensitivity: 'accent' }) === 0))
+    || null;
+};
+
 const startOfDay = (value: Date) => {
   const date = new Date(value);
   date.setHours(0, 0, 0, 0);
@@ -1372,8 +1403,12 @@ router.post('/invoices', authenticateToken, requirePermission('ASSET_UPDATE'), a
 
     const asset = await prisma.asset.findFirst({ where: { id: assetId, isDeleted: false } });
     if (!asset) return res.status(404).json({ message: 'Tài sản không tồn tại.' });
-    const company = await prisma.company.findFirst({ where: { code: asset.companyCode, isActive: true } });
-    if (!company) return res.status(400).json({ message: `Không tìm thấy công ty sở hữu theo mã ${asset.companyCode}.` });
+    const company = await resolveAssetOwningCompany(asset);
+    if (!company) {
+      return res.status(400).json({
+        message: `Không xác định được công ty sở hữu của tài sản ${asset.assetCode}. Vui lòng kiểm tra mã công ty ${asset.companyCode || '--'} trong Big Data Center.`
+      });
+    }
 
     const duplicate = await prisma.assetInvoiceBatch.findFirst({
       where: { invoiceNo, supplierName: { equals: supplierName, mode: 'insensitive' }, companyId: company.id }
@@ -1411,6 +1446,8 @@ router.post('/invoices', authenticateToken, requirePermission('ASSET_UPDATE'), a
         data: {
           invoiceBatchId: created.id,
           invoiceLineId: null,
+          companyCode: company.code,
+          companyName: company.name,
           supplierName: created.supplierName,
           supplierTaxCode: created.supplierTaxCode,
           purchaseDate: created.invoiceDate
@@ -1429,6 +1466,28 @@ router.post('/invoices', authenticateToken, requirePermission('ASSET_UPDATE'), a
           editedBy: performedBy
         }
       });
+      if (asset.companyCode !== company.code) {
+        await tx.assetEditLog.create({
+          data: {
+            assetId,
+            fieldName: 'companyCode',
+            oldValue: asset.companyCode,
+            newValue: company.code,
+            editedBy: performedBy
+          }
+        });
+      }
+      if (asset.companyName !== company.name) {
+        await tx.assetEditLog.create({
+          data: {
+            assetId,
+            fieldName: 'companyName',
+            oldValue: asset.companyName,
+            newValue: company.name,
+            editedBy: performedBy
+          }
+        });
+      }
       return created;
     });
     await AuditService.log({ entityType: 'ASSET_INVOICE', entityId: invoice.id, action: 'CREATE', details: JSON.stringify({ operation: 'CREATE_AND_LINK', assetId, invoiceNo }), performedBy });
