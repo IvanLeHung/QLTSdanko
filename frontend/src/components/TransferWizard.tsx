@@ -3,7 +3,7 @@ import {
   X, Check, Search, Plus, Trash2, Package, MapPin, 
   User, Building, ShieldAlert, ChevronLeft, ChevronRight, 
   Printer, Save, CheckCircle2, History, AlertTriangle,
-  ArrowRightLeft, RotateCcw
+  ArrowRightLeft, RotateCcw, ChevronDown
 } from 'lucide-react';
 import api from '../lib/api';
 import { toast } from 'react-toastify';
@@ -457,6 +457,136 @@ interface TransferWizardProps {
   source?: 'ASSET_DETAIL' | 'TRANSFER_LIST';
   editingDocId?: number | null;
 }
+
+interface SearchableLocationSelectProps {
+  id: string;
+  value: string;
+  options: string[];
+  placeholder: string;
+  onChange: (value: string) => void;
+}
+
+const SearchableLocationSelect: React.FC<SearchableLocationSelectProps> = ({
+  id,
+  value,
+  options,
+  placeholder,
+  onChange
+}) => {
+  const [query, setQuery] = useState(value);
+  const [isOpen, setIsOpen] = useState(false);
+  const [highlightedIndex, setHighlightedIndex] = useState(0);
+
+  useEffect(() => {
+    setQuery(value);
+  }, [value]);
+
+  const filteredOptions = useMemo(() => {
+    const normalizedQuery = normalizeSearchText(query);
+    const uniqueOptions = Array.from(new Set(options.filter(Boolean)));
+    if (!normalizedQuery || query === value) return uniqueOptions;
+    return uniqueOptions.filter((option) => normalizeSearchText(option).includes(normalizedQuery));
+  }, [options, query, value]);
+
+  useEffect(() => {
+    setHighlightedIndex(0);
+  }, [query, options]);
+
+  const selectOption = (option: string) => {
+    setQuery(option);
+    setIsOpen(false);
+    onChange(option);
+  };
+
+  return (
+    <div className="relative">
+      <div className="relative">
+        <input
+          id={id}
+          name={id}
+          type="text"
+          role="combobox"
+          aria-autocomplete="list"
+          aria-expanded={isOpen}
+          aria-controls={`${id}-options`}
+          autoComplete="off"
+          value={query}
+          placeholder={placeholder}
+          onFocus={() => setIsOpen(true)}
+          onChange={(event) => {
+            setQuery(event.target.value);
+            setIsOpen(true);
+          }}
+          onBlur={() => {
+            window.setTimeout(() => {
+              setIsOpen(false);
+              setQuery(value);
+            }, 120);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === 'ArrowDown') {
+              event.preventDefault();
+              setIsOpen(true);
+              if (filteredOptions.length > 0) {
+                setHighlightedIndex((current) => Math.min(current + 1, filteredOptions.length - 1));
+              }
+            } else if (event.key === 'ArrowUp') {
+              event.preventDefault();
+              setHighlightedIndex((current) => Math.max(current - 1, 0));
+            } else if (event.key === 'Enter' && isOpen && filteredOptions[highlightedIndex]) {
+              event.preventDefault();
+              selectOption(filteredOptions[highlightedIndex]);
+            } else if (event.key === 'Escape') {
+              setIsOpen(false);
+              setQuery(value);
+            }
+          }}
+          className="w-full h-10 pl-3 pr-9 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white focus:border-primary-400 outline-none transition-all"
+        />
+        <button
+          type="button"
+          tabIndex={-1}
+          aria-label="Mở danh sách"
+          onMouseDown={(event) => event.preventDefault()}
+          onClick={() => setIsOpen((current) => !current)}
+          className="absolute inset-y-0 right-0 flex w-9 items-center justify-center text-slate-500"
+        >
+          <ChevronDown className={`h-4 w-4 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+        </button>
+      </div>
+
+      {isOpen && (
+        <div
+          id={`${id}-options`}
+          role="listbox"
+          className="absolute z-[80] mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl"
+        >
+          {filteredOptions.length > 0 ? filteredOptions.map((option, index) => (
+            <button
+              key={option}
+              type="button"
+              role="option"
+              aria-selected={option === value}
+              onMouseDown={(event) => event.preventDefault()}
+              onMouseEnter={() => setHighlightedIndex(index)}
+              onClick={() => selectOption(option)}
+              className={`flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-xs font-bold transition-colors ${
+                index === highlightedIndex ? 'bg-primary-50 text-primary-700' : 'text-slate-700 hover:bg-slate-50'
+              }`}
+            >
+              <span>{option}</span>
+              {option === value && <Check className="h-3.5 w-3.5 shrink-0 text-primary-600" />}
+            </button>
+          )) : (
+            <div className="px-3 py-3 text-xs font-semibold text-slate-400">
+              Không có kết quả phù hợp
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const TransferWizard: React.FC<TransferWizardProps> = ({
   isOpen,
@@ -1657,11 +1787,14 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                         {/* DEPENDENT DROPDOWN SYSTEM */}
                         <div className="space-y-3 pt-2 border-t">
                           <div className="space-y-1">
-                            <label className="font-bold text-slate-500">Thành phố bàn giao đến *</label>
-                            <select
+                            <label htmlFor="transfer-destination-city" className="font-bold text-slate-500">Thành phố bàn giao đến *</label>
+                            <SearchableLocationSelect
+                              id="transfer-destination-city"
                               value={selectedCity}
-                              onChange={(e) => {
-                                setSelectedCity(e.target.value);
+                              options={availableCities}
+                              placeholder="Gõ để chọn thành phố..."
+                              onChange={(city) => {
+                                setSelectedCity(city);
                                 setSelectedProject('');
                                 setSelectedLocation('');
                                 setSelectedLocationPath([]);
@@ -1671,23 +1804,20 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                 setAddingLocationDepth(null);
                                 setNewLocationNodeName('');
                               }}
-                              className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                            >
-                              <option value="">-- Chọn thành phố --</option>
-                              {availableCities.map(c => (
-                                <option key={c} value={c}>{c}</option>
-                              ))}
-                            </select>
+                            />
                           </div>
 
                           {selectedCity && (
                             <>
                               <div className="space-y-1">
-                                <label className="font-bold text-slate-500">Dự án bàn giao đến *</label>
-                                <select
+                                <label htmlFor="transfer-destination-project" className="font-bold text-slate-500">Dự án bàn giao đến *</label>
+                                <SearchableLocationSelect
+                                  id="transfer-destination-project"
                                   value={selectedProject}
-                                  onChange={(e) => {
-                                    setSelectedProject(e.target.value);
+                                  options={availableProjects}
+                                  placeholder="Gõ để chọn dự án..."
+                                  onChange={(project) => {
+                                    setSelectedProject(project);
                                     setSelectedLocation('');
                                     setSelectedLocationPath([]);
                                     setCustomProject('');
@@ -1695,13 +1825,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                     setAddingLocationDepth(null);
                                     setNewLocationNodeName('');
                                   }}
-                                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                                >
-                                  <option value="">-- Chọn dự án --</option>
-                                  {availableProjects.map(p => (
-                                    <option key={p} value={p}>{p}</option>
-                                  ))}
-                                </select>
+                                />
                               </div>
                             </>
                           )}
@@ -1714,25 +1838,22 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                     const labels = PROJECT_LOCATION_LEVEL_LABELS;
                                     return (
                                       <div key={depth} className="space-y-1">
-                                        <label className="font-bold text-slate-500">
+                                        <label htmlFor={`transfer-location-level-${depth}`} className="font-bold text-slate-500">
                                           {labels[depth] || `Phân cấp ${depth + 1}`}{options.length > 0 ? ' *' : ''}
                                         </label>
-                                        <select
+                                        <SearchableLocationSelect
+                                          id={`transfer-location-level-${depth}`}
                                           value={selectedLocationPath[depth] || ''}
-                                          onChange={(e) => {
-                                            handleProjectLocationChange(depth, e.target.value);
+                                          options={options}
+                                          placeholder={`Gõ để chọn ${labels[depth]?.toLowerCase() || 'vị trí'}...`}
+                                          onChange={(location) => {
+                                            handleProjectLocationChange(depth, location);
                                             if (addingLocationDepth !== null && addingLocationDepth > depth) {
                                               setAddingLocationDepth(null);
                                               setNewLocationNodeName('');
                                             }
                                           }}
-                                          className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                                        >
-                                          <option value="">-- Chọn {labels[depth]?.toLowerCase() || 'vị trí'} --</option>
-                                          {options.map((location) => (
-                                            <option key={location} value={location}>{location}</option>
-                                          ))}
-                                        </select>
+                                        />
                                         {depth < PROJECT_LOCATION_LEVEL_LABELS.length && hasPermission('PERMISSION_MANAGE') && (
                                           <div className="pt-1.5">
                                             {addingLocationDepth !== depth ? (
@@ -1802,22 +1923,23 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                 </div>
                               ) : (
                                 <div className="space-y-1">
-                                  <label className="font-bold text-slate-500">Vị trí bàn giao đến *</label>
-                                  <select
+                                  <label htmlFor="transfer-destination-location" className="font-bold text-slate-500">Vị trí bàn giao đến *</label>
+                                  <SearchableLocationSelect
+                                    id="transfer-destination-location"
                                     value={selectedLocation}
-                                    onChange={(e) => {
-                                      setSelectedLocation(e.target.value);
+                                    options={[
+                                      ...(selectedCity !== 'Khác' && selectedProject !== 'Khác'
+                                        ? (LOCATION_HIERARCHY[selectedCity]?.[selectedProject] || [])
+                                        : []),
+                                      'Khác'
+                                    ]}
+                                    placeholder="Gõ để chọn vị trí..."
+                                    onChange={(location) => {
+                                      setSelectedLocation(location);
                                       setSelectedLocationPath([]);
                                       setCustomLocation('');
                                     }}
-                                    className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
-                                  >
-                                    <option value="">-- Chọn vị trí --</option>
-                                    {selectedCity !== 'Khác' && selectedProject !== 'Khác' && (LOCATION_HIERARCHY[selectedCity]?.[selectedProject] || []).map(l => (
-                                      <option key={l} value={l}>{l}</option>
-                                    ))}
-                                    <option value="Khác">Khác</option>
-                                  </select>
+                                  />
                                 </div>
                               )}
 
