@@ -10,6 +10,13 @@ import { toast } from 'react-toastify';
 import { BaseModal } from './BaseModal';
 import { useAuth } from '../context/AuthContext';
 
+const normalizeSearchText = (value: unknown) => String(value || '')
+  .normalize('NFD')
+  .replace(/[\u0300-\u036f]/g, '')
+  .replace(/đ/gi, 'd')
+  .toLocaleLowerCase('vi')
+  .trim();
+
 export const LOCATION_HIERARCHY: Record<string, Record<string, string[]>> = {
   'Hà Nội': {
     'Văn phòng C6': [
@@ -542,6 +549,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const [locations, setLocations] = useState<any[]>([]);
   const [projectLocationNodes, setProjectLocationNodes] = useState<ProjectLocationNode[]>([]);
   const [masterPeople, setMasterPeople] = useState<any[]>([]);
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [recipientOptionsOpen, setRecipientOptionsOpen] = useState(false);
+  const [recipientHighlight, setRecipientHighlight] = useState(0);
   const [addingLocationDepth, setAddingLocationDepth] = useState<number | null>(null);
   const [newLocationNodeName, setNewLocationNodeName] = useState('');
   const [isCreatingLocationNode, setIsCreatingLocationNode] = useState(false);
@@ -572,6 +582,13 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     ...Object.keys(LOCATION_HIERARCHY),
     ...projectLocationNodes.map((node) => node.cityName)
   ])).sort((a, b) => a.localeCompare(b, 'vi')), [projectLocationNodes]);
+  const filteredRecipientOptions = useMemo(() => {
+    const query = normalizeSearchText(recipientSearch);
+    if (!query) return masterPeople.slice(0, 100);
+    return masterPeople.filter((person) => normalizeSearchText([
+      person.fullName, person.departmentName, person.position, person.phone
+    ].filter(Boolean).join(' ')).includes(query)).slice(0, 100);
+  }, [masterPeople, recipientSearch]);
   const availableProjects = useMemo(() => Array.from(new Set([
     ...Object.keys(LOCATION_HIERARCHY[selectedCity] || {}),
     ...projectLocationNodes.filter((node) => node.cityName === selectedCity).map((node) => node.projectName)
@@ -735,6 +752,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   // When wizardType changes, update sender/recipient defaults
   useEffect(() => {
     if (editingDocId) return; // Do not overwrite draft details if editing
+    setRecipientSearch('');
 
     if (wizardType === 'HANDOVER') {
       setWizardForm(prev => ({
@@ -813,6 +831,8 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     setWizardStep(1);
     setWizardType(defaultType || 'HANDOVER');
     setWizardAssets([]);
+    setRecipientSearch('');
+    setRecipientOptionsOpen(false);
     setWizardForm({
       recipientName: '',
       recipientType: 'PERSON',
@@ -947,7 +967,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const handleRecipientSelect = (key: string) => {
     const person = masterPeople.find((item) => item.key === key);
     if (!person) {
-      setWizardForm((current) => ({ ...current, recipientName: '', recipientPosition: '', recipientPhone: '', receiverId: null }));
+      setWizardForm((current) => ({ ...current, recipientName: '', recipientPosition: '', recipientPhone: '', recipientDepartment: '', receiverDepartmentId: null, receiverId: null }));
       return;
     }
     const department = departments.find((item) => item.name === person.departmentName);
@@ -960,9 +980,40 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
       receiverDepartmentId: department?.id || null,
       receiverId: person.source === 'USER' ? person.id : null
     }));
+    setRecipientSearch(person.fullName);
+    setRecipientOptionsOpen(false);
     const location = [person.cityName, person.projectName, person.locationName].filter(Boolean).join(' - ');
     if (location) parseLocationToStates(location);
   };
+
+  const handleRecipientSearchChange = (value: string) => {
+    setRecipientSearch(value);
+    setRecipientOptionsOpen(true);
+    setRecipientHighlight(0);
+    if (value !== wizardForm.recipientName) {
+      setWizardForm((current) => ({ ...current, recipientName: '', recipientPosition: '', recipientPhone: '', recipientDepartment: '', receiverDepartmentId: null, receiverId: null }));
+    }
+  };
+
+  const handleRecipientSearchKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
+    if (event.key === 'ArrowDown') {
+      event.preventDefault();
+      setRecipientOptionsOpen(true);
+      setRecipientHighlight((current) => Math.min(current + 1, Math.max(filteredRecipientOptions.length - 1, 0)));
+    } else if (event.key === 'ArrowUp') {
+      event.preventDefault();
+      setRecipientHighlight((current) => Math.max(current - 1, 0));
+    } else if (event.key === 'Enter' && recipientOptionsOpen && filteredRecipientOptions[recipientHighlight]) {
+      event.preventDefault();
+      handleRecipientSelect(filteredRecipientOptions[recipientHighlight].key);
+    } else if (event.key === 'Escape') {
+      setRecipientOptionsOpen(false);
+    }
+  };
+
+  useEffect(() => {
+    if (wizardForm.recipientName) setRecipientSearch(wizardForm.recipientName);
+  }, [wizardForm.recipientName]);
 
   const handleSenderSelect = (key: string) => {
     const person = masterPeople.find((item) => item.key === key);
@@ -1479,28 +1530,36 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                           </div>
                         )}
 
-                        <div className="space-y-1">
+                        <div className="relative space-y-1">
                           <label htmlFor="handover-recipient-name" className="font-bold text-slate-500">
                             {wizardForm.recipientType === 'AREA' && wizardType !== 'RECALL'
                               ? 'Người phụ trách khu vực (nếu có)'
                               : 'Họ tên người nhận *'}
                           </label>
-                          <select
+                          <input
                             id="handover-recipient-name"
                             name="recipientName"
+                            type="text"
+                            autoComplete="off"
+                            role="combobox"
+                            aria-expanded={recipientOptionsOpen}
+                            aria-controls="handover-recipient-options"
                             className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold text-slate-800 focus:bg-white transition-all"
                             disabled={wizardType === 'RECALL' || wizardType === 'LOCATION_TRANSFER'}
-                            value={masterPeople.find((person) => person.fullName === wizardForm.recipientName)?.key || (wizardForm.recipientName ? '__current__' : '')}
-                            onChange={(e) => handleRecipientSelect(e.target.value)}
-                          >
-                            <option value="">{wizardForm.recipientType === 'AREA' ? '-- Không chỉ định người phụ trách --' : '-- Chọn người nhận --'}</option>
-                            {wizardForm.recipientName && !masterPeople.some((person) => person.fullName === wizardForm.recipientName) && <option value="__current__" disabled>{wizardForm.recipientName} - dữ liệu hồ sơ cũ</option>}
-                            {masterPeople.map((person) => (
-                              <option key={person.key} value={person.key}>
-                                {person.fullName}{person.departmentName ? ` - ${person.departmentName}` : ''}{person.phone ? ` - ${person.phone}` : ''}
-                              </option>
-                            ))}
-                          </select>
+                            placeholder={wizardForm.recipientType === 'AREA' ? 'Gõ để chọn người phụ trách...' : 'Gõ tên, phòng ban hoặc số điện thoại...'}
+                            value={recipientSearch}
+                            onChange={(event) => handleRecipientSearchChange(event.target.value)}
+                            onFocus={() => setRecipientOptionsOpen(true)}
+                            onBlur={() => window.setTimeout(() => setRecipientOptionsOpen(false), 150)}
+                            onKeyDown={handleRecipientSearchKeyDown}
+                          />
+                          {recipientOptionsOpen && wizardType !== 'RECALL' && wizardType !== 'LOCATION_TRANSFER' && <div id="handover-recipient-options" role="listbox" className="absolute left-0 right-0 top-full z-50 mt-1 max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-xl custom-scrollbar">
+                            {filteredRecipientOptions.map((person, index) => <button key={person.key} type="button" role="option" aria-selected={index === recipientHighlight} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setRecipientHighlight(index)} onClick={() => handleRecipientSelect(person.key)} className={`w-full rounded-lg px-3 py-2 text-left transition-colors ${index === recipientHighlight ? 'bg-primary-50' : 'hover:bg-slate-50'}`}>
+                              <span className="block text-xs font-black text-slate-800">{person.fullName}</span>
+                              <span className="mt-0.5 block truncate text-[10px] font-medium text-slate-500">{[person.departmentName, person.position, person.phone].filter(Boolean).join(' - ') || 'Chưa có thông tin liên hệ'}</span>
+                            </button>)}
+                            {filteredRecipientOptions.length === 0 && <div className="px-3 py-5 text-center text-xs font-bold text-slate-400">Không tìm thấy người phù hợp.</div>}
+                          </div>}
                           <p className="text-[10px] font-medium text-slate-400">Dữ liệu được quản lý tập trung tại Big Data Center.</p>
                         </div>
 
