@@ -3,8 +3,6 @@ import api from '../lib/api';
 import { 
   Search, 
   Download, 
-  ChevronLeft, 
-  ChevronRight, 
   MoreVertical, 
   Plus, 
   X, 
@@ -66,9 +64,7 @@ export const AssetList: React.FC = () => {
   const assetRequestSeq = useRef(0);
   const groupedRequestSeq = useRef(0);
   
-  // Basic pagination/sort from URL or defaults
-  const page = parseInt(searchParams.get('page') || '1');
-  const limit = parseInt(searchParams.get('limit') || '25');
+  // Sorting is kept in the URL; the table always renders the complete filtered dataset.
   const search = searchParams.get('search') || '';
   const sortBy = searchParams.get('sortBy') || 'updatedAt';
   const sortOrder = searchParams.get('sortOrder') || 'desc';
@@ -475,6 +471,10 @@ export const AssetList: React.FC = () => {
     setLoading(true);
     try {
       const params = Object.fromEntries(searchParams.entries());
+      delete params.page;
+      delete params.limit;
+      params.all = 'true';
+      params.compact = 'table';
       const res = await api.get('/assets', { params });
       if (requestId !== assetRequestSeq.current) return;
       setAssets(res.data.assets);
@@ -1534,10 +1534,7 @@ export const AssetList: React.FC = () => {
     : filteredTableAssets;
 
   const filteredTableTotal = activeTableFilterCount > 0 ? sortedFilteredTableAssets.length : total;
-  const filteredTableTotalPages = Math.max(1, Math.ceil(filteredTableTotal / limit));
-  const visibleTableAssets = activeTableFilterCount > 0
-    ? sortedFilteredTableAssets.slice((page - 1) * limit, page * limit)
-    : assets;
+  const visibleTableAssets = sortedFilteredTableAssets;
   const currentPageAssetIds = visibleTableAssets.map((asset) => asset.id);
   const isCurrentPageFullySelected = visibleTableAssets.length > 0 && currentPageAssetIds.every(id => selectedIds.includes(id));
   const isCurrentPagePartiallySelected = visibleTableAssets.length > 0
@@ -1555,13 +1552,11 @@ export const AssetList: React.FC = () => {
       }
       return next;
     });
-    if (page !== 1) updateParam('page', '1');
   };
 
   const clearTableColumnFilters = () => {
     setTableColumnFilters({});
     setOpenTableFilterKey(null);
-    updateParam('page', '1');
   };
 
   const toggleTableFilterMenu = (columnKey: string) => {
@@ -3078,11 +3073,11 @@ export const AssetList: React.FC = () => {
           </table>
         </div>
         
-        {/* PAGINATION — fixed at bottom */}
+        {/* Complete-list summary — fixed at bottom */}
         <div className="min-h-12 shrink-0 px-3 sm:px-4 border-t border-[#E2E8F0] flex justify-between items-center bg-white">
            <div className="flex items-center gap-4">
               <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
-                Trang {page} / {activeTableFilterCount > 0 ? filteredTableTotalPages : Math.ceil(total / limit)} ({filteredTableTotal} tài sản)
+                Hiển thị toàn bộ {filteredTableTotal.toLocaleString('vi-VN')} tài sản
               </p>
               {activeTableFilterCount > 0 && (
                 <button
@@ -3096,24 +3091,6 @@ export const AssetList: React.FC = () => {
                   <X className="h-3 w-3" />
                 </button>
               )}
-              <div className="flex items-center gap-2 text-[11px] font-medium text-slate-500">
-                <span>Hiển thị</span>
-                <select 
-                  id="asset-list-page-size"
-                  name="assetListPageSize"
-                  value={limit}
-                  onChange={(e) => updateParam('limit', e.target.value)}
-                  className="h-11 lg:h-8 rounded-lg border border-slate-200 px-2 text-[11px] font-bold outline-none focus:ring-2 focus:ring-primary-50"
-                >
-                  {[20, 50, 100, 200].map(sz => (
-                    <option key={sz} value={sz}>{sz} dòng / trang</option>
-                  ))}
-                </select>
-              </div>
-           </div>
-           <div className="flex space-x-1.5">
-             <button disabled={page === 1} onClick={() => updateParam('page', String(page - 1))} className="h-11 w-11 lg:h-8 lg:w-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronLeft className="h-4 w-4" /></button>
-             <button disabled={page >= filteredTableTotalPages} onClick={() => updateParam('page', String(page + 1))} className="h-11 w-11 lg:h-8 lg:w-8 flex items-center justify-center bg-white border border-slate-200 rounded-lg hover:bg-slate-50 disabled:opacity-30"><ChevronRight className="h-4 w-4" /></button>
            </div>
         </div>
       </div>

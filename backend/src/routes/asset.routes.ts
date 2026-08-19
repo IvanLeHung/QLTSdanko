@@ -867,6 +867,8 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
   }
 
     const isGroupedCompact = req.query.compact === 'grouped';
+    const isCompact = isGroupedCompact || req.query.compact === 'table';
+    const shouldFetchAll = req.query.all === 'true';
     const shouldSkipCount = req.query.skipCount === 'true';
   try {
     if (!isGroupedCompact) {
@@ -893,8 +895,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     const hasExplicitSort = typeof req.query.sortBy === 'string' && allowedSortFields.has(req.query.sortBy);
     const assetQuery: any = {
       where,
-      skip,
-      take: Number(limit),
+      ...(shouldFetchAll ? {} : { skip, take: Number(limit) }),
       orderBy: isGroupedCompact
         ? [{ [safeSortBy]: safeSortOrder }, { assetCode: 'asc' }]
         : hasExplicitSort
@@ -906,7 +907,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
           ]
     };
 
-    if (isGroupedCompact) {
+    if (isCompact) {
       assetQuery.select = {
         id: true,
         assetCode: true,
@@ -967,9 +968,9 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
       assets: assetsWithAreaAssignees,
       pagination: {
         total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / Number(limit))
+        page: shouldFetchAll ? 1 : Number(page),
+        limit: shouldFetchAll ? total : Number(limit),
+        totalPages: shouldFetchAll ? (total > 0 ? 1 : 0) : Math.ceil(total / Number(limit))
       }
     });
   } catch (error: any) {
