@@ -404,6 +404,12 @@ export interface ProjectLocationNode {
   level: number;
 }
 
+interface ProjectLocationCatalogEntry {
+  id: number;
+  cityName: string;
+  projectName: string;
+}
+
 const cloneLocationTree = (tree: LocationTree): LocationTree => Object.fromEntries(
   Object.entries(tree).map(([name, children]) => [
     name,
@@ -588,6 +594,85 @@ const SearchableLocationSelect: React.FC<SearchableLocationSelectProps> = ({
   );
 };
 
+interface CatalogAddControlProps {
+  id: string;
+  addLabel: string;
+  fieldLabel: string;
+  placeholder: string;
+  open: boolean;
+  value: string;
+  saving: boolean;
+  onOpen: () => void;
+  onChange: (value: string) => void;
+  onSubmit: () => void;
+  onCancel: () => void;
+}
+
+const CatalogAddControl: React.FC<CatalogAddControlProps> = ({
+  id,
+  addLabel,
+  fieldLabel,
+  placeholder,
+  open,
+  value,
+  saving,
+  onOpen,
+  onChange,
+  onSubmit,
+  onCancel
+}) => (
+  <div className="pt-1.5">
+    {!open ? (
+      <button
+        type="button"
+        onClick={onOpen}
+        className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-primary-600 hover:text-primary-700"
+      >
+        <Plus className="h-3.5 w-3.5" />
+        {addLabel}
+      </button>
+    ) : (
+      <div className="space-y-2 border-l-2 border-primary-200 pl-3 pt-1">
+        <label htmlFor={id} className="block font-bold text-slate-500">{fieldLabel} *</label>
+        <input
+          id={id}
+          name={id}
+          value={value}
+          onChange={(event) => onChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              event.preventDefault();
+              onSubmit();
+            }
+          }}
+          placeholder={placeholder}
+          maxLength={200}
+          autoFocus
+          className="w-full h-9 px-2.5 bg-white border border-slate-200 rounded-lg text-xs font-bold text-slate-800 focus:border-primary-500 outline-none"
+        />
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onSubmit}
+            disabled={saving}
+            className="h-8 px-3 rounded-lg bg-primary-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-primary-700 disabled:opacity-50"
+          >
+            {saving ? 'Đang thêm...' : 'Thêm và chọn'}
+          </button>
+          <button
+            type="button"
+            onClick={onCancel}
+            disabled={saving}
+            className="h-8 px-3 rounded-lg border border-slate-200 text-slate-600 text-[10px] font-black uppercase tracking-wider hover:bg-slate-50 disabled:opacity-50"
+          >
+            Hủy
+          </button>
+        </div>
+      </div>
+    )}
+  </div>
+);
+
 export const TransferWizard: React.FC<TransferWizardProps> = ({
   isOpen,
   onClose,
@@ -678,6 +763,7 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const [departments, setDepartments] = useState<any[]>([]);
   const [locations, setLocations] = useState<any[]>([]);
   const [projectLocationNodes, setProjectLocationNodes] = useState<ProjectLocationNode[]>([]);
+  const [projectLocationCatalog, setProjectLocationCatalog] = useState<ProjectLocationCatalogEntry[]>([]);
   const [masterPeople, setMasterPeople] = useState<any[]>([]);
   const [recipientSearch, setRecipientSearch] = useState('');
   const [recipientOptionsOpen, setRecipientOptionsOpen] = useState(false);
@@ -685,6 +771,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   const [addingLocationDepth, setAddingLocationDepth] = useState<number | null>(null);
   const [newLocationNodeName, setNewLocationNodeName] = useState('');
   const [isCreatingLocationNode, setIsCreatingLocationNode] = useState(false);
+  const [addingCatalogType, setAddingCatalogType] = useState<'CITY' | 'PROJECT' | null>(null);
+  const [newCatalogName, setNewCatalogName] = useState('');
+  const [isCreatingCatalog, setIsCreatingCatalog] = useState(false);
 
   const resolvedCity = selectedCity === 'Khác' ? customCity.trim() : selectedCity;
   const resolvedProject = selectedProject === 'Khác' ? customProject.trim() : selectedProject;
@@ -710,8 +799,9 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
     : baseProjectLocationLevels;
   const availableCities = useMemo(() => Array.from(new Set([
     ...Object.keys(LOCATION_HIERARCHY),
-    ...projectLocationNodes.map((node) => node.cityName)
-  ])).sort((a, b) => a.localeCompare(b, 'vi')), [projectLocationNodes]);
+    ...projectLocationNodes.map((node) => node.cityName),
+    ...projectLocationCatalog.map((entry) => entry.cityName)
+  ])).sort((a, b) => a.localeCompare(b, 'vi')), [projectLocationCatalog, projectLocationNodes]);
   const filteredRecipientOptions = useMemo(() => {
     const query = normalizeSearchText(recipientSearch);
     if (!query) return masterPeople.slice(0, 100);
@@ -721,8 +811,11 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   }, [masterPeople, recipientSearch]);
   const availableProjects = useMemo(() => Array.from(new Set([
     ...Object.keys(LOCATION_HIERARCHY[selectedCity] || {}),
-    ...projectLocationNodes.filter((node) => node.cityName === selectedCity).map((node) => node.projectName)
-  ])).sort((a, b) => a.localeCompare(b, 'vi')), [projectLocationNodes, selectedCity]);
+    ...projectLocationNodes.filter((node) => node.cityName === selectedCity).map((node) => node.projectName),
+    ...projectLocationCatalog
+      .filter((entry) => entry.cityName === selectedCity && entry.projectName)
+      .map((entry) => entry.projectName)
+  ])).sort((a, b) => a.localeCompare(b, 'vi')), [projectLocationCatalog, projectLocationNodes, selectedCity]);
 
   // Search Asset Lookup
   const [assetSearch, setAssetSearch] = useState('');
@@ -732,15 +825,17 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
   useEffect(() => {
     const fetchMetadata = async () => {
       try {
-        const [deptsRes, locsRes, projectNodesRes, masterDataRes] = await Promise.all([
+        const [deptsRes, locsRes, projectNodesRes, projectCatalogRes, masterDataRes] = await Promise.all([
           api.get('/settings/departments'),
           api.get('/settings/locations'),
           api.get('/settings/project-location-nodes'),
+          api.get('/settings/project-location-catalog'),
           api.get('/master-data/options').catch(() => ({ data: { people: [] } }))
         ]);
         setDepartments(deptsRes.data);
         setLocations(locsRes.data);
         setProjectLocationNodes(projectNodesRes.data);
+        setProjectLocationCatalog(projectCatalogRes.data);
         setMasterPeople(masterDataRes.data?.people || []);
       } catch (err) {
         console.error('Error loading wizard metadata:', err);
@@ -1201,6 +1296,54 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
       toast.error(err.response?.data?.message || 'Không thể thêm vị trí mới');
     } finally {
       setIsCreatingLocationNode(false);
+    }
+  };
+
+  const handleCreateLocationCatalog = async (type: 'CITY' | 'PROJECT') => {
+    const name = newCatalogName.trim();
+    if (!name) {
+      toast.error(type === 'CITY' ? 'Vui lòng nhập tên thành phố' : 'Vui lòng nhập tên dự án');
+      return;
+    }
+    if (type === 'PROJECT' && !resolvedCity) {
+      toast.error('Vui lòng chọn thành phố trước');
+      return;
+    }
+
+    setIsCreatingCatalog(true);
+    try {
+      const res = await api.post('/settings/project-location-catalog', {
+        type,
+        cityName: type === 'CITY' ? name : resolvedCity,
+        projectName: type === 'PROJECT' ? name : ''
+      });
+      const created = res.data as ProjectLocationCatalogEntry;
+      setProjectLocationCatalog((current) => [
+        ...current.filter((entry) => entry.id !== created.id),
+        created
+      ]);
+
+      if (type === 'CITY') {
+        setSelectedCity(created.cityName);
+        setSelectedProject('');
+        setCustomCity('');
+        setCustomProject('');
+      } else {
+        setSelectedProject(created.projectName);
+        setCustomProject('');
+      }
+      setSelectedLocation('');
+      setSelectedLocationPath([]);
+      setCustomLocation('');
+      setAddingLocationDepth(null);
+      setNewLocationNodeName('');
+      setAddingCatalogType(null);
+      setNewCatalogName('');
+      toast.success(type === 'CITY' ? `Đã thêm thành phố ${created.cityName}` : `Đã thêm dự án ${created.projectName}`);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể thêm dữ liệu mới');
+    } finally {
+      setIsCreatingCatalog(false);
     }
   };
 
@@ -1803,8 +1946,31 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                 setCustomLocation('');
                                 setAddingLocationDepth(null);
                                 setNewLocationNodeName('');
+                                setAddingCatalogType(null);
+                                setNewCatalogName('');
                               }}
                             />
+                            {hasPermission('PERMISSION_MANAGE') && (
+                              <CatalogAddControl
+                                id="new-transfer-city"
+                                addLabel="Thêm thành phố"
+                                fieldLabel="Tên thành phố"
+                                placeholder="Nhập tên thành phố"
+                                open={addingCatalogType === 'CITY'}
+                                value={addingCatalogType === 'CITY' ? newCatalogName : ''}
+                                saving={isCreatingCatalog}
+                                onOpen={() => {
+                                  setAddingCatalogType('CITY');
+                                  setNewCatalogName('');
+                                }}
+                                onChange={setNewCatalogName}
+                                onSubmit={() => handleCreateLocationCatalog('CITY')}
+                                onCancel={() => {
+                                  setAddingCatalogType(null);
+                                  setNewCatalogName('');
+                                }}
+                              />
+                            )}
                           </div>
 
                           {selectedCity && (
@@ -1824,8 +1990,31 @@ export const TransferWizard: React.FC<TransferWizardProps> = ({
                                     setCustomLocation('');
                                     setAddingLocationDepth(null);
                                     setNewLocationNodeName('');
+                                    setAddingCatalogType(null);
+                                    setNewCatalogName('');
                                   }}
                                 />
+                                {hasPermission('PERMISSION_MANAGE') && (
+                                  <CatalogAddControl
+                                    id="new-transfer-project"
+                                    addLabel="Thêm dự án"
+                                    fieldLabel="Tên dự án"
+                                    placeholder="Nhập tên dự án"
+                                    open={addingCatalogType === 'PROJECT'}
+                                    value={addingCatalogType === 'PROJECT' ? newCatalogName : ''}
+                                    saving={isCreatingCatalog}
+                                    onOpen={() => {
+                                      setAddingCatalogType('PROJECT');
+                                      setNewCatalogName('');
+                                    }}
+                                    onChange={setNewCatalogName}
+                                    onSubmit={() => handleCreateLocationCatalog('PROJECT')}
+                                    onCancel={() => {
+                                      setAddingCatalogType(null);
+                                      setNewCatalogName('');
+                                    }}
+                                  />
+                                )}
                               </div>
                             </>
                           )}

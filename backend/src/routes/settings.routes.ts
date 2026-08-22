@@ -671,6 +671,72 @@ router.get('/locations', authenticateToken, async (req, res) => {
 });
 
 // --- PROJECT LOCATION HIERARCHY EXTENSIONS ---
+router.get('/project-location-catalog', authenticateToken, async (_req, res) => {
+  try {
+    const entries = await prisma.projectLocationCatalog.findMany({
+      where: { status: 'ACTIVE' },
+      orderBy: [{ cityName: 'asc' }, { projectName: 'asc' }]
+    });
+    res.json(entries);
+  } catch (error: any) {
+    res.status(500).json({ message: 'Không thể tải danh mục thành phố và dự án: ' + error.message });
+  }
+});
+
+router.post(
+  '/project-location-catalog',
+  requirePermission('PERMISSION_MANAGE'),
+  async (req: AuthRequest, res: Response): Promise<any> => {
+    try {
+      const cityName = String(req.body.cityName || '').trim();
+      const projectName = String(req.body.projectName || '').trim();
+      const type = String(req.body.type || '').toUpperCase();
+
+      if (!['CITY', 'PROJECT'].includes(type) || !cityName || (type === 'PROJECT' && !projectName)) {
+        return res.status(400).json({ message: 'Thông tin thành phố hoặc dự án không hợp lệ.' });
+      }
+      if (cityName.length > 150 || projectName.length > 200) {
+        return res.status(400).json({ message: 'Tên thành phố hoặc dự án vượt quá độ dài cho phép.' });
+      }
+
+      const normalizedProjectName = type === 'CITY' ? '' : projectName;
+      const existing = await prisma.projectLocationCatalog.findFirst({
+        where: {
+          cityName: { equals: cityName, mode: 'insensitive' },
+          projectName: { equals: normalizedProjectName, mode: 'insensitive' }
+        }
+      });
+      if (existing?.status === 'ACTIVE') {
+        return res.status(409).json({ message: type === 'CITY' ? 'Thành phố này đã tồn tại.' : 'Dự án này đã tồn tại trong thành phố đã chọn.' });
+      }
+
+      const entry = existing
+        ? await prisma.projectLocationCatalog.update({
+            where: { id: existing.id },
+            data: { cityName, projectName: normalizedProjectName, status: 'ACTIVE', createdBy: req.user?.username || 'System' }
+          })
+        : await prisma.projectLocationCatalog.create({
+            data: { cityName, projectName: normalizedProjectName, createdBy: req.user?.username || 'System' }
+          });
+
+      await AuditService.log({
+        entityType: 'PROJECT_LOCATION_CATALOG',
+        entityId: entry.id,
+        action: 'CREATE',
+        details: { type, cityName: entry.cityName, projectName: entry.projectName || null },
+        performedBy: req.user?.username || 'System'
+      });
+
+      res.status(201).json(entry);
+    } catch (error: any) {
+      if (error?.code === 'P2002') {
+        return res.status(409).json({ message: 'Thành phố hoặc dự án này đã tồn tại.' });
+      }
+      res.status(500).json({ message: 'Không thể thêm thành phố hoặc dự án: ' + error.message });
+    }
+  }
+);
+
 router.get('/project-location-nodes', authenticateToken, async (req, res) => {
   try {
     const nodes = await prisma.projectLocationNode.findMany({
