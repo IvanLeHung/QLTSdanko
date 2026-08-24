@@ -20,7 +20,7 @@ vi.mock('react-barcode', () => ({
 
 describe('AssetLabelPrintModal', () => {
   const mockAssets = [
-    { id: '1', assetName: 'Laptop Dell', assetCode: 'DELL-001', status: 'IN_USE' },
+    { id: '1', assetName: 'Laptop Dell', assetCode: 'DELL-001', status: 'IN_USE', purchaseDate: '2026-08-24T00:00:00.000Z' },
     { id: '2', assetName: 'Monitor LG', assetCode: '', status: 'IN_STORE' } // Missing code
   ];
 
@@ -48,6 +48,18 @@ describe('AssetLabelPrintModal', () => {
     
     // Using a more flexible matcher for the Vietnamese text
     expect(screen.getByText(/chưa có mã sẽ bị loại khỏi danh sách in/i)).toBeInTheDocument();
+  });
+
+  it('displays the purchase date on the asset label', () => {
+    render(
+      <AssetLabelPrintModal
+        isOpen={true}
+        onClose={() => {}}
+        assets={mockAssets}
+      />
+    );
+
+    expect(screen.getAllByText(/24\/0?8\/2026/).length).toBeGreaterThan(0);
   });
 
   it('handles fallback asset code mapping correctly', () => {

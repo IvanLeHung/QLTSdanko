@@ -918,6 +918,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
         assetName: true,
         assetNameShort: true,
         serialNumber: true,
+        purchaseDate: true,
         status: true,
         currentUserName: true,
         currentPosition: true,
