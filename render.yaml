@@ -12,6 +12,8 @@ services:
           property: connectionString
       - key: JWT_SECRET
         generateValue: true
+      - key: INITIAL_ADMIN_PASSWORD
+        sync: false
       - key: NODE_ENV
         value: production
       - key: PORT

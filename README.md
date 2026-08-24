@@ -23,9 +23,11 @@ npm run prisma:seed
 # Start the server
 npm run dev
 ```
-**Admin Credentials:**
+**Initial administrator:**
 - Username: `admin`
-- Password: `admin123`
+- Set `INITIAL_ADMIN_PASSWORD` before the first production seed. The seed never
+  overwrites an existing administrator password.
+- Local development defaults to `admin123` and forces a password change.
 
 ### 2. Frontend Setup
 ```bash
