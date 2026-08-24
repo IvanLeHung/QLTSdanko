@@ -4,7 +4,9 @@ services:
     runtime: node
     plan: free
     buildCommand: npm run build
-    startCommand: cd backend && npx prisma db push && node dist/prisma/seed.js && cd .. && node backend/dist/src/server.js
+    # Keep startup short enough for Render's port scan. Seeding and legacy data
+    # repair are maintenance operations and must not block every web restart.
+    startCommand: cd backend && ./node_modules/.bin/prisma db push --skip-generate && cd .. && node backend/dist/src/server.js
     envVars:
       - key: DATABASE_URL
         fromDatabase:
