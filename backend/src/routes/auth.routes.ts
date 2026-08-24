@@ -4,9 +4,10 @@ import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
 import { authenticateToken, AuthRequest, loadPermissions } from '../middleware/auth.middleware';
 import { AuditService } from '../services/audit.service';
+import { getJwtSecret } from '../utils/auth-config';
 
 const router = Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-123';
+const JWT_SECRET = getJwtSecret();
 
 // Password validation helper according to policy
 function validatePassword(password: string, username: string): string | null {
@@ -75,8 +76,7 @@ router.post('/login', async (req, res) => {
 
     // Account status/lock checks. Expired temporary locks are allowed to continue
     // so a correct password can reactivate the account below.
-    const isAdminRecoveryLogin = user.username === 'admin';
-    if (!isAdminRecoveryLogin && (!user.isActive || (user.status === 'LOCKED' && !user.lockedUntil))) {
+    if (!user.isActive || (user.status === 'LOCKED' && !user.lockedUntil)) {
       console.log(`Login failed for ${username}: Account is locked or inactive`);
       await AuditService.log({
         entityType: 'USER',
@@ -233,28 +233,11 @@ router.post('/forgot-password', async (req, res) => {
       }
     });
 
-    const isEmailServiceConfigured = !!process.env.SMTP_HOST;
-
-    if (!isEmailServiceConfigured) {
-      return res.status(400).json({
-        code: 'NO_EMAIL_SERVICE',
-        message: 'Vui lòng liên hệ quản trị viên để được reset mật khẩu.'
-      });
-    }
-
-    if (user) {
-      const resetToken = jwt.sign(
-        { userId: user.id, purpose: 'reset-password' },
-        JWT_SECRET,
-        { expiresIn: '1h' }
-      );
-      console.log(`[Forgot Password] Generated reset token for ${user.username}: ${resetToken}`);
-    }
-
-    // Security Rule: return generic success regardless of user existence
-    res.json({
-      success: true,
-      message: 'Nếu tài khoản hợp lệ, hướng dẫn đặt lại mật khẩu sẽ được gửi hoặc quản trị viên sẽ hỗ trợ.'
+    // Email delivery is not implemented. Never expose a reset token in logs.
+    void user;
+    return res.status(503).json({
+      code: 'PASSWORD_RESET_UNAVAILABLE',
+      message: 'Chức năng khôi phục qua email chưa được cấu hình. Vui lòng liên hệ quản trị viên.'
     });
   } catch (error: any) {
     res.status(500).json({ message: 'Lỗi khi yêu cầu đặt lại mật khẩu: ' + error.message });

@@ -426,7 +426,9 @@ async function repairLegacyAssetData() {
 
 
 async function main() {
-  const passwordHash = await bcrypt.hash('admin123', 10);
+  const configuredInitialPassword = process.env.INITIAL_ADMIN_PASSWORD?.trim();
+  const developmentInitialPassword = process.env.NODE_ENV === 'production' ? undefined : 'admin123';
+  const initialPassword = configuredInitialPassword || developmentInitialPassword;
 
   // --- ROLES & PERMISSIONS ---
   const roles = [
@@ -660,28 +662,26 @@ async function main() {
   }
 
   // --- ADMIN USER ---
-  const adminUser = await prisma.user.upsert({
-    where: { username: 'admin' },
-    update: {
-      passwordHash,
-      isActive: true,
-      status: 'ACTIVE',
-      failedLoginCount: 0,
-      lockedUntil: null,
-      mustChangePassword: false
-    },
-    create: { 
-      username: 'admin', 
-      passwordHash, 
-      fullName: 'Administrator', 
-      role: 'ADMIN',
-      isActive: true,
-      status: 'ACTIVE',
-      failedLoginCount: 0,
-      lockedUntil: null,
-      mustChangePassword: false
-    },
-  });
+  let adminUser = await prisma.user.findUnique({ where: { username: 'admin' } });
+  if (!adminUser) {
+    if (!initialPassword) {
+      throw new Error('INITIAL_ADMIN_PASSWORD is required when creating the production admin account.');
+    }
+    const passwordHash = await bcrypt.hash(initialPassword, 12);
+    adminUser = await prisma.user.create({
+      data: {
+        username: 'admin',
+        passwordHash,
+        fullName: 'Administrator',
+        role: 'ADMIN',
+        isActive: true,
+        status: 'ACTIVE',
+        failedLoginCount: 0,
+        lockedUntil: null,
+        mustChangePassword: true
+      }
+    });
+  }
 
   if (superAdmin) {
     await prisma.userRole.upsert({
@@ -701,31 +701,35 @@ async function main() {
   await replaceBacGiangData();
 
   // --- STAFF USER FOR TESTING ---
-  const staffRole = await prisma.role.findUnique({ where: { name: 'STAFF' } });
-  const staffUser = await prisma.user.upsert({
-    where: { username: 'staff1' },
-    update: {},
-    create: { 
-      username: 'staff1', 
-      passwordHash, 
-      fullName: 'Nhân viên 1', 
-      role: 'USER' 
-    },
-  });
-
-  if (staffRole) {
-    await prisma.userRole.upsert({
-      where: { userId_roleId: { userId: staffUser.id, roleId: staffRole.id } },
+  if (process.env.NODE_ENV !== 'production' || process.env.SEED_DEMO_USERS === 'true') {
+    if (!initialPassword) throw new Error('An initial password is required for demo users.');
+    const passwordHash = await bcrypt.hash(initialPassword, 12);
+    const staffRole = await prisma.role.findUnique({ where: { name: 'STAFF' } });
+    const staffUser = await prisma.user.upsert({
+      where: { username: 'staff1' },
       update: {},
-      create: { userId: staffUser.id, roleId: staffRole.id },
+      create: {
+        username: 'staff1',
+        passwordHash,
+        fullName: 'Nhân viên 1',
+        role: 'USER'
+      },
+    });
+
+    if (staffRole) {
+      await prisma.userRole.upsert({
+        where: { userId_roleId: { userId: staffUser.id, roleId: staffRole.id } },
+        update: {},
+        create: { userId: staffUser.id, roleId: staffRole.id },
+      });
+    }
+
+    await prisma.userDataScope.upsert({
+      where: { userId: staffUser.id },
+      update: { scopeType: 'SELF' },
+      create: { userId: staffUser.id, scopeType: 'SELF' }
     });
   }
-
-  await prisma.userDataScope.upsert({
-    where: { userId: staffUser.id },
-    update: { scopeType: 'SELF' },
-    create: { userId: staffUser.id, scopeType: 'SELF' }
-  });
 
   // --- CATEGORIES SEED ---
   function toSlug(str: string): string {

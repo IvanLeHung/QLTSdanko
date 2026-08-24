@@ -1,8 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import prisma from '../utils/prisma';
+import { getJwtSecret } from '../utils/auth-config';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret-key-123';
+const JWT_SECRET = getJwtSecret();
 
 export interface AuthRequest extends Request {
   user?: {
@@ -20,7 +21,8 @@ export const authenticateToken = (req: AuthRequest, res: Response, next: NextFun
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.split(' ')[1];
 
-  if (!token && req.query.token) {
+  // Legacy download links use query tokens. Restrict them to read-only requests.
+  if (!token && req.method === 'GET' && req.query.token) {
     token = req.query.token as string;
   }
 
@@ -209,7 +211,7 @@ export const loadPermissions = async (req: AuthRequest, res: Response, next: Nex
     next();
   } catch (error) {
     console.error('Error loading permissions:', error);
-    next();
+    res.status(503).json({ message: 'Không thể tải quyền truy cập. Vui lòng thử lại.' });
   }
 };
 

@@ -26,3 +26,8 @@ frontend/playwright-report/
 # Scratch / temp files
 backend/list-tables.ts
 backend/scratch/
+scratch/
+scratch_*.js
+*.jspatching
+*.tspatching
+backend/test-db.ts
