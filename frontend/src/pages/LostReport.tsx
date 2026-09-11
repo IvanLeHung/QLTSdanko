@@ -142,7 +142,7 @@ export const LostReport: React.FC = () => {
            { label: 'Mất trong tháng', count: currentMonthReports.length, color: 'amber', icon: Clock },
            { label: 'Giá trị còn lại', count: totalValue.toLocaleString() + 'đ', color: 'slate', icon: DollarSign }
         ].map((stat, i) => (
-           <div key={i} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center space-x-5 group hover:border-rose-100 transition-all">
+           <div key={i} className="clay-card p-6 rounded-[2rem] flex items-center space-x-5 group hover:border-rose-100 transition-all">
               <div className={cn("p-4 rounded-2xl transition-transform group-hover:scale-110 duration-300", 
                  stat.color === 'rose' ? 'bg-rose-50 text-rose-600' :
                  stat.color === 'emerald' ? 'bg-emerald-50 text-emerald-600' :
@@ -159,7 +159,7 @@ export const LostReport: React.FC = () => {
       </div>
 
       {/* MAIN LIST SECTION */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-100/50 overflow-hidden">
+      <div className="clay-table-shell rounded-[2.5rem] overflow-hidden">
         {/* TOOLBAR */}
         <div className="p-8 border-b border-slate-100 bg-slate-50/30 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center space-x-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
@@ -188,7 +188,7 @@ export const LostReport: React.FC = () => {
              <input 
                 type="text" 
                 placeholder="Tìm mã phiếu, tên tài sản, người chịu trách nhiệm..."
-                className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-rose-50 transition-all"
+                className="clay-control w-full pl-12 pr-4 py-3 rounded-2xl text-sm font-bold focus:outline-none transition-all"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
              />

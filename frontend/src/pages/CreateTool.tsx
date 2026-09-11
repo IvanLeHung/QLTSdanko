@@ -485,7 +485,7 @@ export const CreateTool: React.FC = () => {
         <div className="lg:col-span-5 space-y-8">
           
           {/* SHARED LOCATION & HANDOVER */}
-          <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6">
+          <div className="clay-surface rounded-[2.5rem] p-8 space-y-6">
             <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3 border-b border-slate-100 pb-3">
               <MapPin className="h-5 w-5 text-primary-500" />
               1. Vị trí chung & Bàn giao
@@ -685,7 +685,7 @@ export const CreateTool: React.FC = () => {
           </div>
 
           {/* SHARED PURCHASE & WARRANTY */}
-          <div className="bg-white border border-slate-200 rounded-[2.5rem] p-8 shadow-sm space-y-6">
+          <div className="clay-surface rounded-[2.5rem] p-8 space-y-6">
             <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-3 border-b border-slate-100 pb-3">
               <Coins className="h-5 w-5 text-primary-500" />
               2. Mua hàng & Bảo hành chung
@@ -782,7 +782,7 @@ export const CreateTool: React.FC = () => {
 
         {/* RIGHT 7 COLUMNS: ITEMS DYNAMIC LIST */}
         <div className="lg:col-span-7 space-y-6">
-          <div className="flex justify-between items-center bg-white border border-slate-200 rounded-3xl p-6 shadow-sm">
+          <div className="clay-surface flex justify-between items-center rounded-3xl p-6">
             <h2 className="text-sm font-black text-slate-800 uppercase tracking-widest flex items-center gap-2">
               <ClipboardList className="h-5 w-5 text-primary-500" />
               Danh sách Công cụ dụng cụ cần thêm ({items.length})
@@ -810,7 +810,7 @@ export const CreateTool: React.FC = () => {
               return (
                 <div 
                   key={item.id} 
-                  className={`bg-white border rounded-[2rem] shadow-sm transition-all duration-200 overflow-hidden ${
+                  className={`clay-card border rounded-[2rem] transition-all duration-200 overflow-hidden ${
                     item.isExpanded ? 'border-primary-200 ring-1 ring-primary-100' : 'border-slate-200 hover:border-slate-300'
                   }`}
                 >
