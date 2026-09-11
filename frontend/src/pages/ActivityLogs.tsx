@@ -197,7 +197,7 @@ export const ActivityLogs: React.FC = () => {
         </Can>
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-5">
+      <div className="clay-surface rounded-3xl p-5">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Tìm kiếm nội dung</label>
@@ -328,7 +328,7 @@ export const ActivityLogs: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white shadow-sm border border-slate-200 rounded-xl overflow-hidden">
+      <div className="clay-table-shell rounded-3xl overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-slate-200">
             <thead className="bg-slate-50">

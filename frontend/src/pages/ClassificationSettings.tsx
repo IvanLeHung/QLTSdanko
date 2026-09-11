@@ -204,7 +204,7 @@ export const ClassificationSettings: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-1 space-y-4">
-          <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+          <div className="clay-surface rounded-3xl p-6">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-lg font-bold flex items-center">
                 <Building2 className="mr-2 h-5 w-5 text-primary-600" /> Companies
@@ -247,7 +247,7 @@ export const ClassificationSettings: React.FC = () => {
         </div>
 
         <div className="lg:col-span-2 space-y-6">
-           <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-6">
+           <div className="clay-table-shell rounded-3xl p-6">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
                 <div className="flex space-x-1 bg-slate-100 p-1 rounded-xl">
                   {[1, 2, 3, 4].map(l => (
@@ -348,7 +348,7 @@ export const ClassificationSettings: React.FC = () => {
       {isCatModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 overflow-y-auto">
           <div 
-            className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden my-auto animate-in fade-in zoom-in duration-200"
+            className="clay-surface rounded-3xl w-full max-w-2xl overflow-hidden my-auto animate-in fade-in zoom-in duration-200"
             onKeyDown={(e) => {
               if (e.key === 'Escape') setIsCatModalOpen(false);
               if (e.key === 'Enter' && e.ctrlKey) handleCatSubmit(e as any);
@@ -514,7 +514,7 @@ export const ClassificationSettings: React.FC = () => {
       {/* COMPANY MODAL */}
       {isCompModalOpen && (
         <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
+          <div className="clay-surface rounded-3xl w-full max-w-md overflow-hidden animate-in fade-in zoom-in duration-200">
             <div className="p-6 border-b border-slate-100">
               <h2 className="text-xl font-bold">Add New Company</h2>
             </div>
