@@ -116,7 +116,7 @@ export const PrintCenter: React.FC = () => {
   return (
     <div className="space-y-8 animate-in fade-in duration-500 pb-20">
       {/* HEADER */}
-      <div className="bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+      <div className="clay-surface p-8 rounded-[2.5rem] flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
         <div className="flex items-center space-x-5">
            <div className="w-16 h-16 bg-primary-600 rounded-3xl flex items-center justify-center text-white shadow-xl shadow-primary-200">
               <Printer className="h-8 w-8" />
@@ -155,7 +155,7 @@ export const PrintCenter: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         {/* SIDEBAR / FILTERS */}
         <div className="lg:col-span-3 space-y-6">
-           <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-slate-100 space-y-6">
+           <div className="clay-surface p-6 rounded-[2rem] space-y-6">
               <h3 className="text-xs font-black text-slate-800 uppercase tracking-widest px-2">Bộ lọc nhanh</h3>
               <form onSubmit={handleSearch} className="relative">
                  <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -194,7 +194,7 @@ export const PrintCenter: React.FC = () => {
 
         {/* MAIN LIST */}
         <div className="lg:col-span-9">
-           <div className="bg-white rounded-[2.5rem] shadow-sm border border-slate-100 overflow-hidden">
+           <div className="clay-table-shell rounded-[2.5rem] overflow-hidden">
               {loading ? (
                 <div className="py-40 flex flex-col items-center justify-center space-y-4">
                    <Loader2 className="h-12 w-12 text-primary-600 animate-spin" />

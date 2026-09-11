@@ -415,30 +415,30 @@ export const CompanySettings: React.FC = () => {
 
       {/* 2. QUICK STATS PANEL */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-1">
+        <div className="clay-card rounded-3xl p-5 space-y-1">
           <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Tổng đơn vị</p>
           <p className="text-2xl font-black text-slate-800">{stats.totalCompanies}</p>
         </div>
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-1">
+        <div className="clay-card rounded-3xl p-5 space-y-1">
           <p className="text-[10px] font-black uppercase text-emerald-500 tracking-widest">Đang hoạt động</p>
           <p className="text-2xl font-black text-emerald-600">{stats.activeCompanies}</p>
         </div>
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-1">
+        <div className="clay-card rounded-3xl p-5 space-y-1">
           <p className="text-[10px] font-black uppercase text-slate-400 tracking-widest">Bị ẩn / Lưu trữ</p>
           <p className="text-2xl font-black text-slate-500">{stats.hiddenCompanies}</p>
         </div>
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-1">
+        <div className="clay-card rounded-3xl p-5 space-y-1">
           <p className="text-[10px] font-black uppercase text-indigo-500 tracking-widest">Tài sản đã gán</p>
           <p className="text-2xl font-black text-indigo-600">{stats.totalAssignedAssets.toLocaleString()}</p>
         </div>
-        <div className="bg-white border border-slate-100 rounded-3xl p-5 shadow-sm space-y-1 col-span-2 lg:col-span-1">
+        <div className="clay-card rounded-3xl p-5 space-y-1 col-span-2 lg:col-span-1">
           <p className="text-[10px] font-black uppercase text-amber-500 tracking-widest">Chưa xác định đơn vị</p>
           <p className="text-2xl font-black text-amber-600">{stats.unassignedAssets.toLocaleString()}</p>
         </div>
       </div>
 
       {/* 3. TOOLBAR */}
-      <div className="bg-white border border-slate-100 rounded-[2rem] p-4 shadow-sm flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
+      <div className="clay-surface rounded-[2rem] p-4 flex flex-col md:flex-row justify-between items-stretch md:items-center gap-3">
         <div className="flex flex-col sm:flex-row gap-2 flex-1 max-w-3xl">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-slate-400" />
@@ -511,7 +511,7 @@ export const CompanySettings: React.FC = () => {
       </div>
 
       {/* 4. DATA TABLE */}
-      <div className="bg-white border border-slate-100 rounded-[2.5rem] shadow-sm overflow-hidden">
+      <div className="clay-table-shell rounded-[2.5rem] overflow-hidden">
         {loading ? (
           <div className="p-12 text-center text-slate-500 font-medium flex flex-col items-center gap-3">
             <div className="h-6 w-6 border-2 border-primary-650 border-t-transparent rounded-full animate-spin"></div>
@@ -634,7 +634,7 @@ export const CompanySettings: React.FC = () => {
       {/* 5. ADD / EDIT COMPANY MODAL */}
       {isModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-lg overflow-hidden border border-slate-100">
+          <div className="clay-surface rounded-[2.5rem] w-full max-w-lg overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <h2 className="text-lg font-black text-slate-900">
                 {formData.id ? 'Cập nhật thông tin đơn vị' : 'Thêm công ty / đơn vị mới'}
@@ -774,7 +774,7 @@ export const CompanySettings: React.FC = () => {
       {/* 6. MERGE COMPANY MODAL */}
       {isMergeModalOpen && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-150">
-          <div className="bg-white rounded-[2.5rem] shadow-2xl w-full max-w-md overflow-hidden border border-slate-100">
+          <div className="clay-surface rounded-[2.5rem] w-full max-w-md overflow-hidden">
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <h2 className="text-lg font-black text-slate-900 flex items-center gap-1.5">
                 <GitMerge className="h-5 w-5 text-indigo-650" /> Gộp công ty / đơn vị sở hữu

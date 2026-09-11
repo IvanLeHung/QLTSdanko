@@ -865,7 +865,7 @@ export function UserPermissions() {
   return (
     <div className="space-y-6 pb-12">
       {/* Premium Header */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center bg-white p-6 rounded-xl border border-slate-200 shadow-sm gap-4">
+      <div className="clay-surface flex flex-col md:flex-row justify-between items-start md:items-center p-6 rounded-3xl gap-4">
         <div>
           <h1 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
             <Shield className="w-6 h-6 text-indigo-600 animate-pulse" />
@@ -897,7 +897,7 @@ export function UserPermissions() {
       </div>
 
       {/* Main Workspace Navigation (4 tabs) */}
-      <div className="flex border-b border-slate-200 bg-white rounded-t-xl px-4">
+      <div className="clay-control flex rounded-2xl px-4 overflow-x-auto">
         {[
           { id: 'users', label: 'Thành viên & Phạm vi (Users & Scopes)', icon: Users },
           { id: 'matrix', label: 'Ma trận Quyền (Permission Matrix)', icon: Shield },
@@ -927,7 +927,7 @@ export function UserPermissions() {
       {activeWorkspaceTab === 'users' && (
         <div className="space-y-6">
           {/* Toolbar */}
-          <div className="flex justify-between items-center bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+          <div className="clay-surface flex justify-between items-center p-4 rounded-2xl">
             <div className="flex items-center gap-2">
               <span className="text-sm font-bold text-slate-700">Danh sách tài khoản và phân quyền ({filteredUsers.length})</span>
             </div>
@@ -949,7 +949,7 @@ export function UserPermissions() {
             </div>
           </div>
           {/* Filters Panel */}
-          <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm space-y-4">
+          <div className="clay-surface p-5 rounded-2xl space-y-4">
             <div className="flex flex-wrap gap-4 items-center justify-between">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
@@ -1015,7 +1015,7 @@ export function UserPermissions() {
           </div>
 
           {/* Table */}
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="clay-table-shell rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full text-left text-sm text-slate-600">
                 <thead className="bg-slate-50/75 text-slate-500 border-b border-slate-200">
