@@ -159,7 +159,7 @@ export const DamageReport: React.FC = () => {
            { label: 'Đã xử lý xong', count: tickets.filter(t => t.status === 'COMPLETED').length, color: 'emerald', icon: CheckCircle2 },
            { label: 'Không sửa được', count: tickets.filter(t => t.status === 'FAILED').length, color: 'rose', icon: AlertCircle }
         ].map((stat, i) => (
-           <div key={i} className="bg-white p-6 rounded-[2rem] border border-slate-100 shadow-sm flex items-center space-x-5 group hover:border-primary-100 transition-all">
+           <div key={i} className="clay-card p-6 rounded-[2rem] flex items-center space-x-5 group hover:border-primary-100 transition-all">
               <div className={cn("p-4 rounded-2xl transition-transform group-hover:scale-110 duration-300", 
                  stat.color === 'amber' ? 'bg-amber-50 text-amber-600' :
                  stat.color === 'blue' ? 'bg-blue-50 text-blue-600' :
@@ -176,7 +176,7 @@ export const DamageReport: React.FC = () => {
       </div>
 
       {/* MAIN LIST SECTION */}
-      <div className="bg-white rounded-[2.5rem] border border-slate-200 shadow-xl shadow-slate-100/50 overflow-hidden">
+      <div className="clay-table-shell rounded-[2.5rem] overflow-hidden">
         {/* TOOLBAR */}
         <div className="p-8 border-b border-slate-100 bg-slate-50/30 flex flex-col md:flex-row md:items-center justify-between gap-6">
           <div className="flex items-center space-x-2 overflow-x-auto pb-2 md:pb-0 scrollbar-hide">
@@ -209,7 +209,7 @@ export const DamageReport: React.FC = () => {
              <input 
                 type="text" 
                 placeholder="Tìm mã phiếu, tên tài sản..."
-                className="w-full pl-12 pr-4 py-3 bg-white border border-slate-200 rounded-2xl text-sm font-bold focus:ring-4 focus:ring-primary-50 transition-all"
+                className="clay-control w-full pl-12 pr-4 py-3 rounded-2xl text-sm font-bold focus:outline-none transition-all"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
              />

@@ -713,7 +713,7 @@ export const CreateAsset: React.FC = () => {
       <div 
         onDragOver={handleDragOver}
         onDrop={handleDrop}
-        className={`border-2 border-dashed rounded-[2.5rem] p-8 text-center transition-all bg-white relative overflow-hidden group shadow-md ${parsing ? 'border-primary-400 bg-primary-50/10' : 'border-slate-200 hover:border-primary-400'}`}
+        className={`clay-surface border-2 border-dashed rounded-[2.5rem] p-8 text-center transition-all relative overflow-hidden group ${parsing ? 'border-primary-400 bg-primary-50/10' : 'border-slate-200 hover:border-primary-400'}`}
       >
         <input 
           type="file" 
@@ -745,7 +745,7 @@ export const CreateAsset: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* COMPONENT A: INVOICE METADATA FORM */}
-        <div className={`${invoice.fileUrl ? 'lg:col-span-2' : 'lg:col-span-3'} bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 space-y-6 transition-all duration-300`}>
+        <div className={`${invoice.fileUrl ? 'lg:col-span-2' : 'lg:col-span-3'} clay-surface rounded-[2.5rem] p-8 space-y-6 transition-all duration-300`}>
           <h2 className="text-xl font-black text-slate-800 flex items-center gap-3">
             <Building2 className="h-5 w-5 text-primary-500" />
             1. Thông tin hóa đơn gốc
@@ -842,7 +842,7 @@ export const CreateAsset: React.FC = () => {
 
         {/* INVOICE PREVIEW PANEL (only when fileUrl is present) */}
         {invoice.fileUrl && (
-          <div className="lg:col-span-1 bg-white border border-slate-100 rounded-[2.5rem] p-6 shadow-xl shadow-slate-100 flex flex-col justify-between h-full animate-in fade-in slide-in-from-right-4 duration-200">
+          <div className="clay-surface lg:col-span-1 rounded-[2.5rem] p-6 flex flex-col justify-between h-full animate-in fade-in slide-in-from-right-4 duration-200">
             <div className="space-y-3 flex-1 flex flex-col">
               <div className="flex justify-between items-center border-b pb-2">
                 <h3 className="text-sm font-black text-slate-800 uppercase tracking-wider">Xem tệp hóa đơn gốc</h3>
@@ -875,7 +875,7 @@ export const CreateAsset: React.FC = () => {
         )}
 
         {/* COMPONENT B: EDITABLE LINE ITEMS TABLE */}
-        <div className="lg:col-span-3 bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 space-y-6 overflow-hidden">
+        <div className="clay-table-shell lg:col-span-3 rounded-[2.5rem] p-8 space-y-6 overflow-hidden">
           <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
             <h2 className="text-xl font-black text-slate-800 flex items-center gap-3">
               <Tag className="h-5 w-5 text-primary-500" />
@@ -1126,7 +1126,7 @@ export const CreateAsset: React.FC = () => {
         </div>
 
         {/* SUMMARY & VALIDATION BOARD */}
-        <div className="lg:col-span-1 bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 space-y-6">
+        <div className="clay-surface lg:col-span-1 rounded-[2.5rem] p-8 space-y-6">
           <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
             <Warehouse className="h-5 w-5 text-primary-500" />
             Tổng quan lô hàng
@@ -1209,7 +1209,7 @@ export const CreateAsset: React.FC = () => {
         </div>
 
         {/* SUBMIT ACTIONS & AUTO HANDOVER TRIGGER */}
-        <div className="lg:col-span-2 bg-white border border-slate-100 rounded-[2.5rem] p-8 shadow-xl shadow-slate-100 space-y-6 flex flex-col justify-between">
+        <div className="clay-surface lg:col-span-2 rounded-[2.5rem] p-8 space-y-6 flex flex-col justify-between">
           <div className="space-y-4">
             <h3 className="text-lg font-black text-slate-800 flex items-center gap-2">
               <Coins className="h-5 w-5 text-primary-500" />

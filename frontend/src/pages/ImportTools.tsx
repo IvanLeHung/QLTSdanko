@@ -102,7 +102,7 @@ export const ImportTools: React.FC = () => {
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-8">
+      <div className="clay-surface rounded-[2rem] p-8">
         <div className="max-w-xl mx-auto text-center space-y-6">
           <div className="inline-flex p-4 bg-primary-50 rounded-full text-primary-600">
             <FileUp className="h-10 w-10" />
@@ -188,7 +188,7 @@ export const ImportTools: React.FC = () => {
               </div>
             </div>
 
-            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+            <div className="clay-table-shell rounded-2xl overflow-hidden">
                <table className="w-full text-left border-collapse">
                  <thead className="bg-slate-50 text-slate-400 text-[10px] uppercase font-bold">
                    <tr>
