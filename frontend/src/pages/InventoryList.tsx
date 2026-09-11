@@ -126,12 +126,12 @@ export const InventoryList: React.FC = () => {
 
       {/* QUICK STATS */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+        <div className="clay-card p-6 rounded-3xl">
           <div className="w-10 h-10 bg-primary-50 rounded-xl flex items-center justify-center text-primary-600 mb-4"><ClipboardCheck className="h-5 w-5" /></div>
           <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Tổng số đợt</p>
           <p className="text-2xl font-black text-slate-900">{checks.length}</p>
         </div>
-        <div className="bg-white p-6 rounded-3xl border border-slate-100 shadow-sm">
+        <div className="clay-card p-6 rounded-3xl">
           <div className="w-10 h-10 bg-emerald-50 rounded-xl flex items-center justify-center text-emerald-600 mb-4"><CheckCircle2 className="h-5 w-5" /></div>
           <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest mb-1">Đang thực hiện</p>
           <p className="text-2xl font-black text-emerald-600">{checks.filter(c => c.status === 'OPEN').length}</p>
@@ -139,7 +139,7 @@ export const InventoryList: React.FC = () => {
       </div>
 
       {/* LIST */}
-      <div className="bg-white rounded-[2.5rem] shadow-xl border border-slate-200 overflow-hidden">
+      <div className="clay-table-shell rounded-[2.5rem] overflow-hidden">
         <div className="p-8 border-b border-slate-100 flex items-center justify-between">
           <h3 className="text-[14px] font-[900] text-slate-800 uppercase tracking-widest">Danh sách các đợt kiểm kê</h3>
           <div className="flex items-center space-x-2 text-slate-400">
@@ -214,7 +214,7 @@ export const InventoryList: React.FC = () => {
       {/* CREATE MODAL */}
       {showCreateModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-300">
-          <div className="bg-white rounded-[3rem] shadow-2xl w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-300">
+          <div className="clay-surface rounded-[3rem] w-full max-w-xl overflow-hidden animate-in zoom-in-95 duration-300">
             <div className="p-8 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
               <div className="flex items-center space-x-3">
                 <div className="w-10 h-10 bg-primary-600 rounded-xl flex items-center justify-center text-white shadow-lg shadow-primary-200"><Plus className="h-6 w-6" /></div>

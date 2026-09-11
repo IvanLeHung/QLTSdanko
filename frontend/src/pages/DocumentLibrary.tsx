@@ -185,7 +185,7 @@ export const DocumentLibrary: React.FC = () => {
     <div className="space-y-8 animate-in fade-in duration-500">
       
       {/* HEADER SECTION */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 bg-white p-8 rounded-[2.5rem] shadow-sm border border-slate-100">
+      <div className="clay-surface flex flex-col md:flex-row md:items-center justify-between gap-6 p-8 rounded-[2.5rem]">
         <div>
           <h1 className="text-[32px] font-black text-slate-900 tracking-tight leading-none mb-3">Trung tâm biểu mẫu</h1>
           <p className="text-slate-500 font-bold uppercase tracking-widest text-[11px] flex items-center">
@@ -200,7 +200,7 @@ export const DocumentLibrary: React.FC = () => {
             <input 
               type="text" 
               placeholder="Tìm theo mã, tên, nghiệp vụ..."
-              className="pl-12 pr-6 py-4 bg-slate-50 border-none rounded-2xl w-full md:w-[320px] focus:ring-4 focus:ring-primary-50 transition-all font-bold text-slate-800 placeholder:text-slate-300"
+              className="clay-control pl-12 pr-6 py-4 rounded-2xl w-full md:w-[320px] focus:outline-none transition-all font-bold text-slate-800 placeholder:text-slate-300"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
@@ -226,7 +226,7 @@ export const DocumentLibrary: React.FC = () => {
       </div>
 
       {/* FILTER TABS */}
-      <div className="flex items-center space-x-2 p-1.5 bg-white rounded-3xl border border-slate-100 shadow-sm overflow-x-auto custom-scrollbar max-w-full">
+      <div className="clay-control flex items-center space-x-2 p-1.5 rounded-3xl overflow-x-auto custom-scrollbar max-w-full">
         {tabs.map((tab) => (
           <button
             key={tab.key}
@@ -247,12 +247,12 @@ export const DocumentLibrary: React.FC = () => {
 
       {/* CARDS LIST */}
       {loading ? (
-        <div className="h-[300px] bg-white rounded-[2.5rem] border border-slate-100 flex flex-col items-center justify-center space-y-4">
+        <div className="clay-surface h-[300px] rounded-[2.5rem] flex flex-col items-center justify-center space-y-4">
           <Loader2 className="h-10 w-10 text-primary-600 animate-spin" />
           <p className="text-slate-400 font-bold uppercase tracking-widest text-[10px]">Đang tải thư viện biểu mẫu...</p>
         </div>
       ) : filteredTemplates.length === 0 ? (
-        <div className="h-[300px] bg-white rounded-[2.5rem] border border-slate-100 flex flex-col items-center justify-center space-y-3">
+        <div className="clay-surface h-[300px] rounded-[2.5rem] flex flex-col items-center justify-center space-y-3">
           <AlertCircle className="h-12 w-12 text-slate-300" />
           <p className="text-slate-400 font-bold uppercase tracking-widest text-xs">Không tìm thấy biểu mẫu nào khớp bộ lọc</p>
         </div>
@@ -261,7 +261,7 @@ export const DocumentLibrary: React.FC = () => {
           {filteredTemplates.map((tmpl) => (
             <div 
               key={tmpl.id}
-              className={`group bg-white p-6 rounded-[2rem] shadow-sm border transition-all duration-300 flex flex-col justify-between relative
+              className={`clay-card group p-6 rounded-[2rem] border transition-all duration-300 flex flex-col justify-between relative
                 ${tmpl.isDefault 
                   ? 'border-primary-300 ring-2 ring-primary-100/50 shadow-md shadow-primary-50/60' 
                   : 'border-slate-100 hover:border-slate-200 hover:shadow-xl hover:shadow-slate-50'
