@@ -264,8 +264,8 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
         </div>
       )}
 
-      <main className="flex-1 flex flex-col overflow-hidden md:pl-16 lg:pl-0">
-        <header className="h-16 bg-white border-b border-slate-200 flex items-center justify-between px-4 sm:px-6 lg:px-8 print:hidden">
+      <main className="clay-page flex-1 flex flex-col overflow-hidden md:pl-16 lg:pl-0">
+        <header className="clay-surface relative z-30 h-16 rounded-b-3xl flex items-center justify-between px-4 sm:px-6 lg:px-8 print:hidden">
           <div className="flex items-center gap-4">
             <button
               onClick={() => {

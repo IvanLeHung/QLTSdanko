@@ -57,7 +57,7 @@ export const BaseModal: React.FC<BaseModalProps> = ({
       {/* Modal Container */}
       <div 
         className={clsx(
-          "relative bg-white overflow-hidden flex flex-col transition-all duration-300 animate-in zoom-in-95",
+          "clay-surface relative overflow-hidden flex flex-col transition-all duration-300 animate-in zoom-in-95",
           sizeClasses[size],
           className
         )}

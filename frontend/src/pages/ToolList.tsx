@@ -764,7 +764,7 @@ export const ToolList: React.FC = () => {
       {/* 1. STATS DASHBOARD CARD */}
       {stats && (
         <div className="space-y-3">
-          <div className="bg-white border border-slate-200 rounded-2xl p-3 shadow-sm flex flex-wrap items-center gap-2">
+          <div className="clay-surface rounded-2xl p-3 flex flex-wrap items-center gap-2">
             <span className="text-[10px] font-black uppercase tracking-widest text-slate-400 mr-1">Lọc nhanh CCDC</span>
             {[
               { label: 'Tất cả', status: 'ALL', type: 'ALL' },
@@ -794,7 +794,7 @@ export const ToolList: React.FC = () => {
           </div>
           {/* Row 1: Record counts (INDIVIDUAL-style) */}
           <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-            <button type="button" onClick={() => applyQuickFilter()} className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm flex flex-col gap-1 text-left hover:shadow-md hover:-translate-y-0.5 transition-all">
+            <button type="button" onClick={() => applyQuickFilter()} className="clay-card p-4 rounded-2xl flex flex-col gap-1 text-left hover:-translate-y-0.5 transition-all">
               <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Tổng loại CCDC</span>
               <span className="text-2xl font-black text-slate-900">{stats.totalTools}</span>
               <span className="text-[10px] text-slate-400">hồ sơ đã tạo</span>
@@ -870,7 +870,7 @@ export const ToolList: React.FC = () => {
 
 
       {/* 2. REGISTRY HEADER ACTIONS */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white p-6 rounded-3xl border border-slate-200 shadow-sm">
+      <div className="clay-surface flex flex-col md:flex-row md:items-center justify-between gap-4 p-6 rounded-3xl">
         <div>
           <h1 className="text-2xl font-black text-slate-900 tracking-tight">Sổ quản lý Công cụ dụng cụ</h1>
           <p className="text-slate-500 text-xs mt-1">Danh mục quản lý tài sản ngắn hạn và công cụ dụng cụ của doanh nghiệp.</p>
@@ -917,7 +917,7 @@ export const ToolList: React.FC = () => {
       </div>
 
       {/* 3. FILTERS BAR */}
-      <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-4">
+      <div className="clay-surface p-6 rounded-3xl space-y-4">
         <form onSubmit={handleSearchSubmit} className="flex flex-col md:flex-row gap-4">
           <div className="relative flex-1">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -926,7 +926,7 @@ export const ToolList: React.FC = () => {
               placeholder="Tìm theo Mã CCDC, Tên CCDC, người sử dụng, vị trí..."
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:ring-2 focus:ring-primary-500 focus:border-primary-500 font-semibold"
+              className="clay-control w-full pl-11 pr-4 py-3 rounded-xl text-sm focus:outline-none font-semibold"
             />
           </div>
           <button type="submit" className="px-6 py-3 bg-slate-800 hover:bg-slate-900 text-white rounded-xl text-sm font-bold transition-colors">
@@ -1079,7 +1079,7 @@ export const ToolList: React.FC = () => {
       )}
 
       {/* 5. CCDC REGISTRY TABLE */}
-      <div className="bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm">
+      <div className="clay-table-shell rounded-3xl overflow-hidden">
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20 space-y-3">
             <Loader2 className="h-10 w-10 text-primary-600 animate-spin" />

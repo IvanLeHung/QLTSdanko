@@ -89,7 +89,7 @@ export const ToolApprovals: React.FC = () => {
       </div>
 
       {/* TABS */}
-      <div className="flex border-b border-slate-200">
+      <div className="clay-control flex rounded-2xl p-1 w-fit">
         <button 
           onClick={() => setActiveTab('DESTROY')}
           className={`px-6 py-4 font-bold text-sm border-b-2 transition-all cursor-pointer ${
@@ -114,14 +114,14 @@ export const ToolApprovals: React.FC = () => {
       ) : activeTab === 'DESTROY' ? (
         <div className="space-y-4">
           {pendingDestroys.length === 0 ? (
-            <div className="bg-white p-16 text-center rounded-2xl border border-slate-200 text-slate-400 font-semibold text-sm">
+            <div className="clay-surface p-16 text-center rounded-2xl text-slate-400 font-semibold text-sm">
               <ClipboardList className="h-12 w-12 mx-auto mb-2 text-slate-300" />
               Không có đề xuất hủy CCDC nào đang chờ duyệt.
             </div>
           ) : pendingDestroys.map((report) => {
             const toolItem = report.items[0]?.tool;
             return (
-              <div key={report.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 hover:shadow-md transition-shadow">
+              <div key={report.id} className="clay-card p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 transition-shadow">
                 <div className="space-y-2 flex-1">
                   <div className="flex items-center gap-3">
                     <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{report.reportCode}</span>
@@ -156,12 +156,12 @@ export const ToolApprovals: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {pendingLosts.length === 0 ? (
-            <div className="bg-white p-16 text-center rounded-2xl border border-slate-200 text-slate-400 font-semibold text-sm">
+            <div className="clay-surface p-16 text-center rounded-2xl text-slate-400 font-semibold text-sm">
               <ShieldAlert className="h-12 w-12 mx-auto mb-2 text-slate-300" />
               Không có báo cáo mất CCDC nào đang chờ duyệt.
             </div>
           ) : pendingLosts.map((report) => (
-            <div key={report.id} className="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-6 hover:shadow-md transition-shadow">
+            <div key={report.id} className="clay-card p-6 rounded-2xl flex flex-col md:flex-row md:items-center justify-between gap-6 transition-shadow">
               <div className="space-y-2 flex-1">
                 <div className="flex items-center gap-3">
                   <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded">{report.lostCode}</span>
