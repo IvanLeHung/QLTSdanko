@@ -2092,9 +2092,9 @@ export const AssetList: React.FC = () => {
   );
 
   return (
-    <div className="asset-manager-module min-h-[100dvh] h-full min-h-0 flex flex-col overflow-hidden bg-[#f8fafc]">
+    <div className="asset-manager-module clay-page min-h-[100dvh] h-full min-h-0 flex flex-col overflow-hidden">
       {/* COLLAPSIBLE HEADER */}
-      <header className="shrink-0 z-40 bg-white/90 backdrop-blur-md border-b py-2 lg:py-3">
+      <header className="clay-surface shrink-0 z-40 backdrop-blur-md rounded-b-[2rem] py-2 lg:py-3">
         <div className="px-2 sm:px-3 lg:px-4">
           {/* Title Section — Animates away */}
           <div className="hidden lg:block mb-3">
@@ -2142,7 +2142,7 @@ export const AssetList: React.FC = () => {
                   id="asset-list-global-search"
                   name="assetListGlobalSearch"
                   placeholder="Tìm kiếm toàn bộ dữ liệu tài sản..." 
-                  className="w-full pl-9 pr-3 py-1 bg-slate-50 border border-slate-200 rounded-full focus:outline-none focus:ring-2 focus:ring-primary-100 focus:border-primary-400 transition-all text-xs text-slate-900 placeholder:text-slate-400 h-[36px]"
+                  className="clay-control w-full pl-9 pr-3 py-1 rounded-full focus:outline-none transition-all text-xs text-slate-900 placeholder:text-slate-400 h-[36px]"
                   value={localSearch}
                   onChange={(e) => setLocalSearch(e.target.value)}
                 />
@@ -2159,7 +2159,7 @@ export const AssetList: React.FC = () => {
               <Filter className="h-4 w-4" />
               {showAssetControls ? 'Ẩn bộ lọc' : 'Bộ lọc / Tác vụ'}
             </button>
-            <div className="flex h-[36px] rounded-full border border-slate-200 bg-white p-0.5 shadow-xs">
+            <div className="clay-control flex h-[36px] rounded-full p-0.5">
               <button
                 type="button"
                 onClick={() => setAssetViewMode('table')}
@@ -2786,7 +2786,7 @@ export const AssetList: React.FC = () => {
             selectionResetKey={groupSelectionResetKey}
           />
         ) : (
-        <div className="h-full rounded-xl border bg-white overflow-hidden shadow-sm flex flex-col">
+        <div className="clay-table-shell h-full rounded-2xl overflow-hidden flex flex-col">
           <div 
             className="flex-1 min-h-0 overflow-auto custom-scrollbar scroll-smooth"
           >
@@ -3776,7 +3776,7 @@ const StatCard = ({ label, value, icon, color, active, onClick }: any) => {
       type="button"
       onClick={onClick}
       className={cn(
-        "h-[52px] md:h-[60px] px-3 lg:px-4 rounded-xl border flex items-center gap-2 lg:gap-3 shadow-sm hover:shadow-md transition-all group w-[168px] md:w-full shrink-0 outline-none cursor-pointer",
+        "clay-card h-[52px] md:h-[60px] px-3 lg:px-4 rounded-2xl border flex items-center gap-2 lg:gap-3 transition-all group w-[168px] md:w-full shrink-0 outline-none cursor-pointer",
         active ? style.active : style.inactive
       )}
     >

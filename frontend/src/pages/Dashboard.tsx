@@ -1088,7 +1088,7 @@ export const Dashboard: React.FC = () => {
   const cleanLogs = activities.filter((log: any) => log.performedBy !== 'SYSTEM' && log.performedBy !== 'IMPORT_EXCEL');
 
   return (
-    <div className="max-w-7xl mx-auto space-y-8 pb-20 relative">
+    <div className="clay-page max-w-7xl mx-auto space-y-8 pb-20 relative rounded-[2.5rem] p-5 lg:p-8">
       {/* HEADER SECTION */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
         <div>
@@ -1104,7 +1104,7 @@ export const Dashboard: React.FC = () => {
           {/* Export Report Button */}
           <button 
             onClick={handleExportReport} 
-            className="h-14 px-6 rounded-2xl font-bold text-sm uppercase tracking-widest transition-all flex items-center border bg-white text-slate-700 border-slate-200 hover:bg-slate-50"
+            className="clay-control h-14 px-6 rounded-2xl font-bold text-sm uppercase tracking-widest transition-all flex items-center text-slate-700 hover:-translate-y-0.5"
           >
             <Printer className="mr-2 h-4 w-4" /> Xuất báo cáo
           </button>
@@ -1115,7 +1115,7 @@ export const Dashboard: React.FC = () => {
             className={`h-14 px-6 rounded-2xl font-bold text-sm uppercase tracking-widest transition-all flex items-center border ${
               activeChips.length > 0 
                 ? 'bg-primary-50 text-primary-700 border-primary-200' 
-                : 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50'
+                : 'clay-control text-slate-700 hover:-translate-y-0.5'
             }`}
           >
             <Filter className="mr-2 h-4 w-4" /> Bộ lọc 
@@ -1135,7 +1135,7 @@ export const Dashboard: React.FC = () => {
               {/* Click away overlay */}
               <div className="fixed inset-0 z-40" onClick={() => setIsFilterOpen(false)} />
               
-              <div className="absolute right-0 top-16 w-[450px] bg-white rounded-[2rem] border border-slate-200 shadow-2xl p-8 z-50 space-y-5 transform scale-100 transition-all">
+              <div className="clay-surface absolute right-0 top-16 w-[450px] rounded-[2rem] p-8 z-50 space-y-5 transform scale-100 transition-all">
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <h3 className="text-lg font-black text-slate-800 flex items-center">
                     <Filter className="mr-2 h-5 w-5 text-primary-600" /> Bộ lọc vận hành
@@ -1289,7 +1289,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* TABS SEGMENTED CONTROL */}
-      <div className="flex bg-slate-100/80 backdrop-blur-sm p-1 rounded-2xl border border-slate-200/50 w-fit">
+      <div className="clay-control flex p-1 rounded-2xl w-fit">
         <button
           onClick={() => setActiveTab('assets')}
           className={`px-6 py-2.5 rounded-xl font-bold text-xs uppercase tracking-widest transition-all duration-300 flex items-center gap-2 ${
@@ -1362,7 +1362,7 @@ export const Dashboard: React.FC = () => {
             <div 
               key={card.name} 
               onClick={() => navigate(card.path + buildQueryString(card.params))}
-              className={`bg-white p-5 rounded-3xl border border-slate-100 shadow-md shadow-slate-100/50 group cursor-pointer transition-all transform hover:-translate-y-1 hover:shadow-xl ${card.border}`}
+              className={`clay-card p-5 rounded-3xl group cursor-pointer transition-all transform hover:-translate-y-1 ${card.border}`}
             >
               <div className="flex justify-between items-start mb-4">
                 <div className={`p-3 rounded-2xl ${card.bg} ${card.color} transition-colors`}>
@@ -1402,7 +1402,7 @@ export const Dashboard: React.FC = () => {
             <div 
               key={card.name} 
               onClick={() => navigate(card.path + buildQueryString(card.params))}
-              className="bg-white p-5 rounded-3xl border border-slate-100 shadow-md shadow-slate-100/50 group cursor-pointer transition-all transform hover:-translate-y-1 hover:shadow-xl hover:border-indigo-300"
+              className="clay-card p-5 rounded-3xl group cursor-pointer transition-all transform hover:-translate-y-1 hover:border-indigo-300"
             >
               <div className="flex justify-between items-start mb-4">
                 <div className={`text-[10px] font-black uppercase px-2.5 py-1 rounded-full ${card.bg} ${card.color}`}>
@@ -1419,7 +1419,7 @@ export const Dashboard: React.FC = () => {
       </div>
 
       {/* DAILY ACTIVITY BREAKDOWN */}
-      <div className="bg-white rounded-[2rem] border border-slate-100 shadow-md shadow-slate-100/50 overflow-hidden">
+      <div className="clay-surface rounded-[2rem] overflow-hidden">
         <div className="px-6 py-5 border-b border-slate-100 flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4">
           <div className="flex items-center space-x-2">
             <Calendar className="h-5 w-5 text-indigo-600" />
