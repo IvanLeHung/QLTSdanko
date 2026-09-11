@@ -210,6 +210,14 @@ export class RepairService {
     });
 
     if (!ticket) throw new Error("Phiếu sửa chữa không tồn tại.");
+    if (!['DRAFT', 'OPEN', 'IN_PROGRESS'].includes(ticket.status)) {
+      throw new Error("Phiếu sửa chữa đã đóng, không thể hoàn tất lại.");
+    }
+
+    const normalizedActualCost = actualCost !== undefined && actualCost !== ''
+      ? (parseFloat(actualCost) || 0)
+      : (ticket.actualCost || 0);
+    const normalizedResult = String(result || 'Đã sửa xong').trim();
 
     return await prisma.$transaction(async (tx) => {
       const updatedTicket = await tx.assetRepairTicket.update({
@@ -217,8 +225,8 @@ export class RepairService {
         data: {
           status: 'COMPLETED',
           actualFinishDate: (actualFinishDate && actualFinishDate !== '') ? new Date(actualFinishDate) : new Date(),
-          actualCost: parseFloat(actualCost) || 0,
-          result,
+          actualCost: normalizedActualCost,
+          result: normalizedResult,
           note: note || ticket.note
         }
       });
@@ -233,7 +241,7 @@ export class RepairService {
         where: { id: ticket.assetId },
         data: { 
           status: finalAssetStatus,
-          lastInventoryStatus: `REPAIR:${result}`
+          lastInventoryStatus: `REPAIR:${normalizedResult}`
         }
       });
 
@@ -244,8 +252,8 @@ export class RepairService {
           action: 'COMPLETE',
           oldStatus: ticket.status,
           newStatus: 'COMPLETED',
-          description: `Hoàn tất sửa chữa. Kết quả: ${result}. Trạng thái tài sản mới: ${finalAssetStatus}`,
-          cost: parseFloat(actualCost) || 0,
+          description: `Hoàn tất sửa chữa. Kết quả: ${normalizedResult}. Trạng thái tài sản mới: ${finalAssetStatus}`,
+          cost: normalizedActualCost,
           performedBy
         }
       });
@@ -256,7 +264,7 @@ export class RepairService {
           assetId: ticket.assetId,
           eventType: 'REPAIR_COMPLETE',
           eventDate: new Date(),
-          description: `Hoàn tất sửa chữa phiếu ${ticket.repairCode}. Kết quả: ${result}. Chi phí: ${actualCost || 0}đ`,
+          description: `Hoàn tất sửa chữa phiếu ${ticket.repairCode}. Kết quả: ${normalizedResult}. Chi phí: ${normalizedActualCost}đ`,
           performedBy
         }
       });

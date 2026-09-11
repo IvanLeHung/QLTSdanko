@@ -932,6 +932,26 @@ export const AssetList: React.FC = () => {
     });
   };
 
+  const completeAssetRepair = async (asset: any) => {
+    const ticket = asset.repairTickets?.[0];
+    if (!ticket) {
+      toast.error('Tài sản không có phiếu sửa chữa đang mở.');
+      return;
+    }
+    if (!window.confirm(`Xác nhận tài sản ${asset.assetCode} đã sửa xong?`)) return;
+
+    try {
+      await api.post(`/repairs/${ticket.id}/complete`, {
+        actualFinishDate: new Date().toISOString().slice(0, 10),
+        result: 'Đã sửa xong'
+      });
+      toast.success('Đã hoàn tất sửa chữa và cập nhật trạng thái tài sản.');
+      await refreshAssetData();
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể hoàn tất sửa chữa.');
+    }
+  };
+
   const handleAssetAction = (action: string, asset: any) => {
     setActiveMenuId(null);
     switch (action) {
@@ -981,6 +1001,9 @@ export const AssetList: React.FC = () => {
           data: { asset },
           onSubmit: completeGroupedAction
         });
+        break;
+      case 'repair_complete':
+        void completeAssetRepair(asset);
         break;
       case 'liquidation':
         openModal("BM_FORM", {
@@ -3030,16 +3053,25 @@ export const AssetList: React.FC = () => {
                                  <div className="h-px bg-[#F1F5F9] my-1"></div>
                                  <Can permission="INVENTORY_CREATE"><ActionItem label="Kiểm kê" icon={<ClipboardCheck className="h-4 w-4" />} onClick={() => handleAssetAction('inventory', asset)} /></Can>
                                  {hasOpenTicket ? (
-                                   <Can permission="REPAIR_CREATE">
-                                     <ActionItem 
-                                       label="Xem phiếu sửa chữa" 
-                                       icon={<Wrench className="h-4 w-4 text-amber-500" />} 
-                                       onClick={() => {
-                                         setActiveMenuId(null);
-                                         openModal('REPAIR_PROCESSING', { ticketId: asset.repairTickets[0].id, onSuccess: completeGroupedAction });
-                                       }} 
-                                     />
-                                   </Can>
+                                   <>
+                                     <Can permission="REPAIR_CREATE">
+                                       <ActionItem
+                                         label="Xem phiếu sửa chữa"
+                                         icon={<Wrench className="h-4 w-4 text-amber-500" />}
+                                         onClick={() => {
+                                           setActiveMenuId(null);
+                                           openModal('REPAIR_PROCESSING', { ticketId: asset.repairTickets[0].id, onSuccess: completeGroupedAction });
+                                         }}
+                                       />
+                                     </Can>
+                                     <Can permission="REPAIR_CREATE">
+                                       <ActionItem
+                                         label="Đã sửa xong"
+                                         icon={<CheckCircle2 className="h-4 w-4 text-emerald-600" />}
+                                         onClick={() => handleAssetAction('repair_complete', asset)}
+                                       />
+                                     </Can>
+                                   </>
                                  ) : (
                                    <Can permission="REPAIR_CREATE">
                                      <ActionItem 
