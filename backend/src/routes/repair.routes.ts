@@ -161,9 +161,12 @@ router.put('/:id/progress', async (req, res) => {
 });
 
 // Complete repair
-router.post('/:id/complete', async (req, res) => {
+router.post('/:id/complete', async (req: AuthRequest, res) => {
   try {
-    const ticket = await RepairService.completeRepair(parseInt(req.params.id), req.body);
+    const ticket = await RepairService.completeRepair(parseInt(String(req.params.id), 10), {
+      ...req.body,
+      performedBy: req.user?.fullName || req.user?.username || 'system'
+    });
     res.json(ticket);
   } catch (error: any) {
     res.status(400).json({ message: error.message });
