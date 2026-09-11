@@ -89,6 +89,64 @@ body {
   @apply w-full px-4 py-3 bg-white border border-slate-200 rounded-2xl focus:outline-none focus:ring-4 focus:ring-primary-50/50 focus:border-primary-500 transition-all font-medium text-slate-900 placeholder:text-slate-400 shadow-sm hover:border-slate-300;
 }
 
+/* Claymorphism — restrained depth for dashboards and data-heavy screens. */
+.clay-page {
+  background:
+    radial-gradient(circle at 8% 0%, rgba(14, 165, 233, 0.08), transparent 28rem),
+    radial-gradient(circle at 92% 12%, rgba(99, 102, 241, 0.06), transparent 26rem),
+    #f4f7fb;
+}
+
+.clay-surface {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(241, 245, 249, 0.92));
+  border: 1px solid rgba(255, 255, 255, 0.9);
+  box-shadow:
+    12px 12px 28px rgba(148, 163, 184, 0.18),
+    -10px -10px 24px rgba(255, 255, 255, 0.92),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.clay-card {
+  background: linear-gradient(145deg, #ffffff, #f1f5f9);
+  border: 1px solid rgba(255, 255, 255, 0.92);
+  box-shadow:
+    8px 8px 18px rgba(148, 163, 184, 0.18),
+    -7px -7px 16px rgba(255, 255, 255, 0.92),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.clay-card:hover {
+  box-shadow:
+    11px 11px 24px rgba(100, 116, 139, 0.2),
+    -8px -8px 18px rgba(255, 255, 255, 0.96),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.95);
+}
+
+.clay-control {
+  background: linear-gradient(145deg, #ffffff, #eef2f7);
+  border: 1px solid rgba(203, 213, 225, 0.72);
+  box-shadow:
+    4px 4px 10px rgba(148, 163, 184, 0.16),
+    -4px -4px 9px rgba(255, 255, 255, 0.92),
+    inset 1px 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+.clay-control:focus-within {
+  border-color: rgba(14, 165, 233, 0.55);
+  box-shadow:
+    3px 3px 8px rgba(148, 163, 184, 0.14),
+    -3px -3px 8px rgba(255, 255, 255, 0.95),
+    0 0 0 4px rgba(14, 165, 233, 0.1);
+}
+
+.clay-table-shell {
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(255, 255, 255, 0.94);
+  box-shadow:
+    10px 12px 26px rgba(148, 163, 184, 0.16),
+    -8px -8px 20px rgba(255, 255, 255, 0.9);
+}
+
 /* ======================================================
    PRINT — The .print-area div is positioned off-screen.
    We use position:fixed instead of display:none because
