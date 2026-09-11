@@ -23,7 +23,7 @@ export const HandoverList: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex justify-between items-center">
+      <div className="clay-surface flex justify-between items-center rounded-3xl p-6">
         <div>
           <h2 className="text-2xl font-bold text-slate-800">Handover Documents (BBBG)</h2>
           <p className="text-slate-500 text-sm">Track asset handovers and generate official documents.</p>
@@ -33,7 +33,7 @@ export const HandoverList: React.FC = () => {
         </button>
       </div>
 
-      <div className="table-container">
+      <div className="clay-table-shell overflow-x-auto rounded-3xl">
         <table className="w-full text-left text-sm">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
