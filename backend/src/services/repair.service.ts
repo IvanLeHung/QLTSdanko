@@ -21,7 +21,24 @@ export class RepairService {
       throw new Error('Chỉ có thể hoàn trạng thái cho tài sản đang báo hỏng.');
     }
     const latestAssignee = asset.assignments[0]?.newUserName?.trim() || '';
-    const hasAreaAssignee = /^KHU\s+VỰC:\s*.+/i.test(latestAssignee);
+    const latestAreaHandover = await prisma.handoverDocument.findFirst({
+      where: {
+        items: { some: { assetId } },
+        status: { in: ['COMPLETED', 'PENDING_CONFIRMATION', 'DRAFT'] }
+      },
+      orderBy: [
+        { confirmedAt: 'desc' },
+        { documentDate: 'desc' },
+        { createdAt: 'desc' }
+      ],
+      select: { type: true, recipientType: true, recipientArea: true }
+    });
+    const hasAreaAssignee = /^KHU\s+VỰC:\s*.+/i.test(latestAssignee)
+      || Boolean(
+        latestAreaHandover?.type !== 'RECALL'
+        && latestAreaHandover?.recipientType === 'AREA'
+        && latestAreaHandover?.recipientArea?.trim()
+      );
     if (!asset.currentUserName?.trim() && !hasAreaAssignee) {
       throw new Error('Tài sản chưa có người hoặc khu vực sử dụng nên không thể chuyển sang Đang sử dụng.');
     }
