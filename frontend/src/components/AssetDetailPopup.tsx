@@ -1563,7 +1563,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                             <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">Tài sản đang báo hỏng</h4>
                             <p className="text-xs font-medium text-slate-500 mt-0.5">Chọn đã sửa xong để tiếp tục sử dụng, hoặc chuyển sang quy trình thanh lý/hủy.</p>
                             <div className="flex flex-wrap gap-3 mt-4">
-                               {hasPermission('REPAIR_CREATE') && asset.currentUserName && (
+                               {(hasPermission('REPAIR_CREATE') || hasPermission('ASSET_UPDATE')) && asset.currentUserName && (
                                  <button
                                    type="button"
                                    onClick={handleRestoreRepairedAsset}

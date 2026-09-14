@@ -7,8 +7,15 @@ import { buildDataScopeWhere } from '../utils/data-scope.util';
 
 const router = Router();
 
-router.post('/assets/:assetId/restore-assigned', authenticateToken, requirePermission('REPAIR_CREATE'), async (req: AuthRequest, res) => {
+router.post('/assets/:assetId/restore-assigned', authenticateToken, async (req: AuthRequest, res) => {
   try {
+    const canRestore = req.user?.roles?.includes('SUPER_ADMIN')
+      || req.user?.permissions?.includes('REPAIR_CREATE')
+      || req.user?.permissions?.includes('ASSET_UPDATE');
+    if (!canRestore) {
+      return res.status(403).json({ message: 'Bạn không có quyền hoàn trạng thái tài sản.' });
+    }
+
     const asset = await RepairService.restoreDamagedAssetToAssigned(
       parseInt(String(req.params.assetId), 10),
       req.user?.fullName || req.user?.username || 'system',
