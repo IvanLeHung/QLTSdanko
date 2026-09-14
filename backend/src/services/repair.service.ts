@@ -5,13 +5,24 @@ const prisma = new PrismaClient();
 
 export class RepairService {
   static async restoreDamagedAssetToAssigned(assetId: number, performedBy: string, note?: string) {
-    const asset = await prisma.asset.findUnique({ where: { id: assetId } });
+    const asset = await prisma.asset.findUnique({
+      where: { id: assetId },
+      include: {
+        assignments: {
+          orderBy: [{ effectiveAt: 'desc' }, { id: 'desc' }],
+          take: 1,
+          select: { newUserName: true }
+        }
+      }
+    });
 
     if (!asset) throw new Error('Tài sản không tồn tại.');
     if (asset.status !== 'DAMAGED') {
       throw new Error('Chỉ có thể hoàn trạng thái cho tài sản đang báo hỏng.');
     }
-    if (!asset.currentUserName?.trim()) {
+    const latestAssignee = asset.assignments[0]?.newUserName?.trim() || '';
+    const hasAreaAssignee = /^KHU\s+VỰC:\s*.+/i.test(latestAssignee);
+    if (!asset.currentUserName?.trim() && !hasAreaAssignee) {
       throw new Error('Tài sản chưa có người hoặc khu vực sử dụng nên không thể chuyển sang Đang sử dụng.');
     }
 
