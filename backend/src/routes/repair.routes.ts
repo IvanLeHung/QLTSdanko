@@ -7,6 +7,19 @@ import { buildDataScopeWhere } from '../utils/data-scope.util';
 
 const router = Router();
 
+router.post('/assets/:assetId/restore-assigned', authenticateToken, requirePermission('REPAIR_CREATE'), async (req: AuthRequest, res) => {
+  try {
+    const asset = await RepairService.restoreDamagedAssetToAssigned(
+      parseInt(String(req.params.assetId), 10),
+      req.user?.fullName || req.user?.username || 'system',
+      req.body?.note
+    );
+    res.json(asset);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
 // GET /export-by-time - Báo hỏng / Sửa chữa (Repair tickets by Date Range)
 // Important: keep this route before '/:id' so Express does not treat
 // "export-by-time" as a ticket id.

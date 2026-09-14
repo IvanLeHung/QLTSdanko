@@ -148,6 +148,7 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
   const [mode, setMode] = useState<'view' | 'edit'>('view');
   const [editForm, setEditForm] = useState<any>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isRestoringRepairedAsset, setIsRestoringRepairedAsset] = useState(false);
   const [showReasonModal, setShowReasonModal] = useState(false);
   const [reason, setReason] = useState('');
   const [pendingUpdates, setPendingUpdates] = useState<any>(null);
@@ -630,6 +631,24 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       fetchAssetDetail();
     } catch (err: any) {
       toast.error("Lỗi khi cập nhật tiến độ");
+    }
+  };
+
+  const handleRestoreRepairedAsset = async () => {
+    if (!asset || !window.confirm('Xác nhận tài sản đã sửa xong và chuyển lại trạng thái Đang sử dụng?')) return;
+
+    setIsRestoringRepairedAsset(true);
+    try {
+      await api.post(`/repairs/assets/${asset.id}/restore-assigned`, {
+        note: 'Tài sản hỏng đã sửa xong và tiếp tục sử dụng.'
+      });
+      toast.success('Đã chuyển tài sản về trạng thái Đang sử dụng');
+      await fetchAssetDetail();
+      onAction?.('refresh', asset.id);
+    } catch (err: any) {
+      toast.error(err.response?.data?.message || 'Không thể hoàn trạng thái tài sản');
+    } finally {
+      setIsRestoringRepairedAsset(false);
     }
   };
 
@@ -1541,9 +1560,20 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                             <AlertCircle className="h-6 w-6" />
                          </div>
                          <div className="flex-1">
-                            <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">Hỏng không sửa được</h4>
-                            <p className="text-xs font-medium text-slate-500 mt-0.5">Tài sản cần được chuyển sang quy trình thanh lý hoặc hủy bỏ.</p>
-                            <div className="flex space-x-3 mt-4">
+                            <h4 className="text-base font-black text-slate-900 uppercase tracking-tight">Tài sản đang báo hỏng</h4>
+                            <p className="text-xs font-medium text-slate-500 mt-0.5">Chọn đã sửa xong để tiếp tục sử dụng, hoặc chuyển sang quy trình thanh lý/hủy.</p>
+                            <div className="flex flex-wrap gap-3 mt-4">
+                               {hasPermission('REPAIR_CREATE') && asset.currentUserName && (
+                                 <button
+                                   type="button"
+                                   onClick={handleRestoreRepairedAsset}
+                                   disabled={isRestoringRepairedAsset}
+                                   className="px-4 py-2 bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-emerald-700 transition-all disabled:opacity-60 flex items-center gap-1.5"
+                                 >
+                                   {isRestoringRepairedAsset ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle2 className="h-3.5 w-3.5" />}
+                                   Đã sửa xong – tiếp tục sử dụng
+                                 </button>
+                               )}
                                <button onClick={() => onAction('liquidate', asset.id)} className="px-4 py-2 bg-rose-600 text-white rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-700 transition-all">Chuyển thanh lý</button>
                                <button onClick={() => onAction('scrap', asset.id)} className="px-4 py-2 bg-white border border-rose-200 text-rose-600 rounded-xl font-black text-[10px] uppercase tracking-widest hover:bg-rose-50 transition-all">Chuyển hủy</button>
                             </div>
