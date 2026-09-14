@@ -4,6 +4,50 @@ import { DocumentService } from './document.service';
 const prisma = new PrismaClient();
 
 export class RepairService {
+  static async restoreDamagedAssetToAssigned(assetId: number, performedBy: string, note?: string) {
+    const asset = await prisma.asset.findUnique({ where: { id: assetId } });
+
+    if (!asset) throw new Error('Tài sản không tồn tại.');
+    if (asset.status !== 'DAMAGED') {
+      throw new Error('Chỉ có thể hoàn trạng thái cho tài sản đang báo hỏng.');
+    }
+    if (!asset.currentUserName?.trim()) {
+      throw new Error('Tài sản chưa có người hoặc khu vực sử dụng nên không thể chuyển sang Đang sử dụng.');
+    }
+
+    const openTicket = await prisma.assetRepairTicket.findFirst({
+      where: { assetId, status: { in: ['DRAFT', 'OPEN', 'IN_PROGRESS'] } }
+    });
+    if (openTicket) {
+      throw new Error('Tài sản còn phiếu sửa chữa đang mở. Vui lòng hoàn tất phiếu sửa chữa.');
+    }
+
+    const normalizedNote = String(note || 'Tài sản hỏng đã sửa xong và tiếp tục sử dụng.').trim();
+
+    return prisma.$transaction(async (tx) => {
+      const updatedAsset = await tx.asset.update({
+        where: { id: assetId },
+        data: {
+          status: 'ASSIGNED',
+          lastInventoryStatus: 'REPAIR:Đã sửa xong'
+        }
+      });
+
+      await tx.assetEvent.create({
+        data: {
+          assetId,
+          eventType: 'REPAIR_COMPLETE',
+          eventDate: new Date(),
+          description: `${normalizedNote} Trạng thái chuyển từ Báo hỏng sang Đang sử dụng.`,
+          performedBy,
+          newStatus: 'ASSIGNED'
+        }
+      });
+
+      return updatedAsset;
+    });
+  }
+
   static async createTicket(data: any) {
     const { assetId, reportedBy, ...ticketData } = data;
 
