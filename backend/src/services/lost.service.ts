@@ -3,9 +3,28 @@ import { DocumentService } from './document.service';
 
 const prisma = new PrismaClient();
 
+const parseOptionalDateTime = (value: unknown, fieldLabel: string): Date | undefined => {
+  if (value === undefined || value === null || value === '') return undefined;
+
+  const rawValue = String(value).trim();
+  const isoValue = /^\d{4}-\d{2}-\d{2}$/.test(rawValue)
+    ? `${rawValue}T00:00:00.000Z`
+    : rawValue;
+  const parsedDate = new Date(isoValue);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    throw new Error(`${fieldLabel} không hợp lệ.`);
+  }
+
+  return parsedDate;
+};
+
 export class LostService {
   static async reportLost(data: any) {
-    const { assetId, reportedBy, ...lostData } = data;
+    const { assetId, reportedBy, lostDetectedDate: rawLostDetectedDate, lastSeenDate: rawLastSeenDate, ...lostData } = data;
+
+    const lostDetectedDate = parseOptionalDateTime(rawLostDetectedDate, 'Ngày phát hiện mất');
+    const lastSeenDate = parseOptionalDateTime(rawLastSeenDate, 'Ngày nhìn thấy lần cuối');
 
     const asset = await prisma.asset.findUnique({
       where: { id: assetId }
@@ -22,6 +41,8 @@ export class LostService {
       const report = await tx.lostReport.create({
         data: {
           ...lostData,
+          ...(lostDetectedDate ? { lostDetectedDate } : {}),
+          ...(lastSeenDate ? { lastSeenDate } : {}),
           lostCode,
           assetId,
           reportedBy,
