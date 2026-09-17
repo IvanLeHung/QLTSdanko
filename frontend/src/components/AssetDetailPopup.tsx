@@ -2391,18 +2391,51 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
         data={{ asset, ...selectedForm?.data }}
         onClose={() => setSelectedForm(null)}
         onSubmit={async (data) => {
-          console.log("Form submitted:", data);
-          toast.success("Hồ sơ đã được lưu thành công");
-          setSelectedForm(null);
-          fetchAssetDetail();
-          
-          // Log audit
-          await api.post('/operational/print-log', {
-            assetIds: [asset.id],
-            template: selectedForm?.code,
-            copies: 1,
-            config: { action: 'GENERATE_DOCUMENT' }
-          });
+          const formCode = selectedForm?.code;
+
+          try {
+            if (formCode === 'BM13') {
+              await api.post('/lost', {
+                assetId: asset.id,
+                reportedBy: data.reportedBy,
+                lostDetectedDate: data.lostDate,
+                ...(data.lastSeenDate ? { lastSeenDate: data.lastSeenDate } : {}),
+                responsibleUser: data.responsibility || asset.currentUserName || '',
+                responsibleDepartment: asset.departmentName || '',
+                lastKnownLocation: asset.locationName || '',
+                incidentDescription: data.description,
+                compensationNote: data.proposedAction,
+                note: [
+                  data.cause ? `Nguyên nhân: ${data.cause}` : '',
+                  data.isTheftSuspected ? 'Nghi ngờ mất trộm' : '',
+                  data.hasEvidence ? 'Có tài liệu/bằng chứng xác minh' : ''
+                ].filter(Boolean).join('. ')
+              });
+            }
+
+            // The business operation has already succeeded at this point. A
+            // secondary document log must not make users retry the lost report.
+            try {
+              await api.post('/operational/print-log', {
+                assetIds: [asset.id],
+                template: formCode,
+                copies: 1,
+                config: { action: 'GENERATE_DOCUMENT' }
+              });
+            } catch (logError) {
+              console.error('Could not save document generation log:', logError);
+            }
+
+            toast.success(formCode === 'BM13'
+              ? 'Đã ghi nhận mất và cập nhật trạng thái tài sản'
+              : 'Hồ sơ đã được lưu thành công');
+            setSelectedForm(null);
+            await fetchAssetDetail();
+            onAction?.('refresh', asset.id);
+          } catch (error: any) {
+            toast.error(error.response?.data?.message || 'Không thể lưu hồ sơ');
+            throw error;
+          }
         }}
       />
 
