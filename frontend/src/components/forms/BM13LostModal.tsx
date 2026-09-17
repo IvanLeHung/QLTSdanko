@@ -2,11 +2,12 @@ import React, { useState } from 'react';
 import { BaseFormModal, FormSection, FormField, FormInput, FormSelect, FormTextArea } from './BaseFormModal';
 import { AttachmentUploader, SignatureBlock } from './FormComponents';
 import { ShieldAlert, User, Search, MapPin } from 'lucide-react';
+import { toast } from 'react-toastify';
 
 interface BM13ModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: any) => void | Promise<void>;
   asset?: any;
 }
 
@@ -28,13 +29,18 @@ export const BM13LostModal: React.FC<BM13ModalProps> = ({ isOpen, onClose, onSub
     status: 'LOST'
   });
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
+    if (!formData.description.trim()) {
+      toast.error('Vui lòng nhập mô tả sự việc');
+      return;
+    }
     setLoading(true);
-    setTimeout(() => {
-      onSubmit(formData);
-      setLoading(false);
+    try {
+      await onSubmit(formData);
       onClose();
-    }, 800);
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
