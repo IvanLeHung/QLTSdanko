@@ -76,6 +76,10 @@ export const LostReportForm: React.FC<LostReportFormProps> = ({ asset: initialAs
     try {
       await api.post('/lost', {
         ...formData,
+        lostDetectedDate: new Date(`${formData.lostDetectedDate}T00:00:00.000Z`).toISOString(),
+        ...(formData.lastSeenDate ? {
+          lastSeenDate: new Date(`${formData.lastSeenDate}T00:00:00.000Z`).toISOString()
+        } : { lastSeenDate: undefined }),
         assetId: selectedAsset.id
       });
       toast.success("Đã ghi nhận mất tài sản thành công");

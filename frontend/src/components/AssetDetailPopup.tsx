@@ -2398,8 +2398,10 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
               await api.post('/lost', {
                 assetId: asset.id,
                 reportedBy: data.reportedBy,
-                lostDetectedDate: data.lostDate,
-                ...(data.lastSeenDate ? { lastSeenDate: data.lastSeenDate } : {}),
+                lostDetectedDate: new Date(`${data.lostDate}T00:00:00.000Z`).toISOString(),
+                ...(data.lastSeenDate ? {
+                  lastSeenDate: new Date(`${data.lastSeenDate}T00:00:00.000Z`).toISOString()
+                } : {}),
                 responsibleUser: data.responsibility || asset.currentUserName || '',
                 responsibleDepartment: asset.departmentName || '',
                 lastKnownLocation: asset.locationName || '',
