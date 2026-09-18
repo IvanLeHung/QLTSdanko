@@ -67,6 +67,37 @@ const ASSET_UPDATE_FIELDS = new Set([
   'originalInvoiceItemName'
 ]);
 
+const ASSET_DATE_FIELDS = [
+  'purchaseDate',
+  'depreciationEndDate',
+  'handoverDate',
+  'lastInventoryDate',
+  'offboardingDate',
+  'expectedRecoveryDate',
+  'offboardingResolvedAt',
+  'lastLabelPrint',
+  'assetNameShortUpdatedAt'
+] as const;
+
+function normalizeOptionalDate(value: unknown, fieldName: string): Date | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === '') return null;
+  if (value instanceof Date) {
+    if (!Number.isNaN(value.getTime())) return value;
+    throw new Error(`${fieldName} không hợp lệ.`);
+  }
+
+  const rawValue = String(value).trim();
+  const isoValue = /^\d{4}-\d{2}-\d{2}$/.test(rawValue)
+    ? `${rawValue}T00:00:00.000Z`
+    : rawValue;
+  const parsedDate = new Date(isoValue);
+  if (Number.isNaN(parsedDate.getTime())) {
+    throw new Error(`${fieldName} không hợp lệ.`);
+  }
+  return parsedDate;
+}
+
 function sanitizeAssetUpdates(updates: Record<string, any> = {}) {
   return Object.fromEntries(
     Object.entries(updates).filter(([key]) => ASSET_UPDATE_FIELDS.has(key))
@@ -289,6 +320,12 @@ export class AssetService {
       updates = sanitizeAssetUpdates(updates);
       if (Object.keys(updates).length === 0) {
         return oldAsset;
+      }
+
+      for (const field of ASSET_DATE_FIELDS) {
+        if (updates[field] !== undefined) {
+          updates[field] = normalizeOptionalDate(updates[field], field);
+        }
       }
 
       if (updates.unit !== undefined) {

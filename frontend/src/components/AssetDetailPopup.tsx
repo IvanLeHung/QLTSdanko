@@ -736,7 +736,13 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
       }
 
       if (String(oldVal) !== String(newVal)) {
-        changes[key] = (newVal === '' && (key === 'purchaseDate' || key === 'depreciationEndDate')) ? null : newVal;
+        if (key === 'purchaseDate' || key === 'depreciationEndDate') {
+          changes[key] = newVal
+            ? new Date(`${newVal}T00:00:00.000Z`).toISOString()
+            : null;
+        } else {
+          changes[key] = newVal;
+        }
         if (sensitiveFields.includes(key)) hasSensitiveChanges = true;
       }
     }
