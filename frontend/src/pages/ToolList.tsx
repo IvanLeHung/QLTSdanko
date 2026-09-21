@@ -550,6 +550,10 @@ export const ToolList: React.FC = () => {
       }
 
       if (type === 'SPLIT') {
+        if (item.managementType !== 'QUANTITY') {
+          toast.error(`CCDC "${item.toolName}" quản lý theo từng mã nên không thể tách số lượng.`);
+          return;
+        }
         if (item.splits.length === 0) {
           toast.error(`CCDC "${item.toolName}" chưa chọn địa điểm tách.`);
           return;
@@ -570,8 +574,13 @@ export const ToolList: React.FC = () => {
     setLoading(true);
     try {
       let createdHandoverDocId: number | null = null;
+      const individualItems = modalItems.filter(item => item.managementType !== 'QUANTITY');
 
       for (const item of modalItems) {
+        // CCDC quản lý theo từng mã không có ToolStock. Các mục này được xử lý
+        // bằng biên bản bàn giao ở bước bên dưới, không gọi API trừ tồn số lượng.
+        if (item.managementType !== 'QUANTITY') continue;
+
         if (type === 'TRANSFER') {
           await api.post('/tools/stock/transfer', {
             toolId: item.toolId,
@@ -617,11 +626,14 @@ export const ToolList: React.FC = () => {
         }
       }
 
-      // For ALLOCATE: auto-generate a handover document (BBBG)
-      if (type === 'ALLOCATE' && handoverForm.recipientName) {
+      // Bàn giao theo số lượng vẫn sinh biên bản như trước. Với CCDC quản lý
+      // từng mã, biên bản là nghiệp vụ chính vì không tồn tại bản ghi ToolStock.
+      const shouldCreateDocument = (type === 'ALLOCATE' && handoverForm.recipientName)
+        || (individualItems.length > 0 && type !== 'SPLIT');
+      if (shouldCreateDocument) {
         try {
           const docRes = await api.post('/tools/handover', {
-            type: 'HANDOVER',
+            type: type === 'ALLOCATE' ? 'HANDOVER' : type,
             recipientName: handoverForm.recipientName,
             recipientDepartment: handoverForm.recipientDepartment,
             recipientPosition: handoverForm.recipientPosition,
@@ -629,19 +641,27 @@ export const ToolList: React.FC = () => {
             newLocation: destinationLocation,
             reason: handoverForm.reason,
             note: handoverForm.note,
-            toolIds: modalItems.map(i => i.toolId),
+            toolIds: type === 'ALLOCATE'
+              ? modalItems.map(i => i.toolId)
+              : individualItems.map(i => i.toolId),
             autoComplete: false
           });
           createdHandoverDocId = docRes.data.id;
         } catch (docErr) {
           console.warn('Không thể tạo biên bản bàn giao:', docErr);
+          if (individualItems.length > 0) throw docErr;
         }
       }
 
       if (createdHandoverDocId) {
+        const completedAction = type === 'RECALL'
+          ? 'Thu hồi'
+          : type === 'TRANSFER'
+            ? 'Luân chuyển'
+            : 'Bàn giao';
         toast.success(
           <div>
-            <div className="font-bold">Cấp phát thành công! Biên bản đã được tạo.</div>
+            <div className="font-bold">{completedAction} thành công! Biên bản đã được tạo.</div>
             <button
               onClick={() => navigate(`/tools/handover/${createdHandoverDocId}`)}
               className="mt-1 text-xs underline text-primary-600 font-bold"
@@ -1521,7 +1541,7 @@ export const ToolList: React.FC = () => {
             <div className="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
               <h3 className="text-lg font-black text-slate-850 uppercase tracking-wider flex items-center gap-2">
                 <UserPlus className="h-5 w-5 text-primary-500" />
-                Biên bản luân chuyển / thu hồi CCDC theo số lượng
+                Biên bản bàn giao / luân chuyển / thu hồi CCDC
               </h3>
               <button onClick={() => setActiveModal('NONE')} className="p-1 hover:bg-slate-200 rounded-xl text-slate-400 hover:text-slate-700 transition-colors">
                 <X className="h-5 w-5" />
