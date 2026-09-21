@@ -4,6 +4,15 @@ import { CreationService } from '../services/creation.service';
 
 const router = Router();
 
+router.post('/ad-hoc-batch', authenticateToken, async (req: any, res) => {
+  try {
+    const batch = await CreationService.createAdHocBatch(req.body, req.user.username);
+    res.json(batch);
+  } catch (error: any) {
+    res.status(400).json({ message: error.message });
+  }
+});
+
 router.post('/batch', authenticateToken, async (req: any, res) => {
   try {
     const batch = await CreationService.createBatch(req.body, req.user.username);

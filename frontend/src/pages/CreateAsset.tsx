@@ -68,6 +68,7 @@ export const CreateAsset: React.FC = () => {
   const [warehouses, setWarehouses] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [entryMode, setEntryMode] = useState<'INVOICE' | 'AD_HOC'>('INVOICE');
 
   // Form State
   const [invoice, setInvoice] = useState<InvoiceMetadata>({
@@ -395,16 +396,16 @@ export const CreateAsset: React.FC = () => {
     const warnings: string[] = [];
 
     // Metadata validation
-    if (!invoice.invoiceNo) errors.push("Số hóa đơn bắt buộc phải nhập.");
-    if (!invoice.invoiceDate) errors.push("Ngày hóa đơn bắt buộc phải chọn.");
-    if (!invoice.supplierName) errors.push("Tên nhà cung cấp bắt buộc phải nhập.");
+    if (entryMode === 'INVOICE' && !invoice.invoiceNo) errors.push("Số hóa đơn bắt buộc phải nhập.");
+    if (!invoice.invoiceDate) errors.push(entryMode === 'INVOICE' ? "Ngày hóa đơn bắt buộc phải chọn." : "Ngày ghi nhận bắt buộc phải chọn.");
+    if (entryMode === 'INVOICE' && !invoice.supplierName) errors.push("Tên nhà cung cấp bắt buộc phải nhập.");
     if (!invoice.companyId) errors.push("Công ty nhận hóa đơn bắt buộc phải chọn.");
     if (!invoice.warehouseId) errors.push("Kho nhập ban đầu bắt buộc phải chọn.");
 
     // Row-level validations
     lines.forEach((line, index) => {
       const name = line.invoiceItemName || `Dòng ${index + 1}`;
-      if (!line.invoiceItemName) errors.push(`Dòng ${index + 1}: Tên hạng mục trên hóa đơn không được để trống.`);
+      if (entryMode === 'INVOICE' && !line.invoiceItemName) errors.push(`Dòng ${index + 1}: Tên hạng mục trên hóa đơn không được để trống.`);
       if (!line.assetName) errors.push(`Dòng ${index + 1} ("${name}"): Tên tài sản chuẩn không được để trống.`);
       if (!line.categoryLevel1Id || !line.categoryLevel2Id || !line.categoryLevel3Id || !line.categoryLevel4Id) {
         errors.push(`Dòng ${index + 1} ("${name}"): Vui lòng chọn đầy đủ 4 cấp phân loại tài sản.`);
@@ -484,6 +485,32 @@ export const CreateAsset: React.FC = () => {
 
     setLoading(true);
     try {
+      if (entryMode === 'AD_HOC') {
+        const res = await api.post('/creation/ad-hoc-batch', {
+          companyId: invoice.companyId,
+          entryDate: invoice.invoiceDate,
+          note: invoice.note,
+          assignImmediately,
+          lines: lines.map(line => ({
+            assetName: line.assetName,
+            categoryLevel1Id: parseInt(line.categoryLevel1Id),
+            categoryLevel2Id: parseInt(line.categoryLevel2Id),
+            categoryLevel3Id: parseInt(line.categoryLevel3Id),
+            categoryLevel4Id: parseInt(line.categoryLevel4Id),
+            quantity: line.quantity,
+            unitPrice: line.unitPrice,
+            serials: line.serials,
+            note: line.note
+          }))
+        });
+        toast.success(`Đã tạo lô ${res.data.batchCode} gồm ${res.data.createdAssetsCount} mã tài sản.`);
+        if (assignImmediately) {
+          navigate('/handover/new', { state: { assetIds: res.data.createdAssetIds, assetCodes: res.data.createdAssetCodes } });
+        } else {
+          navigate('/assets');
+        }
+        return;
+      }
       const res = await api.post('/assets/import-invoice/post', buildInvoicePostPayload(status));
       if (status === 'DRAFT') {
         toast.success(`Đã lưu nháp lô hàng ${res.data.invoiceNo}.`);
@@ -660,23 +687,43 @@ export const CreateAsset: React.FC = () => {
             <ArrowLeft className="mr-2 h-4 w-4" /> Quay lại Sổ tài sản
           </button>
           <h1 className="text-3xl font-black text-slate-900 tracking-tight flex items-center gap-3">
-            Cấp mới tài sản theo hóa đơn
+            {entryMode === 'INVOICE' ? 'Cấp mới tài sản theo hóa đơn' : 'Cấp mới tài sản vãng lai'}
             <span className="text-xs font-semibold px-3 py-1 bg-amber-100 text-amber-800 rounded-full border border-amber-200">
               Chế độ Batch
             </span>
           </h1>
           <p className="text-slate-500 text-sm mt-1">
-            Nhập hóa đơn chứa nhiều hạng mục, tự động bóc tách và sinh mã tài sản riêng biệt theo cấu trúc phân nhóm của từng dòng.
+            {entryMode === 'INVOICE'
+              ? 'Nhập hóa đơn chứa nhiều hạng mục, tự động bóc tách và sinh mã tài sản riêng biệt theo cấu trúc phân nhóm của từng dòng.'
+              : 'Tạo một lô tài sản không có hóa đơn, tự động sinh mã và theo dõi toàn bộ số mã được tạo trong lần nhập.'}
           </p>
         </div>
 
         <div className="flex flex-wrap gap-3">
+          <div className="flex rounded-2xl border border-slate-200 bg-slate-100 p-1 shadow-inner">
+            <button
+              type="button"
+              onClick={() => setEntryMode('INVOICE')}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${entryMode === 'INVOICE' ? 'bg-white text-primary-700 shadow-sm' : 'text-slate-500'}`}
+            >
+              Có hóa đơn
+            </button>
+            <button
+              type="button"
+              onClick={() => { setEntryMode('AD_HOC'); setLoadedDraftId(null); }}
+              className={`px-4 py-2 rounded-xl text-xs font-black transition-all ${entryMode === 'AD_HOC' ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500'}`}
+            >
+              Tài sản vãng lai
+            </button>
+          </div>
+          {entryMode === 'INVOICE' && (
           <button
             onClick={openDraftModal}
             className="flex items-center gap-2 px-4 py-2 border border-amber-200 hover:bg-amber-50 text-amber-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
           >
             <FileText className="h-4 w-4 text-amber-500" /> Lấy nháp
           </button>
+          )}
           <button 
             onClick={() => setIsExportModalOpen(true)}
             className="flex items-center gap-2 px-4 py-2 border border-slate-200 hover:bg-slate-50 text-slate-700 rounded-2xl text-sm font-semibold transition-all shadow-sm bg-white"
@@ -710,7 +757,7 @@ export const CreateAsset: React.FC = () => {
       </div>
 
       {/* DRAG & DROP UPLOAD AREA */}
-      <div 
+      {entryMode === 'INVOICE' && <div
         onDragOver={handleDragOver}
         onDrop={handleDrop}
         className={`clay-surface border-2 border-dashed rounded-[2.5rem] p-8 text-center transition-all relative overflow-hidden group ${parsing ? 'border-primary-400 bg-primary-50/10' : 'border-slate-200 hover:border-primary-400'}`}
@@ -741,18 +788,18 @@ export const CreateAsset: React.FC = () => {
             </p>
           </div>
         )}
-      </div>
+      </div>}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         {/* COMPONENT A: INVOICE METADATA FORM */}
         <div className={`${invoice.fileUrl ? 'lg:col-span-2' : 'lg:col-span-3'} clay-surface rounded-[2.5rem] p-8 space-y-6 transition-all duration-300`}>
           <h2 className="text-xl font-black text-slate-800 flex items-center gap-3">
             <Building2 className="h-5 w-5 text-primary-500" />
-            1. Thông tin hóa đơn gốc
+            {entryMode === 'INVOICE' ? '1. Thông tin hóa đơn gốc' : '1. Thông tin lô tài sản vãng lai'}
           </h2>
 
           <div className={`grid grid-cols-1 ${invoice.fileUrl ? 'md:grid-cols-2' : 'md:grid-cols-4'} gap-6`}>
-            <div>
+            <div className={entryMode === 'AD_HOC' ? 'hidden' : ''}>
               <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Số hóa đơn *</label>
               <input 
                 type="text" 
@@ -763,7 +810,7 @@ export const CreateAsset: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Ngày hóa đơn *</label>
+              <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">{entryMode === 'INVOICE' ? 'Ngày hóa đơn' : 'Ngày ghi nhận'} *</label>
               <input 
                 type="date" 
                 className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold"
@@ -771,7 +818,7 @@ export const CreateAsset: React.FC = () => {
                 onChange={e => setInvoice(prev => ({ ...prev, invoiceDate: e.target.value }))}
               />
             </div>
-            <div>
+            <div className={entryMode === 'AD_HOC' ? 'hidden' : ''}>
               <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Tên Nhà cung cấp *</label>
               <input 
                 type="text" 
@@ -781,7 +828,7 @@ export const CreateAsset: React.FC = () => {
                 onChange={e => setInvoice(prev => ({ ...prev, supplierName: e.target.value }))}
               />
             </div>
-            <div>
+            <div className={entryMode === 'AD_HOC' ? 'hidden' : ''}>
               <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Mã số thuế NCC</label>
               <input 
                 type="text" 
@@ -793,7 +840,7 @@ export const CreateAsset: React.FC = () => {
             </div>
 
             <div>
-              <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Công ty nhận hóa đơn *</label>
+              <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">{entryMode === 'INVOICE' ? 'Công ty nhận hóa đơn' : 'Công ty quản lý'} *</label>
               <select 
                 className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold"
                 value={invoice.companyId}
@@ -805,7 +852,7 @@ export const CreateAsset: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div>
+            <div className={entryMode === 'AD_HOC' ? 'hidden' : ''}>
               <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Kho nhập ban đầu *</label>
               <select 
                 className="w-full rounded-2xl border-slate-200 focus:border-primary-500 focus:ring-primary-500 text-sm font-semibold"
@@ -817,7 +864,7 @@ export const CreateAsset: React.FC = () => {
                 ))}
               </select>
             </div>
-            <div>
+            <div className={entryMode === 'AD_HOC' ? 'hidden' : ''}>
               <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Tổng tiền hóa đơn (đối chiếu)</label>
               <input 
                 type="number" 
@@ -828,7 +875,7 @@ export const CreateAsset: React.FC = () => {
               />
             </div>
             <div>
-              <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">Ghi chú hóa đơn</label>
+              <label className="block text-slate-500 text-xs font-bold uppercase tracking-wider mb-2">{entryMode === 'INVOICE' ? 'Ghi chú hóa đơn' : 'Nguồn / Ghi chú lô'}</label>
               <input 
                 type="text" 
                 placeholder="Thông tin thêm..."
@@ -841,7 +888,7 @@ export const CreateAsset: React.FC = () => {
         </div>
 
         {/* INVOICE PREVIEW PANEL (only when fileUrl is present) */}
-        {invoice.fileUrl && (
+        {entryMode === 'INVOICE' && invoice.fileUrl && (
           <div className="clay-surface lg:col-span-1 rounded-[2.5rem] p-6 flex flex-col justify-between h-full animate-in fade-in slide-in-from-right-4 duration-200">
             <div className="space-y-3 flex-1 flex flex-col">
               <div className="flex justify-between items-center border-b pb-2">
@@ -903,7 +950,7 @@ export const CreateAsset: React.FC = () => {
               <thead className="bg-slate-50/80">
                 <tr>
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider w-12">STT</th>
-                  <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[200px]">Tên trên hóa đơn *</th>
+                  <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[200px]">{entryMode === 'INVOICE' ? 'Tên trên hóa đơn *' : 'Nguồn / Mô tả (tùy chọn)'}</th>
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[200px]">Tên tài sản chuẩn *</th>
                   <th className="px-4 py-3 text-left text-slate-500 text-xs font-bold uppercase tracking-wider min-w-[180px]">Phân loại định khoản *</th>
                   <th className="px-4 py-3 text-right text-slate-500 text-xs font-bold uppercase tracking-wider w-24">SL *</th>
@@ -927,7 +974,7 @@ export const CreateAsset: React.FC = () => {
                         <input 
                           type="text"
                           className="w-full px-2.5 py-1.5 border border-slate-200 focus:border-primary-500 focus:ring-primary-500 rounded-xl text-xs font-semibold"
-                          placeholder="Ví dụ: Laptop Dell XPS..."
+                          placeholder={entryMode === 'INVOICE' ? 'Ví dụ: Laptop Dell XPS...' : 'Ví dụ: Tiếp nhận từ dự án...'}
                           value={line.invoiceItemName}
                           onChange={e => {
                             const val = e.target.value;
@@ -1239,14 +1286,14 @@ export const CreateAsset: React.FC = () => {
             >
               Hủy bỏ & Quay về Sổ
             </button>
-            <button
+            {entryMode === 'INVOICE' && <button
               disabled={loading}
               onClick={handleSaveDraft}
               className="flex-1 px-6 py-4 border border-primary-200 text-primary-700 bg-primary-50 rounded-2xl font-bold text-sm hover:bg-primary-100 transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <Save className="h-4 w-4" />
               <span>Lưu nháp</span>
-            </button>
+            </button>}
             <button
               disabled={loading || validationErrors.length > 0}
               onClick={handleConfirmPost}
@@ -1264,7 +1311,7 @@ export const CreateAsset: React.FC = () => {
               ) : (
                 <>
                   <Save className="h-4 w-4" />
-                  <span>Hoàn tất & Khởi tạo {totalQuantity} tài sản</span>
+                  <span>{entryMode === 'INVOICE' ? 'Hoàn tất & Khởi tạo' : 'Tạo lô vãng lai'} {totalQuantity} tài sản</span>
                 </>
               )}
             </button>
