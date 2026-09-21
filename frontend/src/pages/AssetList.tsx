@@ -68,6 +68,22 @@ export const AssetList: React.FC = () => {
   const search = searchParams.get('search') || '';
   const sortBy = searchParams.get('sortBy') || 'updatedAt';
   const sortOrder = searchParams.get('sortOrder') || 'desc';
+  const initialSortApplied = useRef(false);
+
+  // Every new visit starts with the operationally useful order. Preserve all
+  // filters, but do not carry an old A-Z choice into a newly opened asset tab.
+  useEffect(() => {
+    if (initialSortApplied.current) return;
+    initialSortApplied.current = true;
+
+    if (searchParams.get('sortBy') === 'updatedAt' && searchParams.get('sortOrder') === 'desc') return;
+
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('sortBy', 'updatedAt');
+    nextParams.set('sortOrder', 'desc');
+    nextParams.set('page', '1');
+    setSearchParams(nextParams, { replace: true });
+  }, [searchParams, setSearchParams]);
 
   // Advanced Filters from URL
   const filters: any = {
