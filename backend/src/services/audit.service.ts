@@ -29,6 +29,16 @@ export class AuditService {
           performedBy,
         },
       });
+
+      // `updatedAt` is also the list's latest-action marker. Some actions
+      // (printing, requests, workflow steps) only create an audit record and
+      // would otherwise leave the asset buried at its old position.
+      if (entityType.toUpperCase() === 'ASSET' && entityId > 0) {
+        await client.asset.updateMany({
+          where: { id: entityId, isDeleted: false },
+          data: { updatedAt: new Date() }
+        });
+      }
     } catch (error) {
       console.error('Failed to create audit log:', error);
     }
