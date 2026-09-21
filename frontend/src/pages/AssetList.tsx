@@ -66,7 +66,7 @@ export const AssetList: React.FC = () => {
   
   // Sorting is kept in the URL; the table always renders the complete filtered dataset.
   const search = searchParams.get('search') || '';
-  const sortBy = searchParams.get('sortBy') || 'updatedAt';
+  const sortBy = searchParams.get('sortBy') || 'lastActionAt';
   const sortOrder = searchParams.get('sortOrder') || 'desc';
   const initialSortApplied = useRef(false);
 
@@ -76,10 +76,10 @@ export const AssetList: React.FC = () => {
     if (initialSortApplied.current) return;
     initialSortApplied.current = true;
 
-    if (searchParams.get('sortBy') === 'updatedAt' && searchParams.get('sortOrder') === 'desc') return;
+    if (searchParams.get('sortBy') === 'lastActionAt' && searchParams.get('sortOrder') === 'desc') return;
 
     const nextParams = new URLSearchParams(searchParams);
-    nextParams.set('sortBy', 'updatedAt');
+    nextParams.set('sortBy', 'lastActionAt');
     nextParams.set('sortOrder', 'desc');
     nextParams.set('page', '1');
     setSearchParams(nextParams, { replace: true });
@@ -2554,7 +2554,7 @@ export const AssetList: React.FC = () => {
             <div className="flex flex-wrap items-center gap-2 text-xs">
               <span className="text-[11px] font-black text-slate-400 uppercase tracking-widest mr-1.5">Sắp xếp theo:</span>
               {[
-                { label: 'Mới cập nhật', key: 'updatedAt', order: 'desc' },
+                { label: 'Mới thao tác', key: 'lastActionAt', order: 'desc' },
                 { label: 'Mã tài sản A-Z', key: 'assetCode', order: 'asc' },
                 { label: 'Giá trị cao-thấp', key: 'purchasePriceExVat', order: 'desc' },
                 { label: 'Ngày mua mới nhất', key: 'purchaseDate', order: 'desc' },
@@ -3167,7 +3167,7 @@ export const AssetList: React.FC = () => {
                 <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Sắp xếp</label>
                 <div className="flex flex-wrap gap-2">
                   {[
-                    { label: 'Mới cập nhật', key: 'updatedAt', order: 'desc' },
+                    { label: 'Mới thao tác', key: 'lastActionAt', order: 'desc' },
                     { label: 'Mã A-Z', key: 'assetCode', order: 'asc' },
                     { label: 'Giá trị cao-thấp', key: 'purchasePriceExVat', order: 'desc' },
                     { label: 'Ngày mua mới nhất', key: 'purchaseDate', order: 'desc' },

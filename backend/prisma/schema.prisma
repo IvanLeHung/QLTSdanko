@@ -286,6 +286,7 @@ model Asset {
   isLocked                Boolean             @default(false)
   createdAt               DateTime            @default(now())
   updatedAt               DateTime            @updatedAt
+  lastActionAt            DateTime?
   creationBatchId         Int?
   depreciationEndDate     DateTime?
   attachments             String?
@@ -323,6 +324,7 @@ model Asset {
   @@index([currentAssigneeProfileId])
   @@index([offboardingAlert, expectedRecoveryDate])
   @@index([recoveryPriority])
+  @@index([lastActionAt])
   @@index([organizationUnitId])
 }
 
