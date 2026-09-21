@@ -30,13 +30,13 @@ export class AuditService {
         },
       });
 
-      // `updatedAt` is also the list's latest-action marker. Some actions
-      // (printing, requests, workflow steps) only create an audit record and
-      // would otherwise leave the asset buried at its old position.
+      // Keep business activity separate from Prisma's technical `updatedAt`.
+      // Seed/normalization jobs may rewrite asset rows without being a user
+      // action, while printing and workflow steps may only create an audit log.
       if (entityType.toUpperCase() === 'ASSET' && entityId > 0) {
         await client.asset.updateMany({
           where: { id: entityId, isDeleted: false },
-          data: { updatedAt: new Date() }
+          data: { lastActionAt: new Date() }
         });
       }
     } catch (error) {

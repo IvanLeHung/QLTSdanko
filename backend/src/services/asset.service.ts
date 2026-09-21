@@ -322,6 +322,10 @@ export class AssetService {
         return oldAsset;
       }
 
+      // This is the durable ordering marker for user/business operations.
+      // It must not be derived from `updatedAt`, which maintenance jobs touch.
+      updates.lastActionAt = new Date();
+
       for (const field of ASSET_DATE_FIELDS) {
         if (updates[field] !== undefined) {
           updates[field] = normalizeOptionalDate(updates[field], field);

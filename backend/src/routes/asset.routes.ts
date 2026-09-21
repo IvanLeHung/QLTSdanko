@@ -638,7 +638,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     page = 1, 
     limit = 10, 
     search = '', 
-    sortBy = 'updatedAt', 
+    sortBy = 'lastActionAt',
     sortOrder = 'desc',
     
     // Quick Filters
@@ -871,6 +871,26 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     const shouldFetchAll = req.query.all === 'true';
     const shouldSkipCount = req.query.skipCount === 'true';
   try {
+    // Existing assets predate `lastActionAt`. Initialize them once from their
+    // newest audit action (or creation time when no audit exists), without
+    // trusting seed-touched `updatedAt`.
+    await prisma.$executeRaw`
+      WITH latest_action AS (
+        SELECT
+          asset."id",
+          COALESCE(MAX(log."createdAt"), asset."createdAt") AS "occurredAt"
+        FROM "Asset" AS asset
+        LEFT JOIN "AuditLog" AS log
+          ON log."entityType" = 'ASSET'
+          AND log."entityId" = asset."id"
+        WHERE asset."lastActionAt" IS NULL
+        GROUP BY asset."id", asset."createdAt"
+      )
+      UPDATE "Asset" AS asset
+      SET "lastActionAt" = latest_action."occurredAt"
+      FROM latest_action
+      WHERE asset."id" = latest_action."id"
+    `;
     if (!isGroupedCompact) {
       await refreshRecoveryPriorities();
     }
@@ -887,13 +907,14 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
       'purchasePriceExVat',
       'purchaseDate',
       'handoverDate',
+      'lastActionAt',
       'updatedAt',
       'createdAt'
     ]);
-    const safeSortBy = allowedSortFields.has(String(sortBy)) ? String(sortBy) : 'updatedAt';
+    const safeSortBy = allowedSortFields.has(String(sortBy)) ? String(sortBy) : 'lastActionAt';
     const safeSortOrder: 'asc' | 'desc' = String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
     const hasExplicitSort = typeof req.query.sortBy === 'string' && allowedSortFields.has(req.query.sortBy);
-    const isLatestActionSort = safeSortBy === 'updatedAt' && safeSortOrder === 'desc';
+    const isLatestActionSort = safeSortBy === 'lastActionAt' && safeSortOrder === 'desc';
     const tableOrderBy: any[] = hasExplicitSort && !isLatestActionSort
       ? [
           { offboardingAlert: 'desc' },
@@ -903,7 +924,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
         ]
       : [
           // On first open, the most recently operated asset is always first.
-          { updatedAt: 'desc' },
+          { lastActionAt: 'desc' },
           { offboardingAlert: 'desc' },
           { recoveryPriority: 'desc' },
           { assetCode: 'asc' }
@@ -924,6 +945,7 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
         assetNameShort: true,
         serialNumber: true,
         purchaseDate: true,
+        lastActionAt: true,
         status: true,
         currentUserName: true,
         currentPosition: true,
