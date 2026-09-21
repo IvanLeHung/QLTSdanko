@@ -1275,6 +1275,85 @@ export const AssetDetailPopup: React.FC<AssetDetailPopupProps> = ({ assetId, isO
                     )}
                   </div>
 
+                  {/* Lô tạo tài sản (bao gồm lô vãng lai không hóa đơn) */}
+                  {mode !== 'edit' && asset.creationBatch && (
+                    <div className="col-span-2 border-t border-slate-100 pt-6 space-y-4">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <h4 className="text-xs font-black uppercase tracking-widest text-slate-400 flex items-center">
+                          <Package className="mr-2 h-4 w-4 text-primary-500" />
+                          Lô tạo tài sản
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const codes = (asset.creationBatch.assets || []).map((item: any) => item.assetCode).join('\n');
+                            await navigator.clipboard.writeText(codes);
+                            toast.success(`Đã sao chép ${asset.creationBatch.assets?.length || 0} mã tài sản`);
+                          }}
+                          className="inline-flex items-center justify-center px-3 py-2 bg-white border border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl text-[10px] font-black uppercase tracking-wider transition-colors shadow-sm"
+                        >
+                          <Copy className="h-3.5 w-3.5 mr-1.5" />
+                          Sao chép tất cả mã
+                        </button>
+                      </div>
+
+                      <div className="p-5 rounded-3xl bg-primary-50/50 border border-primary-100 space-y-4">
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                          <div>
+                            <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Mã lô</span>
+                            <span className="text-sm font-black text-primary-750">{asset.creationBatch.batchCode}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Ngày tạo lô</span>
+                            <span className="text-sm font-bold text-slate-800">
+                              {asset.creationBatch.batchDate ? format(new Date(asset.creationBatch.batchDate), 'dd/MM/yyyy') : '--'}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Số lượng đã tạo</span>
+                            <span className="text-sm font-bold text-slate-800">{asset.creationBatch.assets?.length || asset.creationBatch.totalQuantity || 0} tài sản</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-1">Nguồn tạo</span>
+                            <span className="text-sm font-bold text-slate-800">{asset.creationBatch.documentNo ? `Chứng từ ${asset.creationBatch.documentNo}` : 'Lô không hóa đơn'}</span>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span className="text-[10px] uppercase font-bold tracking-widest text-slate-400 block mb-2">Các mã được tạo cùng lô</span>
+                          <div className="max-h-48 overflow-y-auto rounded-2xl border border-primary-100 bg-white divide-y divide-slate-100">
+                            {(asset.creationBatch.assets || []).map((batchAsset: any) => (
+                              <button
+                                key={batchAsset.id}
+                                type="button"
+                                onClick={() => {
+                                  onClose();
+                                  navigate(`/assets?search=${encodeURIComponent(batchAsset.assetCode)}`);
+                                }}
+                                className={cn(
+                                  'w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-primary-50 transition-colors',
+                                  batchAsset.id === asset.id && 'bg-primary-50'
+                                )}
+                              >
+                                <div className="min-w-0">
+                                  <p className="text-xs font-black text-primary-700">{batchAsset.assetCode}</p>
+                                  <p className="text-[11px] font-medium text-slate-500 truncate">{batchAsset.assetName}</p>
+                                </div>
+                                <span className={cn('shrink-0 px-2 py-1 rounded-full border text-[9px] font-black', getStatusInfo(batchAsset.status).color)}>
+                                  {getStatusInfo(batchAsset.status).label}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {asset.creationBatch.note && (
+                          <p className="text-xs font-medium text-slate-500">Ghi chú lô: {asset.creationBatch.note}</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Hóa đơn liên quan section */}
                   {mode !== 'edit' && (
                     <div className="col-span-2 border-t border-slate-100 pt-6 space-y-4">

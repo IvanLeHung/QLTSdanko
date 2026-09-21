@@ -2758,6 +2758,15 @@ router.get('/barcode/:barcode', authenticateToken, requirePermission('ASSET_VIEW
         repairTickets: { orderBy: { createdAt: 'desc' } },
         repairLogs: { orderBy: { createdAt: 'desc' } },
         histories: { orderBy: { eventTime: 'desc' } },
+        creationBatch: {
+          include: {
+            assets: {
+              where: { isDeleted: false },
+              orderBy: { assetCode: 'asc' },
+              select: { id: true, assetCode: true, assetName: true, status: true }
+            }
+          }
+        },
         invoiceBatch: true,
         invoiceLine: true
       }
@@ -2995,6 +3004,15 @@ router.get('/:id', authenticateToken, requirePermission('ASSET_VIEW'), async (re
         repairTickets: { orderBy: { createdAt: 'desc' } },
         repairLogs: { orderBy: { createdAt: 'desc' } },
         histories: { orderBy: { eventTime: 'desc' } },
+        creationBatch: {
+          include: {
+            assets: {
+              where: { isDeleted: false },
+              orderBy: { assetCode: 'asc' },
+              select: { id: true, assetCode: true, assetName: true, status: true }
+            }
+          }
+        },
         invoiceBatch: true,
         invoiceLine: true
       }
