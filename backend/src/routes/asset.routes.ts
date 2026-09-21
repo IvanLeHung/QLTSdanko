@@ -893,16 +893,21 @@ router.get('/', authenticateToken, requirePermission('ASSET_VIEW'), async (req: 
     const safeSortBy = allowedSortFields.has(String(sortBy)) ? String(sortBy) : 'updatedAt';
     const safeSortOrder: 'asc' | 'desc' = String(sortOrder).toLowerCase() === 'asc' ? 'asc' : 'desc';
     const hasExplicitSort = typeof req.query.sortBy === 'string' && allowedSortFields.has(req.query.sortBy);
-    const tableOrderBy: any[] = [
-      // Active recovery alerts must remain visible at the top, regardless of
-      // the secondary column selected by the user.
-      { offboardingAlert: 'desc' },
-      { recoveryPriority: 'desc' },
-      hasExplicitSort
-        ? { [safeSortBy]: safeSortOrder }
-        : { updatedAt: 'desc' },
-      { assetCode: 'asc' }
-    ];
+    const isLatestActionSort = safeSortBy === 'updatedAt' && safeSortOrder === 'desc';
+    const tableOrderBy: any[] = hasExplicitSort && !isLatestActionSort
+      ? [
+          { offboardingAlert: 'desc' },
+          { recoveryPriority: 'desc' },
+          { [safeSortBy]: safeSortOrder },
+          { assetCode: 'asc' }
+        ]
+      : [
+          // On first open, the most recently operated asset is always first.
+          { updatedAt: 'desc' },
+          { offboardingAlert: 'desc' },
+          { recoveryPriority: 'desc' },
+          { assetCode: 'asc' }
+        ];
     const assetQuery: any = {
       where,
       ...(shouldFetchAll ? {} : { skip, take: Number(limit) }),
